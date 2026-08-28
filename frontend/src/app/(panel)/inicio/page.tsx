@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Building2, Save, Edit3, Loader2, Users, Receipt, Briefcase, FileText } from "lucide-react";
@@ -27,7 +27,7 @@ interface TenantData {
   current_year: number;
 }
 
-export default function InicioDashboard() {
+function InicioDashboardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tenantSchema = searchParams.get("tenant");
@@ -392,5 +392,14 @@ export default function InicioDashboard() {
       </div>
 
     </motion.div>
+  );
+}
+
+
+export default function InicioDashboard() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+      <InicioDashboardContent />
+    </Suspense>
   );
 }

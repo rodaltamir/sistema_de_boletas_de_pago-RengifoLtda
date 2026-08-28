@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Loader2, Eye, X, FileText, FileSpreadsheet, File, Users, Calculator } from "lucide-react";
@@ -92,7 +92,7 @@ function numeroALetras(num: number): string {
   return str;
 }
 
-export default function BoletasPage() {
+function BoletasPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tenantSchema = searchParams.get("tenant");
@@ -668,5 +668,14 @@ export default function BoletasPage() {
       </AnimatePresence>
 
     </motion.div>
+  );
+}
+
+
+export default function BoletasPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+      <BoletasPageContent />
+    </Suspense>
   );
 }

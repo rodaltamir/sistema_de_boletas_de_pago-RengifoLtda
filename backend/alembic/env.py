@@ -19,6 +19,10 @@ if config.config_file_name is not None:
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from app.core.config import settings
+
+# Override the sqlalchemy.url from alembic.ini with our dynamic settings
+config.set_main_option("sqlalchemy.url", settings.SQLALCHEMY_DATABASE_URI)
 
 from app.db.base_class import Base
 from app.models.tenant import Tenant

@@ -258,8 +258,11 @@ def export_payslip(schema_name: str, month: int, year: int, payslip_id: int, for
     if not target_slip:
         raise HTTPException(status_code=404, detail="Boleta no encontrada")
         
+    emp = db.query(Employee).filter(Employee.id == target_slip.employee_id).first()
+    real_internal_code = emp.internal_code if emp and emp.internal_code else str(target_slip.employee_id)
+        
     boleta_data = {
-        'internal_code': f'"{target_slip.employee_id}"',
+        'internal_code': real_internal_code,
         'empresa_nombre': payroll_dict.get('tenant_name', ''),
         'nit': payroll_dict.get('tenant_nit', ''),
         'numero_patronal': payroll_dict.get('tenant_nro_patronal', ''),

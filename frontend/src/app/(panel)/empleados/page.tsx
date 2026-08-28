@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Users, Plus, Edit, Trash2, X, Search, Loader2, UserPlus, AlertCircle } from "lucide-react";
@@ -22,7 +22,7 @@ interface Employee {
   is_active: boolean;
 }
 
-export default function EmpleadosPage() {
+function EmpleadosPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tenantSchema = searchParams.get("tenant");
@@ -466,5 +466,14 @@ export default function EmpleadosPage() {
       </AnimatePresence>
 
     </motion.div>
+  );
+}
+
+
+export default function EmpleadosPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+      <EmpleadosPageContent />
+    </Suspense>
   );
 }

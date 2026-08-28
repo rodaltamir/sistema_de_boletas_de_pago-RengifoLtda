@@ -5,6 +5,8 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Building2, Plus, ArrowRight, Briefcase, Factory, Store, X, Upload, CheckCircle2, AlertCircle, Building, Loader2 } from "lucide-react";
 
+import Swal from "sweetalert2";
+
 // Mapeo de iconos disponibles
 const ICON_OPTIONS = {
   Building2,
@@ -61,7 +63,11 @@ export default function SeleccionarEmpresa() {
     }
   };
 
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<string | null>(null);
+
   useEffect(() => {
+    setIsAdmin(localStorage.getItem("isAdmin") === "true");
     fetchTenants();
   }, []);
 
@@ -74,6 +80,78 @@ export default function SeleccionarEmpresa() {
         setFormData({ ...formData, logo_base64: reader.result as string });
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  // Abrir modal para editar
+  const handleEdit = (tenant: any) => {
+    setEditingTenant(tenant.schema_name);
+    setFormData({
+      name: tenant.name || "",
+      nit: tenant.nit || "",
+      numero_patronal: tenant.numero_patronal || "",
+      min_trabajo_id: tenant.min_trabajo_id || "",
+      icon: (tenant.icon as IconName) || "Building2",
+      logo_base64: tenant.logo_base64 || "",
+      empleador_nombres: tenant.empleador_nombres || "",
+      empleador_apellido_paterno: tenant.empleador_apellido_paterno || "",
+      empleador_apellido_materno: tenant.empleador_apellido_materno || "",
+      empleador_ci: tenant.empleador_ci || "",
+      empleador_nit: tenant.empleador_nit || ""
+    });
+    setShowModal(true);
+  };
+
+  // Eliminar empresa
+  const handleDelete = async (schemaName: string) => {
+    const result = await Swal.fire({
+      title: "¿Estás seguro?",
+      text: "Se eliminará esta empresa (desactivación lógica). No podrás revertir esto.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#14b8a6", // teal-500
+      cancelButtonColor: "#ef4444", // red-500
+      confirmButtonText: "Sí, eliminar",
+      cancelButtonText: "Cancelar",
+      background: "#1e293b", // slate-800
+      color: "#fff"
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      const res = await fetch(`http://localhost:8000/api/tenants/${schemaName}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        Swal.fire({
+          title: "¡Eliminado!",
+          text: "La empresa ha sido eliminada.",
+          icon: "success",
+          background: "#1e293b",
+          color: "#fff",
+          confirmButtonColor: "#14b8a6"
+        });
+        fetchTenants();
+      } else {
+        Swal.fire({
+          title: "Error",
+          text: "Error al eliminar la empresa. (Asegúrate de haber reiniciado el servidor backend)",
+          icon: "error",
+          background: "#1e293b",
+          color: "#fff",
+          confirmButtonColor: "#14b8a6"
+        });
+      }
+    } catch (err) {
+      Swal.fire({
+        title: "Error de conexión",
+        text: "No se pudo conectar con el servidor.",
+        icon: "error",
+        background: "#1e293b",
+        color: "#fff",
+        confirmButtonColor: "#14b8a6"
+      });
     }
   };
 
@@ -103,22 +181,39 @@ export default function SeleccionarEmpresa() {
     }
 
     try {
-      const res = await fetch("http://localhost:8000/api/tenants", {
-        method: "POST",
+      const url = editingTenant 
+        ? `http://localhost:8000/api/tenants/${editingTenant}`
+        : "http://localhost:8000/api/tenants";
+      const method = editingTenant ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method: method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData)
       });
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.detail || "Error al crear la empresa");
+        throw new Error(data.detail || "Error al procesar la empresa");
       }
 
       await fetchTenants(); // Recargar la lista
       setShowModal(false); // Cerrar modal
+      
+      Swal.fire({
+        title: "¡Éxito!",
+        text: editingTenant ? "Empresa actualizada correctamente." : "Entorno empresarial creado correctamente.",
+        icon: "success",
+        background: "#1e293b",
+        color: "#fff",
+        confirmButtonColor: "#14b8a6"
+      });
+      
+      setEditingTenant(null);
       // Resetear formulario
       setFormData({
-        name: "", nit: "", numero_patronal: "", min_trabajo_id: "", icon: "Building2", logo_base64: ""
+        name: "", nit: "", numero_patronal: "", min_trabajo_id: "", icon: "Building2", logo_base64: "",
+        empleador_nombres: "", empleador_apellido_paterno: "", empleador_apellido_materno: "", empleador_ci: "", empleador_nit: ""
       });
     } catch (err: any) {
       setError(err.message);
@@ -158,8 +253,27 @@ export default function SeleccionarEmpresa() {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.1 * idx }}
+                  className="relative group h-full"
                 >
-                  <Link href={`/inicio?tenant=${tenant.schema_name}`} className="block group h-full">
+                  {isAdmin && (
+                    <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={(e) => { e.preventDefault(); handleEdit(tenant); }}
+                        className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-full shadow-lg transition"
+                        title="Editar Empresa"
+                      >
+                        <Briefcase className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.preventDefault(); handleDelete(tenant.schema_name); }}
+                        className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full shadow-lg transition"
+                        title="Eliminar Empresa"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                  <Link href={`/inicio?tenant=${tenant.schema_name}`} className="block h-full">
                     <div className="h-full bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl hover:bg-white/20 hover:border-teal-400/50 transition-all duration-300 relative overflow-hidden flex flex-col">
                       <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all">
                         <SelectedIcon className="w-32 h-32 text-white" />
@@ -183,25 +297,27 @@ export default function SeleccionarEmpresa() {
               );
             })}
 
-            {/* Botón Tarjeta Nueva Empresa */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2 }}
-            >
-              <button 
-                onClick={() => setShowModal(true)}
-                className="w-full h-full text-left group"
+            {/* Botón Tarjeta Nueva Empresa (Solo Admin) */}
+            {isAdmin && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.2 }}
               >
-                <div className="h-full bg-black/20 backdrop-blur-xl border-2 border-dashed border-white/20 p-8 rounded-3xl hover:bg-white/5 hover:border-teal-400/50 transition-all duration-300 flex flex-col items-center justify-center min-h-[300px]">
-                  <div className="bg-white/5 w-16 h-16 rounded-full flex items-center justify-center border border-white/10 mb-4 group-hover:scale-110 group-hover:bg-teal-500/20 transition-all shadow-lg">
-                    <Plus className="text-white/50 group-hover:text-teal-300 w-8 h-8" />
+                <button 
+                  onClick={() => setShowModal(true)}
+                  className="w-full h-full text-left group"
+                >
+                  <div className="h-full bg-black/20 backdrop-blur-xl border-2 border-dashed border-white/20 p-8 rounded-3xl hover:bg-white/5 hover:border-teal-400/50 transition-all duration-300 flex flex-col items-center justify-center min-h-[300px]">
+                    <div className="bg-white/5 w-16 h-16 rounded-full flex items-center justify-center border border-white/10 mb-4 group-hover:scale-110 group-hover:bg-teal-500/20 transition-all shadow-lg">
+                      <Plus className="text-white/50 group-hover:text-teal-300 w-8 h-8" />
+                    </div>
+                    <h2 className="text-xl font-bold text-white/70 group-hover:text-white mb-2 text-center">Registrar Nueva Empresa</h2>
+                    <p className="text-white/40 text-sm text-center">Configura un nuevo entorno aislado</p>
                   </div>
-                  <h2 className="text-xl font-bold text-white/70 group-hover:text-white mb-2 text-center">Registrar Nueva Empresa</h2>
-                  <p className="text-white/40 text-sm text-center">Configura un nuevo entorno aislado</p>
-                </div>
-              </button>
-            </motion.div>
+                </button>
+              </motion.div>
+            )}
           </div>
         )}
       </div>
@@ -214,7 +330,7 @@ export default function SeleccionarEmpresa() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => !submitting && setShowModal(false)}
+              onClick={() => !submitting && (setShowModal(false), setEditingTenant(null))}
               className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
             />
             <motion.div
@@ -225,9 +341,9 @@ export default function SeleccionarEmpresa() {
             >
               <div className="p-6 border-b border-white/10 flex justify-between items-center bg-black/20">
                 <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                  <Building2 className="text-teal-400 w-6 h-6" /> Nueva Empresa (Tenant)
+                  <Building2 className="text-teal-400 w-6 h-6" /> {editingTenant ? "Editar Empresa" : "Nueva Empresa (Tenant)"}
                 </h2>
-                <button onClick={() => !submitting && setShowModal(false)} className="text-white/50 hover:text-white transition">
+                <button onClick={() => !submitting && (setShowModal(false), setEditingTenant(null))} className="text-white/50 hover:text-white transition">
                   <X className="w-6 h-6" />
                 </button>
               </div>

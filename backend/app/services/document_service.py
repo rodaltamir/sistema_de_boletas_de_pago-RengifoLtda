@@ -81,11 +81,14 @@ class DocumentService:
         wb = openpyxl.load_workbook(template_path)
         ws = wb.active
         
-        # Definir el mapeo exacto de celdas según la captura del usuario
+        internal_code = boleta_data.get('internal_code', '')
+        if isinstance(internal_code, str):
+            internal_code = internal_code.replace('"', '').replace("'", "")
+
         # B2: Empresa Name
         DocumentService._set_cell_value(ws, 'B2', boleta_data.get('empresa_nombre', '').upper())
         DocumentService._set_cell_value(ws, 'D2', "Nº:")
-        DocumentService._set_cell_value(ws, 'E2', boleta_data.get('internal_code', ''))
+        DocumentService._set_cell_value(ws, 'E2', internal_code)
         
         DocumentService._set_cell_value(ws, 'B3', f"Nro. Patronal: {boleta_data.get('numero_patronal', '')}")
         
@@ -101,7 +104,7 @@ class DocumentService:
         if mes_int == 2: fecha_fin = f"28/02/{anio}"
         DocumentService._set_cell_value(ws, 'D7', f"FECHA {fecha_fin}")
         
-        DocumentService._set_cell_value(ws, 'B9', f"CODIGO :      {boleta_data.get('internal_code', '')}")
+        DocumentService._set_cell_value(ws, 'B9', f"CODIGO :      {internal_code}")
         
         emp_nombres = boleta_data.get('nombres') or ''
         emp_pat = boleta_data.get('apellido_paterno') or ''
@@ -130,7 +133,7 @@ class DocumentService:
         # Ingresos left side
         DocumentService._set_cell_value(ws, 'B13', "Sueldo Básico")
         DocumentService._set_cell_value(ws, 'C13', hb)
-        DocumentService._set_cell_value(ws, 'B14', "Bono de Antiguedad")
+        DocumentService._set_cell_value(ws, 'B14', "Bono de Antigüedad")
         DocumentService._set_cell_value(ws, 'C14', ba)
         DocumentService._set_cell_value(ws, 'B15', "Subsidio de Natalidad")
         DocumentService._set_cell_value(ws, 'C15', sub_nat)
@@ -152,19 +155,30 @@ class DocumentService:
         DocumentService._set_cell_value(ws, 'E18', total_descuentos)
         
         # Liquido Pagable
-        # Aplicamos float a un lado pero el texto incluye "LIQUIDO PAGABLE: " por lo que debe ser texto. 
-        # Para que se vea bien, dejamos el texto. Si queremos que se pueda operar, 
-        # deberíamos separarlo. Por ahora, lo mantenemos como texto como pide el cliente,
-        # O MEJOR, en la plantilla B21=LIQUIDO PAGABLE, y C21=liquido
-        DocumentService._set_cell_value(ws, 'B21', "LIQUIDO PAGABLE:")
-        DocumentService._set_cell_value(ws, 'C21', liquido)
+        # Descombinamos B21:C21 si están combinados para evitar sobreescribir el texto
+        try:
+            ws.unmerge_cells('B21:C21')
+        except:
+            pass
+            
+        ws['B21'] = "LIQUIDO PAGABLE:"
+        ws['B21'].font = openpyxl.styles.Font(name="Times New Roman", size=11, bold=True)
+        ws['C21'] = liquido
         ws['C21'].font = openpyxl.styles.Font(name="Times New Roman", size=13, bold=True)
         ws['C21'].number_format = '#,##0.00'
+        ws['C21'].alignment = openpyxl.styles.Alignment(horizontal='right')
         
         entero = int(liquido)
         decimal = int(round((liquido - entero) * 100))
         literal_entero = DocumentService._numero_a_letras(entero)
-        DocumentService._set_cell_value(ws, 'D21', f"(Son: {literal_entero} con {decimal}/100 Bolivianos)")
+        
+        try:
+            ws.merge_cells('D21:E21')
+        except:
+            pass
+        ws['D21'] = f"(Son: {literal_entero} con {decimal}/100 Bolivianos)"
+        ws['D21'].font = openpyxl.styles.Font(name="Times New Roman", size=9, italic=True)
+        ws['D21'].alignment = openpyxl.styles.Alignment(shrink_to_fit=True, vertical='center', horizontal='left')
         
         # Signatures
         DocumentService._set_cell_value(ws, 'B25', "...........................................................")
@@ -207,13 +221,37 @@ class DocumentService:
             MESES = {1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO", 7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"}
             anio = payroll_data[0].get('anio', '')
             
-            DocumentService._set_cell_value(ws, 'C2', empresa)
+            DocumentService._set_cell_value(ws, 'C2', empresa.upper())
+            try:
+                ws['C2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['C2'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+            except: pass
+
+            DocumentService._set_cell_value(ws, 'F3', nit)
+            try:
+                ws['F3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['F3'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+            except: pass
+
             DocumentService._set_cell_value(ws, 'O2', nit)
+            try:
+                ws['O2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['O2'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+            except: pass
+
             DocumentService._set_cell_value(ws, 'O3', patronal)
+            try:
+                ws['O3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['O3'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+            except: pass
             
             # Recuperar texto original si existe o poner default
-            base_text = ws['U6'].value or " CORRESPONDIENTE AL MES DE "
-            DocumentService._set_cell_value(ws, 'U6', f"{base_text.strip()} {MESES.get(mes_int, str(mes_int))} DE {anio}")
+            base_text = "CORRESPONDIENTE AL MES DE"
+            DocumentService._set_cell_value(ws, 'U6', f"{base_text} {MESES.get(mes_int, str(mes_int))} DE {anio}")
+            try:
+                ws['U6'].font = openpyxl.styles.Font(name="Arial", size=11, bold=True)
+                ws['U6'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+            except: pass
             
             # Paginacion
             DocumentService._set_cell_value(ws, 'V2', 1)
@@ -276,17 +314,26 @@ class DocumentService:
             except: pass
             try: ws.cell(row=row, column=23).value = float(emp.get('liquido_pagable', 0))
             except: pass
+            
+            # Formatting para los números en la tabla
+            for col in range(11, 24):
+                try: ws.cell(row=row, column=col).number_format = '#,##0.00'
+                except: pass
 
         # Fila TOTALES
         totales_row = start_row + max(num_employees, 2)
         try:
             ws.cell(row=totales_row, column=1).value = 'TOTALES'
+            ws.cell(row=totales_row, column=1).font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
         except: pass
         
         for col in range(11, 24):
             col_letter = get_column_letter(col)
             try:
-                ws.cell(row=totales_row, column=col).value = f"=SUM({col_letter}{start_row}:{col_letter}{totales_row-1})"
+                c = ws.cell(row=totales_row, column=col)
+                c.value = f"=SUM({col_letter}{start_row}:{col_letter}{totales_row-1})"
+                c.font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                c.number_format = '#,##0.00'
             except: pass
             
         # Fila EMPLEADOR
@@ -299,12 +346,20 @@ class DocumentService:
             
             full_emp_name = f"{emp_pat} {emp_mat} {emp_nombres}".strip().replace("  ", " ").upper()
             
+            # Nombre del Empleador (Centrado sin lineas de puntos)
             try:
-                ws.cell(row=empleador_row, column=4).value = f"NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL: {full_emp_name}"
+                c1 = ws.cell(row=empleador_row, column=4)
+                c1.value = full_emp_name
+                c1.font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                c1.alignment = openpyxl.styles.Alignment(horizontal='center')
             except: pass
             
+            # CI del Empleador
             try:
-                ws.cell(row=empleador_row, column=12).value = f"N° DE DOCUMENTO DE IDENTIDAD: {emp_ci}"
+                c2 = ws.cell(row=empleador_row, column=12)
+                c2.value = f"CI: {emp_ci}"
+                c2.font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                c2.alignment = openpyxl.styles.Alignment(horizontal='center')
             except: pass
 
         wb.save(output_xlsx)

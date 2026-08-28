@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calculator, Search, Loader2, Download, Edit, Eye, X, FileText, FileSpreadsheet, File } from "lucide-react";
@@ -49,7 +49,7 @@ const MONTHS = [
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
 ];
 
-export default function PlanillasPage() {
+function PlanillasPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tenantSchema = searchParams.get("tenant");
@@ -307,5 +307,13 @@ export default function PlanillasPage() {
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+export default function PlanillasPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+      <PlanillasPageContent />
+    </Suspense>
   );
 }

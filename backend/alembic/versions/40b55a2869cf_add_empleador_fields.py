@@ -27,10 +27,7 @@ def upgrade() -> None:
     op.add_column('tenants', sa.Column('empleador_apellido_materno', sa.String(length=100), nullable=True))
     op.add_column('tenants', sa.Column('empleador_ci', sa.String(length=50), nullable=True))
     op.add_column('tenants', sa.Column('empleador_nit', sa.String(length=50), nullable=True))
-    op.alter_column('tenants', 'logo_base64',
-               existing_type=sa.TEXT(),
-               type_=sa.String(),
-               existing_nullable=True)
+    op.add_column('tenants', sa.Column('logo_base64', sa.String(), nullable=True))
     # ### end Alembic commands ###
 
 

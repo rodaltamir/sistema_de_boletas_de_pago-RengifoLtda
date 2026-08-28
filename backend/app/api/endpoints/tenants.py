@@ -141,3 +141,36 @@ def update_tenant_dashboard(schema_name: str, data: TenantUpdateRequest, db: Ses
     db.commit()
     
     return get_tenant_dashboard(schema_name, db)
+
+@router.delete("/{schema_name}")
+def delete_tenant(schema_name: str, db: Session = Depends(get_db)):
+    tenant = db.query(Tenant).filter(Tenant.schema_name == schema_name).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    
+    tenant.is_active = False
+    db.commit()
+    return {"message": "Empresa eliminada logicamente"}
+
+@router.put("/{schema_name}")
+def update_tenant(schema_name: str, data: TenantCreate, db: Session = Depends(get_db)):
+    tenant = db.query(Tenant).filter(Tenant.schema_name == schema_name).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    
+    tenant.name = data.name
+    tenant.nit = data.nit
+    tenant.numero_patronal = data.numero_patronal
+    tenant.min_trabajo_id = data.min_trabajo_id
+    tenant.empleador_nombres = data.empleador_nombres
+    tenant.empleador_apellido_paterno = data.empleador_apellido_paterno
+    tenant.empleador_apellido_materno = data.empleador_apellido_materno
+    tenant.empleador_ci = data.empleador_ci
+    tenant.empleador_nit = data.empleador_nit
+    tenant.icon = data.icon
+    if data.logo_base64:
+        tenant.logo_base64 = data.logo_base64
+        
+    db.commit()
+    db.refresh(tenant)
+    return tenant

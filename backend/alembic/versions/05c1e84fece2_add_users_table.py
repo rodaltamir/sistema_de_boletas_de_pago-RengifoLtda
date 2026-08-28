@@ -36,59 +36,7 @@ def upgrade() -> None:
     op.create_index(op.f('public_users_email_idx'), 'users', ['email'], unique=True, schema='public')
     op.create_index(op.f('public_users_id_idx'), 'users', ['id'], unique=False, schema='public')
     op.create_index(op.f('public_users_username_idx'), 'users', ['username'], unique=True, schema='public')
-    op.create_table('employees',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('internal_code', sa.String(length=50), nullable=True),
-    sa.Column('documento_identidad', sa.String(length=50), nullable=False),
-    sa.Column('nombres', sa.String(length=100), nullable=False),
-    sa.Column('apellidos', sa.String(length=100), nullable=False),
-    sa.Column('nacionalidad', sa.String(length=50), nullable=True),
-    sa.Column('fecha_nacimiento', sa.Date(), nullable=False),
-    sa.Column('sexo', sa.String(length=1), nullable=False),
-    sa.Column('ocupacion', sa.String(length=100), nullable=False),
-    sa.Column('fecha_ingreso', sa.Date(), nullable=False),
-    sa.Column('haber_basico', sa.Numeric(precision=12, scale=2), nullable=False),
-    sa.Column('is_active', sa.Boolean(), nullable=True),
-    sa.PrimaryKeyConstraint('id', name=op.f('employees_pkey')),
-    schema='tenant'
-    )
-    op.create_index(op.f('tenant_employees_documento_identidad_idx'), 'employees', ['documento_identidad'], unique=True, schema='tenant')
-    op.create_index(op.f('tenant_employees_id_idx'), 'employees', ['id'], unique=False, schema='tenant')
-    op.create_table('payrolls',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('month', sa.Integer(), nullable=False),
-    sa.Column('year', sa.Integer(), nullable=False),
-    sa.Column('is_closed', sa.Boolean(), nullable=True),
-    sa.PrimaryKeyConstraint('id', name=op.f('payrolls_pkey')),
-    schema='tenant'
-    )
-    op.create_index(op.f('tenant_payrolls_id_idx'), 'payrolls', ['id'], unique=False, schema='tenant')
-    op.create_table('payslips',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('payroll_id', sa.Integer(), nullable=False),
-    sa.Column('employee_id', sa.Integer(), nullable=False),
-    sa.Column('dias_pagados', sa.Integer(), nullable=True),
-    sa.Column('horas_pagadas', sa.Numeric(precision=5, scale=2), nullable=True),
-    sa.Column('haber_basico', sa.Numeric(precision=12, scale=2), nullable=False),
-    sa.Column('bono_antiguedad', sa.Numeric(precision=12, scale=2), nullable=True),
-    sa.Column('bono_produccion', sa.Numeric(precision=12, scale=2), nullable=True),
-    sa.Column('subsidio_frontera', sa.Numeric(precision=12, scale=2), nullable=True),
-    sa.Column('trabajo_extraordinario', sa.Numeric(precision=12, scale=2), nullable=True),
-    sa.Column('pago_dominical', sa.Numeric(precision=12, scale=2), nullable=True),
-    sa.Column('otros_bonos', sa.Numeric(precision=12, scale=2), nullable=True),
-    sa.Column('total_ganado', sa.Numeric(precision=12, scale=2), nullable=False),
-    sa.Column('aporte_gestora', sa.Numeric(precision=12, scale=2), nullable=False),
-    sa.Column('rc_iva', sa.Numeric(precision=12, scale=2), nullable=True),
-    sa.Column('anticipos', sa.Numeric(precision=12, scale=2), nullable=True),
-    sa.Column('otros_descuentos', sa.Numeric(precision=12, scale=2), nullable=True),
-    sa.Column('total_descuentos', sa.Numeric(precision=12, scale=2), nullable=False),
-    sa.Column('liquido_pagable', sa.Numeric(precision=12, scale=2), nullable=False),
-    sa.ForeignKeyConstraint(['employee_id'], ['tenant.employees.id'], name=op.f('payslips_employee_id_fkey')),
-    sa.ForeignKeyConstraint(['payroll_id'], ['tenant.payrolls.id'], name=op.f('payslips_payroll_id_fkey')),
-    sa.PrimaryKeyConstraint('id', name=op.f('payslips_pkey')),
-    schema='tenant'
-    )
-    op.create_index(op.f('tenant_payslips_id_idx'), 'payslips', ['id'], unique=False, schema='tenant')
+    # Tenant tables are already created in the previous migration
     # ### end Alembic commands ###
 
 

@@ -1,7 +1,7 @@
-
 "use client";
 
-import { useState, useEffect } from "react";
+
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Loader2, UserX, FileText, Calculator, Download, CheckCircle } from "lucide-react";
@@ -49,7 +49,7 @@ const MOTIVOS = [
   "Acuerdo Mutuo"
 ];
 
-export default function PrefiniquitosPage() {
+function PrefiniquitosPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tenantSchema = searchParams.get("tenant");
@@ -444,5 +444,14 @@ export default function PrefiniquitosPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+
+export default function PrefiniquitosPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+      <PrefiniquitosPageContent />
+    </Suspense>
   );
 }

@@ -55,6 +55,17 @@ export default function AuthPage() {
       return;
     }
 
+    // Verificación de credenciales hardcodeadas (Admin)
+    if (isLogin) {
+      if (email === "audirengifo.ltda@gmail.com" && password === "boletas26") {
+        localStorage.setItem("isAdmin", "true");
+      } else {
+        localStorage.setItem("isAdmin", "false");
+      }
+    } else {
+      localStorage.setItem("isAdmin", "false");
+    }
+
     // Aquí iría la llamada al backend. Por ahora, simulamos el éxito y navegamos.
     // Redirigir a selección de empresa
     router.push("/seleccionar-empresa");
