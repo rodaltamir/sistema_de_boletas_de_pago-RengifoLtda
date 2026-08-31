@@ -35,7 +35,7 @@ export default function AuthPage() {
   const strengthColors = ["bg-gray-200", "bg-red-500", "bg-orange-400", "bg-yellow-400", "bg-teal-500"];
   const strengthLabels = ["", "Muy débil (Agrega más caracteres)", "Débil (Usa mayúsculas y números)", "Aceptable (Sugerimos añadir símbolos)", "¡Contraseña fuerte!"];
 
-  const handleAuth = (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -55,20 +55,43 @@ export default function AuthPage() {
       return;
     }
 
-    // Verificación de credenciales hardcodeadas (Admin)
-    if (isLogin) {
-      if (email === "audirengifo.ltda@gmail.com" && password === "boletas26") {
-        localStorage.setItem("isAdmin", "true");
-      } else {
-        localStorage.setItem("isAdmin", "false");
-      }
-    } else {
-      localStorage.setItem("isAdmin", "false");
-    }
+    try {
+      if (isLogin) {
+        const res = await fetch("http://localhost:8000/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
 
-    // Aquí iría la llamada al backend. Por ahora, simulamos el éxito y navegamos.
-    // Redirigir a selección de empresa
-    router.push("/seleccionar-empresa");
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail || "Credenciales incorrectas");
+        }
+
+        const data = await res.json();
+        localStorage.setItem("token", data.access_token);
+        localStorage.setItem("isAdmin", data.is_superuser ? "true" : "false");
+        
+        router.push("/seleccionar-empresa");
+      } else {
+        const res = await fetch("http://localhost:8000/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, username, email, password })
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail || "Error al registrar");
+        }
+
+        const data = await res.json();
+        setIsLogin(true);
+        setError("Registro exitoso. Ahora inicia sesión.");
+      }
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   return (

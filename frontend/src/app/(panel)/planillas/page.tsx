@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calculator, Search, Loader2, Download, Edit, Eye, X, FileText, FileSpreadsheet, File } from "lucide-react";
+import { Calculator, Search, Loader2, Download, Edit, Eye, X, FileText, FileSpreadsheet, File, Plus, Minus } from "lucide-react";
 
 interface Payslip {
   id: number;
@@ -62,6 +62,23 @@ function PlanillasPageContent() {
 
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
   const [viewMode, setViewMode] = useState<'boleta' | 'edit' | null>(null);
+  const [expandedSlips, setExpandedSlips] = useState<number[]>([]);
+
+  const toggleExpand = (id: number) => {
+    setExpandedSlips(prev => 
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
+  };
+
+  const toggleExpandAll = () => {
+    if (payroll) {
+      if (expandedSlips.length === payroll.payslips.length) {
+        setExpandedSlips([]);
+      } else {
+        setExpandedSlips(payroll.payslips.map(s => s.id));
+      }
+    }
+  };
 
   // Edit State
   const [editForm, setEditForm] = useState<any>({});
@@ -191,6 +208,9 @@ function PlanillasPageContent() {
           <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
             <h2 className="font-bold text-slate-900">Planilla Correspondiente al Mes de {MONTHS[payroll.month-1].toUpperCase()} {payroll.year}</h2>
             <div className="flex gap-2">
+               <button onClick={toggleExpandAll} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-200 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-300 transition">
+                 <Eye className="w-4 h-4" /> {expandedSlips.length === payroll.payslips.length ? 'Colapsar Todo' : 'Expandir Todo'}
+               </button>
                <button onClick={() => handleExportPlanilla("excel")} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition">
                  <FileSpreadsheet className="w-4 h-4" /> Excel
                </button>
@@ -199,70 +219,97 @@ function PlanillasPageContent() {
                </button>
             </div>
           </div>
-          
-          <div className="overflow-x-auto w-full max-w-[calc(100vw-2rem)] md:max-w-none pb-4 custom-scrollbar">
-                        <table className="w-max text-sm text-left border-collapse min-w-full">
+                    <div className="overflow-x-auto w-full pb-4 custom-scrollbar">
+            <table className="w-full text-sm text-left border-collapse">
               <thead>
                 <tr className="bg-slate-900 text-white border-b border-slate-700">
-                  <th className="p-3 border-r border-slate-700 sticky left-0 bg-slate-900 z-10 text-center">N°</th>
-                  <th className="p-3 border-r border-slate-700 sticky left-[40px] bg-slate-900 z-10 min-w-[200px]">Apellidos y Nombres</th>
-                  <th className="p-3 border-r border-slate-700">Doc. Identidad</th>
-                  <th className="p-3 border-r border-slate-700">Fecha Ingreso</th>
-                  <th className="p-3 border-r border-slate-700">Cargo</th>
-                  <th className="p-3 border-r border-slate-700 text-center">Días Pag.</th>
-                  <th className="p-3 border-r border-slate-700 text-center">Horas Pag.</th>
-                  <th className="p-3 border-r border-slate-700 text-right">Haber Básico</th>
-                  <th className="p-3 border-r border-slate-700 text-right">Bono Antig.</th>
-                  <th className="p-3 border-r border-slate-700 text-right">Horas Extra.</th>
-                  <th className="p-3 border-r border-slate-700 text-right">Otros Bonos</th>
-                  <th className="p-3 border-r border-slate-700 text-right bg-teal-900 font-bold">Total Ganado</th>
-                  <th className="p-3 border-r border-slate-700 text-right">AFP (12.71%)</th>
-                  <th className="p-3 border-r border-slate-700 text-right">RC-IVA</th>
-                  <th className="p-3 border-r border-slate-700 text-right">Anticipos</th>
-                  <th className="p-3 border-r border-slate-700 text-right">Otros Desc.</th>
-                  <th className="p-3 border-r border-slate-700 text-right bg-rose-900 font-bold">Total Desc.</th>
-                  <th className="p-3 border-r border-slate-700 text-right bg-emerald-900 font-bold">Líquido Pagable</th>
-                  <th className="p-3 text-center sticky right-0 bg-slate-900 z-10">Acciones</th>
+                  <th className="p-4 font-semibold text-center w-12 rounded-tl-xl">N°</th>
+                  <th className="p-4 font-semibold">Empleado</th>
+                  <th className="p-4 font-semibold hidden md:table-cell">Cargo</th>
+                  <th className="p-4 font-semibold text-right text-teal-400">Total Ganado</th>
+                  <th className="p-4 font-semibold text-right text-rose-400">Total Descuentos</th>
+                  <th className="p-4 font-semibold text-right text-emerald-400 rounded-tr-xl">Líquido Pagable</th>
+                  <th className="p-4 font-semibold text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {payroll.payslips.map((slip, i) => (
-                  <tr key={slip.id} className="border-b border-slate-200 hover:bg-slate-50 transition group bg-white">
-                    <td className="p-3 border-r border-slate-200 sticky left-0 bg-white group-hover:bg-slate-50 text-center font-bold text-slate-900">{i + 1}</td>
-                    <td className="p-3 border-r border-slate-200 sticky left-[40px] bg-white group-hover:bg-slate-50 font-bold text-slate-900 truncate max-w-[200px]">{slip.employee_name}</td>
-                    <td className="p-3 border-r border-slate-200 text-slate-900">{slip.employee_ci}</td>
-                    <td className="p-3 border-r border-slate-200 text-slate-900">{slip.employee_fecha_ingreso}</td>
-                    <td className="p-3 border-r border-slate-200 text-slate-900">{slip.employee_cargo}</td>
-                    <td className="p-3 border-r border-slate-200 text-slate-900 text-center font-semibold">{slip.dias_pagados}</td>
-                    <td className="p-3 border-r border-slate-200 text-slate-900 text-center font-semibold">{Math.round(slip.horas_pagadas / (slip.dias_pagados || 30))}</td>
-                    <td className="p-3 border-r border-slate-200 text-right text-slate-900 font-medium">{formatBs(slip.haber_basico)}</td>
-                    <td className="p-3 border-r border-slate-200 text-right text-slate-900">{formatBs(slip.bono_antiguedad)}</td>
-                    <td className="p-3 border-r border-slate-200 text-right text-slate-900">{formatBs(slip.trabajo_extraordinario)}</td>
-                    <td className="p-3 border-r border-slate-200 text-right text-slate-900 font-medium">
-                      {formatBs(Number(slip.bono_produccion) + Number(slip.subsidio_frontera) + Number(slip.pago_dominical) + Number(slip.otros_bonos) + Number(slip.subsidio_natalidad || 0))}
-                    </td>
-                    <td className="p-3 border-r border-slate-200 text-right font-bold text-teal-900 bg-teal-50/50">{formatBs(slip.total_ganado)}</td>
-                    <td className="p-3 border-r border-slate-200 text-right text-slate-900">{formatBs(slip.aporte_gestora)}</td>
-                    <td className="p-3 border-r border-slate-200 text-right text-slate-900">{formatBs(slip.rc_iva)}</td>
-                    <td className="p-3 border-r border-slate-200 text-right text-slate-900">{formatBs(slip.anticipos)}</td>
-                    <td className="p-3 border-r border-slate-200 text-right text-slate-900">{formatBs(slip.otros_descuentos)}</td>
-                    <td className="p-3 border-r border-slate-200 text-right font-bold text-rose-700 bg-rose-50/50">{formatBs(slip.total_descuentos)}</td>
-                    <td className="p-3 border-r border-slate-200 text-right font-black text-emerald-700 bg-emerald-50">{formatBs(slip.liquido_pagable)}</td>
-                    <td className="p-3 flex justify-center gap-2 sticky right-0 bg-white group-hover:bg-slate-50 border-l border-slate-200">
-                      <button onClick={() => handleOpenEdit(slip)} className="p-1.5 text-blue-700 bg-blue-50 rounded-md hover:bg-blue-200 transition-colors" title="Editar Valores">
-                        <Edit className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {payroll.payslips.map((slip, i) => {
+                  const isExpanded = expandedSlips.includes(slip.id);
+                  return (
+                    <React.Fragment key={slip.id}>
+                      <tr className={`border-b border-slate-200 transition bg-white hover:bg-slate-50 cursor-pointer ${isExpanded ? 'bg-slate-50 border-l-4 border-l-teal-500' : ''}`} onClick={() => toggleExpand(slip.id)}>
+                        <td className="p-4 text-center font-bold text-slate-700">{i + 1}</td>
+                        <td className="p-4">
+                          <p className="font-bold text-slate-900">{slip.employee_name}</p>
+                          <p className="text-xs text-slate-500">CI: {slip.employee_ci}</p>
+                        </td>
+                        <td className="p-4 text-slate-600 hidden md:table-cell">{slip.employee_cargo}</td>
+                        <td className="p-4 text-right font-bold text-teal-700">{formatBs(slip.total_ganado)}</td>
+                        <td className="p-4 text-right font-bold text-rose-600">{formatBs(slip.total_descuentos)}</td>
+                        <td className="p-4 text-right font-black text-emerald-600 text-base">{formatBs(slip.liquido_pagable)}</td>
+                        <td className="p-4 text-center flex justify-center gap-2">
+                          <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(slip); }} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-600 hover:text-white transition-colors" title="Editar Valores">
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); toggleExpand(slip.id); }} className={`p-2 rounded-lg transition-colors ${isExpanded ? 'bg-slate-800 text-white' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`} title="Ver Detalles">
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                      {/* Fila expandible con detalles */}
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={7} className="p-0 bg-slate-50 border-b-2 border-slate-200">
+                              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                <div className="p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  {/* Columna Asistencia */}
+                                  <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                                    <h4 className="text-slate-800 font-bold mb-4 flex items-center gap-2"><Calculator className="w-5 h-5 text-slate-400" /> Datos y Asistencia</h4>
+                                    <div className="space-y-2 text-sm">
+                                      <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Fecha Ingreso:</span><span className="font-semibold text-slate-800">{slip.employee_fecha_ingreso}</span></div>
+                                      <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Días Pagados:</span><span className="font-semibold text-slate-800">{slip.dias_pagados}</span></div>
+                                      <div className="flex justify-between pb-1"><span className="text-slate-500">Horas Pagadas:</span><span className="font-semibold text-slate-800">{Math.round(slip.horas_pagadas / (slip.dias_pagados || 30))}</span></div>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Columna Ingresos */}
+                                  <div className="bg-teal-50/30 p-5 rounded-2xl shadow-sm border border-teal-100">
+                                    <h4 className="text-teal-800 font-bold mb-4 flex items-center gap-2"><Plus className="w-5 h-5 text-teal-500" /> Ingresos</h4>
+                                    <div className="space-y-2 text-sm">
+                                      <div className="flex justify-between border-b border-teal-100/50 pb-1"><span className="text-teal-700/80">Haber Básico:</span><span className="font-semibold text-teal-900">{formatBs(slip.haber_basico)}</span></div>
+                                      <div className="flex justify-between border-b border-teal-100/50 pb-1"><span className="text-teal-700/80">Bono Antigüedad:</span><span className="font-semibold text-teal-900">{formatBs(slip.bono_antiguedad)}</span></div>
+                                      <div className="flex justify-between border-b border-teal-100/50 pb-1"><span className="text-teal-700/80">Horas Extra:</span><span className="font-semibold text-teal-900">{formatBs(slip.trabajo_extraordinario)}</span></div>
+                                      <div className="flex justify-between pb-1"><span className="text-teal-700/80">Otros Bonos:</span><span className="font-semibold text-teal-900">{formatBs(Number(slip.bono_produccion) + Number(slip.subsidio_frontera) + Number(slip.pago_dominical) + Number(slip.otros_bonos) + Number(slip.subsidio_natalidad || 0))}</span></div>
+                                    </div>
+                                  </div>
+
+                                  {/* Columna Descuentos */}
+                                  <div className="bg-rose-50/30 p-5 rounded-2xl shadow-sm border border-rose-100">
+                                    <h4 className="text-rose-800 font-bold mb-4 flex items-center gap-2"><Minus className="w-5 h-5 text-rose-500" /> Descuentos</h4>
+                                    <div className="space-y-2 text-sm">
+                                      <div className="flex justify-between border-b border-rose-100/50 pb-1"><span className="text-rose-700/80">AFP (12.71%):</span><span className="font-semibold text-rose-900">{formatBs(slip.aporte_gestora)}</span></div>
+                                      <div className="flex justify-between border-b border-rose-100/50 pb-1"><span className="text-rose-700/80">RC-IVA:</span><span className="font-semibold text-rose-900">{formatBs(slip.rc_iva)}</span></div>
+                                      <div className="flex justify-between border-b border-rose-100/50 pb-1"><span className="text-rose-700/80">Anticipos:</span><span className="font-semibold text-rose-900">{formatBs(slip.anticipos)}</span></div>
+                                      <div className="flex justify-between pb-1"><span className="text-rose-700/80">Otros Desc.:</span><span className="font-semibold text-rose-900">{formatBs(slip.otros_descuentos)}</span></div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            </td>
+                          </tr>
+                        )}
+                      </AnimatePresence>
+                    </React.Fragment>
+                  );
+                })}
                 {payroll.payslips.length === 0 && (
                   <tr>
-                    <td colSpan={18} className="p-8 text-center text-slate-900 font-medium">No hay empleados activos registrados para generar la planilla.</td>
+                    <td colSpan={7} className="p-12 text-center text-slate-500 font-medium">No hay empleados activos registrados para generar la planilla.</td>
                   </tr>
                 )}
               </tbody>
             </table>
-
           </div>
         </div>
       )}
