@@ -3,8 +3,6 @@ import shutil
 import uuid
 import openpyxl
 from openpyxl.utils import get_column_letter
-import win32com.client
-import pythoncom
 from datetime import datetime
 
 class DocumentService:
@@ -439,20 +437,54 @@ class DocumentService:
         set_val('F16', format_bs(data.get('desahucio', 0)))
         
         # Indemnizacion
-        ws['D18'] = f"{anios} Años"
-        set_val('F18', format_bs(data.get('indemnizacion_anios', 0)))
-        ws['D19'] = f"{meses} Meses"
-        set_val('F19', format_bs(data.get('indemnizacion_meses', 0)))
-        ws['D20'] = f"{dias} Días"
-        set_val('F20', format_bs(data.get('indemnizacion_dias', 0)))
+        if anios > 0:
+            ws['D18'] = f"{anios} Años"
+            set_val('F18', format_bs(data.get('indemnizacion_anios', 0)))
+            ws.row_dimensions[18].hidden = False
+        else:
+            ws['D18'] = ""
+            set_val('F18', "")
+            ws.row_dimensions[18].hidden = True
+            
+        if meses > 0:
+            ws['D19'] = f"{meses} Meses"
+            set_val('F19', format_bs(data.get('indemnizacion_meses', 0)))
+            ws.row_dimensions[19].hidden = False
+        else:
+            ws['D19'] = ""
+            set_val('F19', "")
+            ws.row_dimensions[19].hidden = True
+            
+        if dias > 0:
+            ws['D20'] = f"{dias} Días"
+            set_val('F20', format_bs(data.get('indemnizacion_dias', 0)))
+            ws.row_dimensions[20].hidden = False
+        else:
+            ws['D20'] = ""
+            set_val('F20', "")
+            ws.row_dimensions[20].hidden = True
         
         # Aguinaldo (Calcular tiempo en meses y días si no vienen dados explícitamente, o simplemente usar los counts)
         ag_meses_count = data.get('aguinaldo_meses_count', 0)
         ag_dias_count = data.get('aguinaldo_dias_count', 0)
-        ws['D22'] = f"{ag_meses_count} Meses"
-        set_val('F22', format_bs(data.get('aguinaldo_meses', 0)))
-        ws['D23'] = f"{ag_dias_count} Días"
-        set_val('F23', format_bs(data.get('aguinaldo_dias', 0)))
+        
+        if ag_meses_count > 0:
+            ws['D22'] = f"{ag_meses_count} Meses"
+            set_val('F22', format_bs(data.get('aguinaldo_meses', 0)))
+            ws.row_dimensions[22].hidden = False
+        else:
+            ws['D22'] = ""
+            set_val('F22', "")
+            ws.row_dimensions[22].hidden = True
+            
+        if ag_dias_count > 0:
+            ws['D23'] = f"{ag_dias_count} Días"
+            set_val('F23', format_bs(data.get('aguinaldo_dias', 0)))
+            ws.row_dimensions[23].hidden = False
+        else:
+            ws['D23'] = ""
+            set_val('F23', "")
+            ws.row_dimensions[23].hidden = True
         
         # Vacaciones
         vac_dias = data.get('dias_vacacion_pendientes', 0)
