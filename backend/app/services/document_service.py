@@ -48,20 +48,40 @@ class DocumentService:
     @staticmethod
     def _convert_excel_to_pdf(excel_path: str, pdf_path: str):
         """
-        Convierte un archivo Excel a PDF utilizando win32com de forma invisible.
+        Convierte un archivo Excel a PDF. En Windows usa win32com, en Linux usa LibreOffice.
         """
-        pythoncom.CoInitialize()
-        excel = win32com.client.Dispatch("Excel.Application")
-        excel.Visible = False
-        excel.DisplayAlerts = False
-        try:
-            wb = excel.Workbooks.Open(os.path.abspath(excel_path))
-            # 0 es el formato xlTypePDF (en xlFixedFormatType)
-            wb.ExportAsFixedFormat(0, os.path.abspath(pdf_path))
-            wb.Close(False)
-        finally:
-            excel.Quit()
-            pythoncom.CoUninitialize()
+        if os.name == 'nt':
+            import win32com.client
+            import pythoncom
+            pythoncom.CoInitialize()
+            excel = win32com.client.Dispatch("Excel.Application")
+            excel.Visible = False
+            excel.DisplayAlerts = False
+            try:
+                wb = excel.Workbooks.Open(os.path.abspath(excel_path))
+                wb.ExportAsFixedFormat(0, os.path.abspath(pdf_path))
+                wb.Close(False)
+            finally:
+                excel.Quit()
+                pythoncom.CoUninitialize()
+        else:
+            import subprocess
+            # LibreOffice headless mode
+            outdir = os.path.dirname(os.path.abspath(pdf_path))
+            subprocess.run([
+                'libreoffice', '--headless', '--convert-to', 'pdf',
+                '--outdir', outdir, os.path.abspath(excel_path)
+            ], check=True)
+            
+            # LibreOffice generates the file with the same base name but .pdf extension
+            base_name = os.path.splitext(os.path.basename(excel_path))[0]
+            generated_pdf = os.path.join(outdir, f"{base_name}.pdf")
+            
+            # Rename it to the target pdf_path if it differs
+            if generated_pdf != os.path.abspath(pdf_path):
+                if os.path.exists(pdf_path):
+                    os.remove(pdf_path)
+                os.rename(generated_pdf, pdf_path)
 
     @staticmethod
     def generate_payslip(boleta_data: dict, output_format: str = "xlsx") -> str:
@@ -361,6 +381,96 @@ class DocumentService:
                 c2.font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
                 c2.alignment = openpyxl.styles.Alignment(horizontal='center')
             except: pass
+
+        wb.save(output_xlsx)
+        wb.close()
+        
+        if output_format == "pdf":
+            DocumentService._convert_excel_to_pdf(output_xlsx, output_pdf)
+            os.remove(output_xlsx)
+            return output_pdf
+            
+        return output_xlsx
+
+    @staticmethod
+    def generate_prefiniquito_excel(data: dict, output_format: str = "xlsx") -> str:
+        """
+        Genera un archivo Excel con la preliquidación basado en la plantilla y opcionalmente lo exporta a PDF.
+        """
+        template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "templates", "excel", "plantilla_prefiniquitos.xlsx"))
+        if not os.path.exists(template_path):
+            raise FileNotFoundError(f"Plantilla no encontrada en {template_path}")
+            
+        unique_id = uuid.uuid4().hex[:8]
+        output_xlsx = f"prefiniquito_{unique_id}.xlsx"
+        output_pdf = f"prefiniquito_{unique_id}.pdf"
+        
+        wb = openpyxl.load_workbook(template_path)
+        ws = wb.active
+        
+        format_bs = lambda x: f"{float(x):,.2f} Bs".replace(",", "X").replace(".", ",").replace("X", ".") if x is not None else "0,00 Bs"
+        
+        # Helper para rellenar
+        def set_val(cell, val):
+            if val is not None:
+                ws[cell] = val
+                try: ws[cell].alignment = openpyxl.styles.Alignment(horizontal='right')
+                except: pass
+                
+        # Llenar datos principales
+        ws['B7'] = f"NOMBRE DEL TRABAJADOR:     {data.get('nombre_trabajador', '').upper()}"
+        ws['B8'] = f"RAZÓN SOCIAL DEL EMPLEADOR:  {data.get('razon_social', '').upper()}"
+        ws['B9'] = f"FECHA DE INGRESO:          {data.get('fecha_ingreso', '')}"
+        ws['B10'] = f"FECHA DE RETIRO:           {data.get('fecha_retiro', '')}"
+        
+        anios = data.get('anios_trabajados', 0)
+        meses = data.get('meses_trabajados', 0)
+        dias = data.get('dias_trabajados', 0)
+        ws['B11'] = f"TIEMPO DE TRABAJO:         Años: {anios}       Meses: {meses}      Días: {dias}"
+        
+        ws['B12'] = f"BONO DE ANTIGUEDAD:        0,00 Bs"
+        
+        # Sueldo promedio formateado
+        sp = data.get('sueldo_promedio', 0)
+        sp_str = f"{float(sp):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        ws['B13'] = f"SUELDO PROMEDIO (Bs.):     {sp_str}"
+        
+        # Desahucio
+        set_val('F16', format_bs(data.get('desahucio', 0)))
+        
+        # Indemnizacion
+        ws['D18'] = f"{anios} Años"
+        set_val('F18', format_bs(data.get('indemnizacion_anios', 0)))
+        ws['D19'] = f"{meses} Meses"
+        set_val('F19', format_bs(data.get('indemnizacion_meses', 0)))
+        ws['D20'] = f"{dias} Días"
+        set_val('F20', format_bs(data.get('indemnizacion_dias', 0)))
+        
+        # Aguinaldo (Calcular tiempo en meses y días si no vienen dados explícitamente, o simplemente usar los counts)
+        ag_meses_count = data.get('aguinaldo_meses_count', 0)
+        ag_dias_count = data.get('aguinaldo_dias_count', 0)
+        ws['D22'] = f"{ag_meses_count} Meses"
+        set_val('F22', format_bs(data.get('aguinaldo_meses', 0)))
+        ws['D23'] = f"{ag_dias_count} Días"
+        set_val('F23', format_bs(data.get('aguinaldo_dias', 0)))
+        
+        # Vacaciones
+        vac_dias = data.get('dias_vacacion_pendientes', 0)
+        ws['D25'] = f"{vac_dias} Días"
+        set_val('F25', format_bs(data.get('vacaciones', 0)))
+        
+        # Otros
+        ws['D27'] = "OTROS PAGOS"
+        set_val('F27', format_bs(data.get('otros_pagos', 0)))
+        set_val('F28', "0,00 Bs") # Línea extra en otros
+        
+        # Descuentos
+        set_val('F30', format_bs(data.get('descuentos', 0)))
+        
+        # Totales
+        set_val('F31', format_bs(data.get('total_calculo', 0)))
+        set_val('F32', format_bs(data.get('multa_30', 0)))
+        set_val('F33', format_bs(data.get('total_final', 0)))
 
         wb.save(output_xlsx)
         wb.close()

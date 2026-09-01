@@ -77,7 +77,7 @@ function PrefiniquitosPageContent() {
 
   useEffect(() => {
     if (!tenantSchema) return;
-    fetch(`http://localhost:8000/api/tenants/${tenantSchema}/employees`)
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees`)
       .then(r => r.json())
       .then(data => {
         // Solo podemos desvincular empleados activos
@@ -107,7 +107,7 @@ function PrefiniquitosPageContent() {
     setCalcLoading(true);
     setSuccess(false);
     try {
-      const res = await fetch(`http://localhost:8000/api/tenants/${tenantSchema}/prefiniquitos/preview`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/prefiniquitos/preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -132,13 +132,50 @@ function PrefiniquitosPageContent() {
     }
   };
 
+  const handleExport = (format: "excel" | "pdf" | "word") => {
+    if (!selectedEmpId || !fechaRetiro || sueldoPromedio === "") return;
+    
+    // We send a POST to our export endpoint but want to download the file.
+    // Easiest is to use fetch, get blob, and create a URL to download it.
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/prefiniquitos/export/${format}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employee_id: Number(selectedEmpId),
+          fecha_retiro: fechaRetiro,
+          motivo,
+          sueldo_promedio: Number(sueldoPromedio),
+          dias_vacacion_pendientes: diasVacacion,
+          otros_pagos: otrosPagos,
+          descuentos,
+          aplicar_multa: aplicarMulta
+        })
+    })
+    .then(res => {
+      if (!res.ok) throw new Error("Error exporting");
+      return res.blob();
+    })
+    .then(blob => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const extension = format === 'excel' ? 'xlsx' : format === 'word' ? 'docx' : 'pdf';
+      a.download = `Prefiniquito_${selectedEmp?.nombres}_${selectedEmp?.apellido_paterno}.${extension}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    })
+    .catch(err => console.error(err));
+  };
+
   const handleFinalize = async () => {
     if (!calcResult || !selectedEmpId) return;
     if (!confirm(`¿Está seguro de generar el Prefiniquito para ${selectedEmp?.nombres}? El empleado pasará a estado INACTIVO.`)) return;
     
     setSaving(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/tenants/${tenantSchema}/prefiniquitos/`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/prefiniquitos/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -417,16 +454,19 @@ function PrefiniquitosPageContent() {
             
             {calcResult && (
               <div className="mt-6 flex justify-end gap-4">
-                <button className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+                <button onClick={() => handleExport("excel")} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition">
                   <Download className="w-4 h-4" /> Excel
                 </button>
-                <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                <button onClick={() => handleExport("word")} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
                   <FileText className="w-4 h-4" /> Word
+                </button>
+                <button onClick={() => handleExport("pdf")} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">
+                  <FileText className="w-4 h-4" /> PDF
                 </button>
                 <button 
                   onClick={handleFinalize}
                   disabled={saving}
-                  className="flex items-center gap-2 px-6 py-2 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 ml-4 shadow-lg"
+                  className="flex items-center gap-2 px-6 py-2 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 ml-4 shadow-lg transition"
                 >
                   {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : "Finalizar y Desvincular"}
                 </button>

@@ -55,7 +55,7 @@ function EmpleadosPageContent() {
   const fetchEmployees = async () => {
     if (!tenantSchema) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/tenants/${tenantSchema}/employees`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees`);
       if (res.ok) {
         const data = await res.json();
         setEmployees(data);
@@ -113,8 +113,8 @@ function EmpleadosPageContent() {
     
     try {
       const url = isEditing 
-        ? `http://localhost:8000/api/tenants/${tenantSchema}/employees/${formData.id}`
-        : `http://localhost:8000/api/tenants/${tenantSchema}/employees`;
+        ? `${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees/${formData.id}`
+        : `${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees`;
       
       const res = await fetch(url, {
         method: isEditing ? "PUT" : "POST",
@@ -140,7 +140,7 @@ function EmpleadosPageContent() {
     if (!confirm("¿Estás seguro de eliminar este empleado? Esta acción no se puede deshacer.")) return;
     
     try {
-      const res = await fetch(`http://localhost:8000/api/tenants/${tenantSchema}/employees/${id}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees/${id}`, {
         method: "DELETE"
       });
       if (res.ok) {

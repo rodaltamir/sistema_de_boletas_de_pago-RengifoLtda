@@ -51,7 +51,7 @@ export default function SeleccionarEmpresa() {
   // Cargar empresas desde el Backend
   const fetchTenants = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/tenants");
+      const res = await fetch(process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"/api/tenants");
       if (res.ok) {
         const data = await res.json();
         setTenants(data);
@@ -120,7 +120,7 @@ export default function SeleccionarEmpresa() {
     if (!result.isConfirmed) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/tenants/${schemaName}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${schemaName}`, {
         method: "DELETE"
       });
       if (res.ok) {
@@ -182,8 +182,8 @@ export default function SeleccionarEmpresa() {
 
     try {
       const url = editingTenant 
-        ? `http://localhost:8000/api/tenants/${editingTenant}`
-        : "http://localhost:8000/api/tenants";
+        ? `${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${editingTenant}`
+        : process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"/api/tenants";
       const method = editingTenant ? "PUT" : "POST";
 
       const res = await fetch(url, {

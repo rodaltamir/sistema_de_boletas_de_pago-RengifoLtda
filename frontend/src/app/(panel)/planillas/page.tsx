@@ -88,7 +88,7 @@ function PlanillasPageContent() {
     if (!tenantSchema) return;
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/tenants/${tenantSchema}/payrolls/${month}/${year}`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/${month}/${year}`);
       if (res.ok) {
         const data = await res.json();
         setPayroll(data);
@@ -109,7 +109,7 @@ function PlanillasPageContent() {
   
   const handleExportPlanilla = (format: 'pdf' | 'excel') => {
     if (!tenantSchema || !month || !year) return;
-    const url = `http://localhost:8000/api/tenants/${tenantSchema}/payrolls/${month}/${year}/export/${format}`;
+    const url = `${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/export/${format}`;
     window.open(url, '_blank');
   };
 
@@ -136,7 +136,7 @@ function PlanillasPageContent() {
     if (!selectedPayslip || !payroll) return;
     setSaving(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/tenants/${tenantSchema}/payrolls/${month}/${year}/payslips/${selectedPayslip.id}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/payslips/${selectedPayslip.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm)

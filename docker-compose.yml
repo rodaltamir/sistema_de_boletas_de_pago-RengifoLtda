@@ -30,6 +30,40 @@ services:
     networks:
       - rengifo_network
 
+  backend:
+    build:
+      context: ./backend
+    container_name: rengifo_backend
+    restart: always
+    environment:
+      POSTGRES_SERVER: db
+      POSTGRES_USER: admin_rengifo
+      POSTGRES_PASSWORD: rengifo_planillaspago-826
+      POSTGRES_DB: db_planillas_pago_rengifo
+      POSTGRES_PORT: 5432
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    networks:
+      - rengifo_network
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://Rengifo_Ltda:8000
+    container_name: rengifo_frontend
+    restart: always
+    environment:
+      NEXT_PUBLIC_API_URL: http://Rengifo_Ltda:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - rengifo_network
+
 networks:
   rengifo_network:
     driver: bridge
