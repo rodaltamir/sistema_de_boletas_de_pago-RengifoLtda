@@ -57,7 +57,7 @@ export default function AuthPage() {
 
     try {
       if (isLogin) {
-        const res = await fetch(process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"/api/auth/login", {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password })
@@ -74,7 +74,7 @@ export default function AuthPage() {
         
         router.push("/seleccionar-empresa");
       } else {
-        const res = await fetch(process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"/api/auth/register", {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, username, email, password })
