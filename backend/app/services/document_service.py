@@ -239,28 +239,28 @@ class DocumentService:
             MESES = {1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO", 7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"}
             anio = payroll_data[0].get('anio', '')
             
-            DocumentService._set_cell_value(ws, 'C2', empresa.upper())
+            DocumentService._set_cell_value(ws, 'D2', empresa.upper())
             try:
-                ws['C2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-                ws['C2'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                ws['D2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['D2'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
             except: pass
 
-            DocumentService._set_cell_value(ws, 'F3', nit)
+            DocumentService._set_cell_value(ws, 'G3', nit)
             try:
-                ws['F3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-                ws['F3'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                ws['G3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['G3'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
             except: pass
 
-            DocumentService._set_cell_value(ws, 'O2', nit)
+            DocumentService._set_cell_value(ws, 'P2', nit)
             try:
-                ws['O2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-                ws['O2'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                ws['P2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['P2'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
             except: pass
 
-            DocumentService._set_cell_value(ws, 'O3', patronal)
+            DocumentService._set_cell_value(ws, 'P3', patronal)
             try:
-                ws['O3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-                ws['O3'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                ws['P3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['P3'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
             except: pass
             
             # Recuperar texto original si existe o poner default
@@ -379,6 +379,48 @@ class DocumentService:
                 c2.font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
                 c2.alignment = openpyxl.styles.Alignment(horizontal='center')
             except: pass
+
+        # Enable text wrapping and column auto-sizing ONLY for text columns (B to H)
+        for col in range(2, 9): # B to H
+            max_length = 0
+            col_letter = get_column_letter(col)
+            # Evaluate headers (row 8) and data rows (11 to totales_row)
+            rows_to_check = [8] + list(range(11, totales_row + 1))
+
+            for row in rows_to_check:
+                try:
+                    cell_value = str(ws.cell(row=row, column=col).value or "")
+                    lines = cell_value.split('\n')
+                    for line in lines:
+                        if len(line) > max_length:
+                            max_length = len(line)
+                            
+                    if row >= 11 and row <= totales_row:
+                        current_alignment = ws.cell(row=row, column=col).alignment
+                        if current_alignment:
+                            ws.cell(row=row, column=col).alignment = openpyxl.styles.Alignment(
+                                horizontal=current_alignment.horizontal,
+                                vertical='center',
+                                wrap_text=True
+                            )
+                        else:
+                            ws.cell(row=row, column=col).alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='center')
+                except:
+                    pass
+
+            # Auto-adjust column width for B to H
+            if max_length > 0:
+                adjusted_width = min(max_length + 2, 25) # Max 25 chars for text columns
+                current_width = ws.column_dimensions[col_letter].width
+                if current_width is None or (adjusted_width > current_width):
+                    ws.column_dimensions[col_letter].width = adjusted_width
+
+        # Page setup to ensure it fits on one page wide when exported to PDF
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+        # ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.25, right=0.25, top=0.5, bottom=0.5)
 
         wb.save(output_xlsx)
         wb.close()
@@ -503,6 +545,12 @@ class DocumentService:
         set_val('F31', format_bs(data.get('total_calculo', 0)))
         set_val('F32', format_bs(data.get('multa_30', 0)))
         set_val('F33', format_bs(data.get('total_final', 0)))
+
+        # Ensure print scaling is exact
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+        ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
 
         wb.save(output_xlsx)
         wb.close()

@@ -55,7 +55,7 @@ function EmpleadosPageContent() {
   const fetchEmployees = async () => {
     if (!tenantSchema) return;
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees/`);
       if (res.ok) {
         const data = await res.json();
         setEmployees(data);

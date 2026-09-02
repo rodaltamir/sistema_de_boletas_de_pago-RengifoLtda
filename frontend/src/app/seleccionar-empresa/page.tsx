@@ -51,13 +51,23 @@ export default function SeleccionarEmpresa() {
   // Cargar empresas desde el Backend
   const fetchTenants = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/`);
       if (res.ok) {
         const data = await res.json();
         setTenants(data);
+      } else {
+        console.error("Error al obtener empresas", await res.text());
       }
     } catch (err) {
       console.error("Error cargando empresas", err);
+      Swal.fire({
+        title: "Error de conexión",
+        text: "No se pudo conectar con el servidor para obtener las empresas. Verifica que el backend esté ejecutándose.",
+        icon: "error",
+        background: "#1e293b",
+        color: "#fff",
+        confirmButtonColor: "#14b8a6"
+      });
     } finally {
       setLoading(false);
     }
@@ -163,19 +173,25 @@ export default function SeleccionarEmpresa() {
 
     // Validaciones estrictas
     if (formData.name.trim().length < 3) {
-      setError("El nombre de la empresa debe tener al menos 3 caracteres.");
+      const msg = "El nombre de la empresa debe tener al menos 3 caracteres.";
+      setError(msg);
+      Swal.fire({ title: "Validación", text: msg, icon: "warning", background: "#1e293b", color: "#fff" });
       setSubmitting(false);
       return;
     }
     
     if (formData.nit && !/^\d+$/.test(formData.nit.replace(/\s/g, ''))) {
-      setError("El NIT debe contener únicamente números.");
+      const msg = "El NIT debe contener únicamente números.";
+      setError(msg);
+      Swal.fire({ title: "Validación", text: msg, icon: "warning", background: "#1e293b", color: "#fff" });
       setSubmitting(false);
       return;
     }
     
     if (formData.numero_patronal && formData.numero_patronal.length < 5) {
-      setError("El Nº Patronal ingresado no parece válido.");
+      const msg = "El Nº Patronal ingresado no parece válido.";
+      setError(msg);
+      Swal.fire({ title: "Validación", text: msg, icon: "warning", background: "#1e293b", color: "#fff" });
       setSubmitting(false);
       return;
     }
@@ -183,7 +199,7 @@ export default function SeleccionarEmpresa() {
     try {
       const url = editingTenant 
         ? `${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${editingTenant}`
-        : `${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants`;
+        : `${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/`;
       const method = editingTenant ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -193,7 +209,7 @@ export default function SeleccionarEmpresa() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ detail: "Error desconocido del servidor" }));
         throw new Error(data.detail || "Error al procesar la empresa");
       }
 
@@ -217,6 +233,16 @@ export default function SeleccionarEmpresa() {
       });
     } catch (err: any) {
       setError(err.message);
+      Swal.fire({
+        title: "Error de conexión o validación",
+        text: err.message === "Failed to fetch" 
+          ? "No se pudo conectar con el backend. Verifica tu conexión o los ajustes del puerto 8000."
+          : err.message,
+        icon: "error",
+        background: "#1e293b",
+        color: "#fff",
+        confirmButtonColor: "#ef4444"
+      });
     } finally {
       setSubmitting(false);
     }

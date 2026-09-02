@@ -75,13 +75,17 @@ function PrefiniquitosPageContent() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  const [exportLoading, setExportLoading] = useState<string | null>(null);
+
   useEffect(() => {
     if (!tenantSchema) return;
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees`)
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees/`)
       .then(r => r.json())
       .then(data => {
         // Solo podemos desvincular empleados activos
-        setEmployees(data.filter((e: Employee) => e.is_active));
+        if (Array.isArray(data)) {
+            setEmployees(data.filter((e: Employee) => e.is_active));
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -135,8 +139,8 @@ function PrefiniquitosPageContent() {
   const handleExport = (format: "excel" | "pdf" | "word") => {
     if (!selectedEmpId || !fechaRetiro || sueldoPromedio === "") return;
     
-    // We send a POST to our export endpoint but want to download the file.
-    // Easiest is to use fetch, get blob, and create a URL to download it.
+    setExportLoading(format);
+    
     fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/prefiniquitos/export/${format}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -166,7 +170,8 @@ function PrefiniquitosPageContent() {
       a.remove();
       window.URL.revokeObjectURL(url);
     })
-    .catch(err => console.error(err));
+    .catch(err => console.error(err))
+    .finally(() => setExportLoading(null));
   };
 
   const handleFinalize = async () => {
@@ -454,14 +459,14 @@ function PrefiniquitosPageContent() {
             
             {calcResult && (
               <div className="mt-6 flex justify-end gap-4">
-                <button onClick={() => handleExport("excel")} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition">
-                  <Download className="w-4 h-4" /> Excel
+                <button onClick={() => handleExport("excel")} disabled={exportLoading !== null} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition disabled:opacity-50">
+                  {exportLoading === "excel" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Excel
                 </button>
-                <button onClick={() => handleExport("word")} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-                  <FileText className="w-4 h-4" /> Word
+                <button onClick={() => handleExport("word")} disabled={exportLoading !== null} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50">
+                  {exportLoading === "word" ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Word
                 </button>
-                <button onClick={() => handleExport("pdf")} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">
-                  <FileText className="w-4 h-4" /> PDF
+                <button onClick={() => handleExport("pdf")} disabled={exportLoading !== null} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-50">
+                  {exportLoading === "pdf" ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} PDF
                 </button>
                 <button 
                   onClick={handleFinalize}
