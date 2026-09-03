@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calculator, Search, Loader2, Download, Edit, Eye, X, FileText, FileSpreadsheet, File, Plus, Minus } from "lucide-react";
+import { Calculator, Search, Loader2, Download, Edit, Eye, X, FileText, FileSpreadsheet, File, Plus, Minus, Lock, CheckCircle } from "lucide-react";
 
 interface Payslip {
   id: number;
@@ -159,6 +159,31 @@ function PlanillasPageContent() {
 
   const formatBs = (val: number) => Number(val).toLocaleString('es-BO', { minimumFractionDigits: 2 });
 
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  const handleConfirmPayroll = async () => {
+    if (!tenantSchema || !month || !year) return;
+    setConfirming(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/close`, {
+        method: "POST"
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPayroll(data);
+        setShowConfirmModal(false);
+      } else {
+        const errData = await res.json();
+        alert(errData.detail || "Error al confirmar la planilla");
+      }
+    } catch (e) {
+      alert("Error de conexión");
+    } finally {
+      setConfirming(false);
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -205,9 +230,21 @@ function PlanillasPageContent() {
       {/* Planilla Data Table (Estilo Excel Preview) */}
       {payroll && (
         <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-            <h2 className="font-bold text-slate-900">Planilla Correspondiente al Mes de {MONTHS[payroll.month-1].toUpperCase()} {payroll.year}</h2>
-            <div className="flex gap-2">
+          <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <h2 className="font-bold text-slate-900">Planilla Correspondiente al Mes de {MONTHS[payroll.month-1].toUpperCase()} {payroll.year}</h2>
+              {payroll.is_closed && (
+                <span className="bg-slate-800 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                  <CheckCircle className="w-4 h-4" /> Cerrada / Confirmada
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+               {!payroll.is_closed && (
+                 <button onClick={() => setShowConfirmModal(true)} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white border border-blue-700 rounded-lg hover:bg-blue-700 transition shadow-sm font-semibold">
+                   <Lock className="w-4 h-4" /> Confirmar Mes
+                 </button>
+               )}
                <button onClick={toggleExpandAll} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-200 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-300 transition">
                  <Eye className="w-4 h-4" /> {expandedSlips.length === payroll.payslips.length ? 'Colapsar Todo' : 'Expandir Todo'}
                </button>
@@ -248,9 +285,11 @@ function PlanillasPageContent() {
                         <td className="p-4 text-right font-bold text-rose-600">{formatBs(slip.total_descuentos)}</td>
                         <td className="p-4 text-right font-black text-emerald-600 text-base">{formatBs(slip.liquido_pagable)}</td>
                         <td className="p-4 text-center flex justify-center gap-2">
-                          <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(slip); }} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-600 hover:text-white transition-colors" title="Editar Valores">
-                            <Edit className="w-4 h-4" />
-                          </button>
+                          {!payroll.is_closed && (
+                            <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(slip); }} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-600 hover:text-white transition-colors" title="Editar Valores">
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          )}
                           <button onClick={(e) => { e.stopPropagation(); toggleExpand(slip.id); }} className={`p-2 rounded-lg transition-colors ${isExpanded ? 'bg-slate-800 text-white' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`} title="Ver Detalles">
                             <Eye className="w-4 h-4" />
                           </button>
@@ -350,6 +389,35 @@ function PlanillasPageContent() {
                    </div>
                 </div>
              </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Confirmación Planilla */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+              <div className="p-6">
+                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Confirmar Planilla del Mes</h3>
+                <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+                  Estás a punto de <strong>cerrar y confirmar</strong> la planilla del mes de {MONTHS[month - 1]}. 
+                  Una vez confirmada, la planilla quedará en <strong>modo lectura</strong> para preservar la integridad de los datos. No podrás agregar más boletas ni editar los valores actuales.
+                </p>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button onClick={() => setShowConfirmModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition">
+                    Cancelar
+                  </button>
+                  <button onClick={handleConfirmPayroll} disabled={confirming} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 flex items-center gap-2 transition disabled:opacity-50">
+                    {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                    Sí, Confirmar Planilla
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>

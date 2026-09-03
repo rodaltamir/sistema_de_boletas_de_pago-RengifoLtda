@@ -109,6 +109,11 @@ def update_payslip(schema_name: str, month: int, year: int, payslip_id: int, upd
     payslip = db.query(Payslip).filter(Payslip.id == payslip_id).first()
     if not payslip:
         raise HTTPException(status_code=404, detail="Boleta no encontrada")
+        
+    payroll = payslip.payroll
+    if payroll.is_closed:
+        raise HTTPException(status_code=400, detail="La planilla de este mes está confirmada y cerrada. No se pueden editar sus boletas.")
+
     
     # Actualizar valores
     update_data = updates.dict(exclude_unset=True)
@@ -151,6 +156,23 @@ def update_payslip(schema_name: str, month: int, year: int, payslip_id: int, upd
     response_slip.employee_sexo = emp.genero if hasattr(emp, 'genero') else 'M'
     
     return response_slip
+
+@router.post("/{month}/{year}/close", response_model=PayrollResponse)
+def close_payroll(schema_name: str, month: int, year: int, db: Session = Depends(get_tenant_db)):
+    payroll = db.query(Payroll).filter(Payroll.month == month, Payroll.year == year).first()
+    if not payroll:
+        raise HTTPException(status_code=404, detail="Planilla no encontrada")
+    
+    if payroll.is_closed:
+        raise HTTPException(status_code=400, detail="La planilla ya se encuentra confirmada.")
+        
+    payroll.is_closed = True
+    db.commit()
+    db.refresh(payroll)
+    
+    # Obtener el modelo completo para la respuesta (reutilizando lógica si es necesario, o solo devolviendo el payroll con payslips)
+    return get_or_generate_payroll(schema_name, month, year, db)
+
 
 from fastapi.responses import FileResponse
 from app.services.document_service import DocumentService
