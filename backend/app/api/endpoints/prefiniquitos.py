@@ -174,7 +174,9 @@ def export_prefiniquito(
         
     if format == "word":
         out_format = "docx"
-        filepath = f"prefiniquito_{uuid.uuid4().hex[:8]}.docx"
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "exports", "prefiniquitos"))
+        os.makedirs(exports_dir, exist_ok=True)
+        filepath = os.path.join(exports_dir, f"prefiniquito_{uuid.uuid4().hex[:8]}.docx")
         template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "templates", "prefiniquito_template.docx"))
         
         # docxtpl uses jinja2, so we can format currencies here

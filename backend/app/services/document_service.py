@@ -90,10 +90,13 @@ class DocumentService:
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Plantilla no encontrada en {template_path}")
             
-        # Generar nombre temporal
+        # Generar nombre temporal en la carpeta exports/boletas
         unique_id = uuid.uuid4().hex[:8]
-        output_xlsx = f"boleta_{unique_id}.xlsx"
-        output_pdf = f"boleta_{unique_id}.pdf"
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "boletas"))
+        os.makedirs(exports_dir, exist_ok=True)
+        
+        output_xlsx = os.path.join(exports_dir, f"boleta_{unique_id}.xlsx")
+        output_pdf = os.path.join(exports_dir, f"boleta_{unique_id}.pdf")
         
         # Cargar excel
         wb = openpyxl.load_workbook(template_path)
@@ -225,8 +228,11 @@ class DocumentService:
             raise FileNotFoundError(f"Plantilla no encontrada en {template_path}")
             
         unique_id = uuid.uuid4().hex[:8]
-        output_xlsx = f"planilla_{unique_id}.xlsx"
-        output_pdf = f"planilla_{unique_id}.pdf"
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "planillas"))
+        os.makedirs(exports_dir, exist_ok=True)
+        
+        output_xlsx = os.path.join(exports_dir, f"planilla_{unique_id}.xlsx")
+        output_pdf = os.path.join(exports_dir, f"planilla_{unique_id}.pdf")
         
         wb = openpyxl.load_workbook(template_path)
         ws = wb.active
@@ -442,8 +448,11 @@ class DocumentService:
             raise FileNotFoundError(f"Plantilla no encontrada en {template_path}")
             
         unique_id = uuid.uuid4().hex[:8]
-        output_xlsx = f"prefiniquito_{unique_id}.xlsx"
-        output_pdf = f"prefiniquito_{unique_id}.pdf"
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "prefiniquitos"))
+        os.makedirs(exports_dir, exist_ok=True)
+        
+        output_xlsx = os.path.join(exports_dir, f"prefiniquito_{unique_id}.xlsx")
+        output_pdf = os.path.join(exports_dir, f"prefiniquito_{unique_id}.pdf")
         
         wb = openpyxl.load_workbook(template_path)
         ws = wb.active
