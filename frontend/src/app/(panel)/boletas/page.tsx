@@ -102,6 +102,12 @@ function BoletasPageContent() {
   
   const [payroll, setPayroll] = useState<PayrollData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    setIsAdmin(localStorage.getItem("isAdmin") === "true");
+  }, []);
 
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
   const [viewMode, setViewMode] = useState<'boleta' | 'edit' | null>(null);
@@ -332,7 +338,7 @@ function BoletasPageContent() {
               </span>
             )}
           </div>
-          {!payroll.is_closed && (
+          {(!payroll.is_closed && isAdmin) && (
             <button onClick={() => setShowConfirmModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white border border-blue-700 rounded-lg hover:bg-blue-700 transition shadow-sm font-semibold">
               <Lock className="w-4 h-4" /> Confirmar Mes
             </button>
@@ -352,7 +358,7 @@ function BoletasPageContent() {
               <div 
                 key={slip.id} 
                 onClick={() => {
-                  if (!payroll.is_closed) {
+                  if (!payroll.is_closed && isAdmin) {
                     handleOpenEdit(slip);
                   } else {
                     handleOpenBoleta(slip);

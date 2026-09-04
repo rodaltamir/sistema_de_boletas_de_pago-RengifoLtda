@@ -76,9 +76,11 @@ function PrefiniquitosPageContent() {
   const [success, setSuccess] = useState(false);
 
   const [exportLoading, setExportLoading] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     if (!tenantSchema) return;
+    setIsAdmin(localStorage.getItem("isAdmin") === "true");
     fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees/`)
       .then(r => r.json())
       .then(data => {
@@ -468,13 +470,15 @@ function PrefiniquitosPageContent() {
                 <button onClick={() => handleExport("pdf")} disabled={exportLoading !== null} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-50">
                   {exportLoading === "pdf" ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} PDF
                 </button>
-                <button 
-                  onClick={handleFinalize}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-6 py-2 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 ml-4 shadow-lg transition"
-                >
-                  {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : "Finalizar y Desvincular"}
-                </button>
+                {isAdmin && (
+                  <button 
+                    onClick={handleFinalize}
+                    disabled={saving}
+                    className="flex items-center gap-2 px-6 py-2 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 ml-4 shadow-lg transition"
+                  >
+                    {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : "Finalizar y Desvincular"}
+                  </button>
+                )}
               </div>
             )}
             

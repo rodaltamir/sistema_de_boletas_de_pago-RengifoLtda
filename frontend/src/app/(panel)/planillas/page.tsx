@@ -83,6 +83,11 @@ function PlanillasPageContent() {
   // Edit State
   const [editForm, setEditForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    setIsAdmin(localStorage.getItem("isAdmin") === "true");
+  }, []);
 
   const fetchPayroll = async () => {
     if (!tenantSchema) return;
@@ -240,7 +245,7 @@ function PlanillasPageContent() {
               )}
             </div>
             <div className="flex flex-wrap gap-2">
-               {!payroll.is_closed && (
+               {(!payroll.is_closed && isAdmin) && (
                  <button onClick={() => setShowConfirmModal(true)} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white border border-blue-700 rounded-lg hover:bg-blue-700 transition shadow-sm font-semibold">
                    <Lock className="w-4 h-4" /> Confirmar Mes
                  </button>
@@ -285,7 +290,7 @@ function PlanillasPageContent() {
                         <td className="p-4 text-right font-bold text-rose-600">{formatBs(slip.total_descuentos)}</td>
                         <td className="p-4 text-right font-black text-emerald-600 text-base">{formatBs(slip.liquido_pagable)}</td>
                         <td className="p-4 text-center flex justify-center gap-2">
-                          {!payroll.is_closed && (
+                          {(!payroll.is_closed && isAdmin) && (
                             <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(slip); }} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-600 hover:text-white transition-colors" title="Editar Valores">
                               <Edit className="w-4 h-4" />
                             </button>

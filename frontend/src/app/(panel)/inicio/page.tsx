@@ -36,6 +36,7 @@ function InicioDashboardContent() {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -56,6 +57,7 @@ function InicioDashboardContent() {
       router.push("/seleccionar-empresa");
       return;
     }
+    setIsAdmin(localStorage.getItem("isAdmin") === "true");
 
     const fetchData = async () => {
       try {
@@ -147,32 +149,34 @@ function InicioDashboardContent() {
           <p className="text-slate-500 mt-1">Panel general de administración y configuración del entorno.</p>
         </div>
 
-        {/* Toggle de Edición (Asumimos rol Admin para MVP) */}
-        {!isEditing ? (
-          <button
-            onClick={() => setIsEditing(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition shadow-lg"
-          >
-            <Edit3 className="w-4 h-4" /> Editar Configuración
-          </button>
-        ) : (
-          <div className="flex items-center gap-2">
+        {/* Toggle de Edición (Oculto para usuarios normales) */}
+        {isAdmin && (
+          !isEditing ? (
             <button
-              onClick={() => setIsEditing(false)}
-              className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 transition"
-              disabled={saving}
+              onClick={() => setIsEditing(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition shadow-lg"
             >
-              Cancelar
+              <Edit3 className="w-4 h-4" /> Editar Configuración
             </button>
-            <button
-              onClick={handleSave}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-500 text-white font-bold rounded-lg hover:bg-teal-600 transition shadow-lg"
-              disabled={saving}
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Guardar Cambios
-            </button>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsEditing(false)}
+                className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 transition"
+                disabled={saving}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-500 text-white font-bold rounded-lg hover:bg-teal-600 transition shadow-lg"
+                disabled={saving}
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Guardar Cambios
+              </button>
+            </div>
+          )
         )}
       </div>
 
