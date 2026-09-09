@@ -15,7 +15,8 @@ def get_db():
     finally:
         db.close()
 
-@router.post("/", response_model=TenantResponse)
+@router.post("", response_model=TenantResponse)
+@router.post("/", response_model=TenantResponse, include_in_schema=False)
 def create_tenant(tenant: TenantCreate, db: Session = Depends(get_db)):
     import re
     # Normalizar el nombre para usarlo como esquema de BD segur0 (solo letras y num minúsculas)
@@ -66,7 +67,8 @@ def create_tenant(tenant: TenantCreate, db: Session = Depends(get_db)):
 
     return new_tenant
 
-@router.get("/", response_model=list[TenantResponse])
+@router.get("", response_model=list[TenantResponse])
+@router.get("/", response_model=list[TenantResponse], include_in_schema=False)
 def get_tenants(db: Session = Depends(get_db)):
     return db.query(Tenant).filter(Tenant.is_active == True).all()
 
@@ -75,6 +77,7 @@ from app.models.global_params import SalarioMinimoNacional
 from app.models.employee import Employee
 
 @router.get("/{schema_name}/dashboard", response_model=TenantDashboardResponse)
+@router.get("/{schema_name}/dashboard/", response_model=TenantDashboardResponse, include_in_schema=False)
 def get_tenant_dashboard(schema_name: str, db: Session = Depends(get_db)):
     tenant = db.query(Tenant).filter(Tenant.schema_name == schema_name).first()
     if not tenant:
@@ -111,6 +114,7 @@ def get_tenant_dashboard(schema_name: str, db: Session = Depends(get_db)):
     }
 
 @router.put("/{schema_name}/dashboard", response_model=TenantDashboardResponse)
+@router.put("/{schema_name}/dashboard/", response_model=TenantDashboardResponse, include_in_schema=False)
 def update_tenant_dashboard(schema_name: str, data: TenantUpdateRequest, db: Session = Depends(get_db)):
     print("RECEIVED DATA:", data.model_dump())
     tenant = db.query(Tenant).filter(Tenant.schema_name == schema_name).first()
@@ -143,6 +147,7 @@ def update_tenant_dashboard(schema_name: str, data: TenantUpdateRequest, db: Ses
     return get_tenant_dashboard(schema_name, db)
 
 @router.delete("/{schema_name}")
+@router.delete("/{schema_name}/", include_in_schema=False)
 def delete_tenant(schema_name: str, db: Session = Depends(get_db)):
     tenant = db.query(Tenant).filter(Tenant.schema_name == schema_name).first()
     if not tenant:
@@ -153,6 +158,7 @@ def delete_tenant(schema_name: str, db: Session = Depends(get_db)):
     return {"message": "Empresa eliminada logicamente"}
 
 @router.put("/{schema_name}")
+@router.put("/{schema_name}/", include_in_schema=False)
 def update_tenant(schema_name: str, data: TenantCreate, db: Session = Depends(get_db)):
     tenant = db.query(Tenant).filter(Tenant.schema_name == schema_name).first()
     if not tenant:

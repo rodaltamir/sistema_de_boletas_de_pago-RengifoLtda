@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.session import engine
 from app.models.employee import Employee
 from app.models.payroll import Payslip, Payroll
+from app.models.prefiniquito import Prefiniquito
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
 from app.services.payroll_service import calcular_boleta_empleado
 from decimal import Decimal
@@ -27,14 +28,28 @@ def get_smn(db: Session, year: int) -> Decimal:
 def calculate_years_diff(start_date: date, target_date: date) -> int:
     return target_date.year - start_date.year - ((target_date.month, target_date.day) < (start_date.month, start_date.day))
 
-@router.get('/', response_model=list[EmployeeResponse])
+import re
+
+def sort_code_key(code_val, fallback_id=0):
+    if not code_val:
+        return (1, fallback_id, "")
+    code_str = str(code_val).strip()
+    digits = re.findall(r'\d+', code_str)
+    if digits:
+        return (0, int(digits[0]), code_str)
+    return (0, 999999, code_str)
+
+@router.get('', response_model=list[EmployeeResponse])
+@router.get('/', response_model=list[EmployeeResponse], include_in_schema=False)
 def get_employees(schema_name: str, db: Session = Depends(get_tenant_db)):
     try:
-        return db.query(Employee).order_by(Employee.id.desc()).all()
+        employees = db.query(Employee).all()
+        return sorted(employees, key=lambda e: sort_code_key(e.internal_code, e.id))
     except Exception as e:
         raise HTTPException(status_code=500, detail='Error de base de datos. Verifica si el entorno existe.')
 
-@router.post('/', response_model=EmployeeResponse)
+@router.post('', response_model=EmployeeResponse)
+@router.post('/', response_model=EmployeeResponse, include_in_schema=False)
 def create_employee(schema_name: str, employee: EmployeeCreate, db: Session = Depends(get_tenant_db)):
     db_employee = db.query(Employee).filter(Employee.documento_identidad == employee.documento_identidad).first()
     if db_employee:
@@ -47,6 +62,7 @@ def create_employee(schema_name: str, employee: EmployeeCreate, db: Session = De
     return new_emp
 
 @router.put('/{emp_id}', response_model=EmployeeResponse)
+@router.put('/{emp_id}/', response_model=EmployeeResponse, include_in_schema=False)
 def update_employee(schema_name: str, emp_id: int, employee: EmployeeUpdate, db: Session = Depends(get_tenant_db)):
     db_emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not db_emp:
@@ -92,13 +108,15 @@ def update_employee(schema_name: str, emp_id: int, employee: EmployeeUpdate, db:
     return db_emp
 
 @router.delete('/{emp_id}')
+@router.delete('/{emp_id}/', include_in_schema=False)
 def delete_employee(schema_name: str, emp_id: int, db: Session = Depends(get_tenant_db)):
     db_emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not db_emp:
         raise HTTPException(status_code=404, detail='Empleado no encontrado')
     
-    # --- FIX: Delete associated payslips first to avoid FK constraint violation ---
+    # Delete associated payslips and prefiniquitos first to avoid FK constraint violations
     db.query(Payslip).filter(Payslip.employee_id == emp_id).delete(synchronize_session=False)
+    db.query(Prefiniquito).filter(Prefiniquito.employee_id == emp_id).delete(synchronize_session=False)
     
     db.delete(db_emp)
     db.commit()

@@ -30,9 +30,21 @@ def get_smn(db: Session, year: int) -> Decimal:
 def calculate_years_diff(start_date: date, target_date: date) -> int:
     return target_date.year - start_date.year - ((target_date.month, target_date.day) < (start_date.month, start_date.day))
 
+import re
+
+def sort_code_key(code_val, fallback_id=0):
+    if not code_val:
+        return (1, fallback_id, "")
+    code_str = str(code_val).strip()
+    digits = re.findall(r'\d+', code_str)
+    if digits:
+        return (0, int(digits[0]), code_str)
+    return (0, 999999, code_str)
+
 from app.models.tenant import Tenant
 
 @router.get("/{month}/{year}", response_model=PayrollResponse)
+@router.get("/{month}/{year}/", response_model=PayrollResponse, include_in_schema=False)
 def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session = Depends(get_tenant_db)):
     payroll = db.query(Payroll).filter(Payroll.month == month, Payroll.year == year).first()
     smn_actual = get_smn(db, year)
@@ -93,6 +105,7 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
     for slip in response_data.payslips:
         emp = db.query(Employee).filter(Employee.id == slip.employee_id).first()
         if emp:
+            slip.employee_code = emp.internal_code or str(emp.id)
             slip.employee_name = f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().replace("  ", " ").upper()
             ext = f" - {emp.ext_ci}" if emp.ext_ci else ""
             slip.employee_ci = f"{emp.documento_identidad}{ext}"
@@ -100,11 +113,26 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
             slip.employee_fecha_ingreso = str(emp.fecha_ingreso)
             slip.employee_nacionalidad = emp.nacionalidad or 'BOLIVIANO'
             slip.employee_fecha_nacimiento = str(emp.fecha_nacimiento)
-            slip.employee_sexo = emp.genero if hasattr(emp, 'genero') else 'M'
+            slip.employee_sexo = getattr(emp, 'sexo', None) or getattr(emp, 'genero', None) or 'M'
             
+    # Ordenar por número de código de menor a mayor (el menor número primero y el más alto al final)
+    response_data.payslips.sort(
+        key=lambda s: sort_code_key(s.employee_code, s.employee_id)
+    )
+    
     return response_data
 
+@router.put("/slip/{payslip_id}", response_model=PayslipResponse)
+@router.put("/slip/{payslip_id}/", response_model=PayslipResponse, include_in_schema=False)
+def update_payslip_direct(schema_name: str, payslip_id: int, updates: PayslipUpdate, db: Session = Depends(get_tenant_db)):
+    payslip = db.query(Payslip).filter(Payslip.id == payslip_id).first()
+    if not payslip:
+        raise HTTPException(status_code=404, detail="Boleta no encontrada")
+    payroll = payslip.payroll
+    return update_payslip(schema_name=schema_name, month=payroll.month, year=payroll.year, payslip_id=payslip_id, updates=updates, db=db)
+
 @router.put("/{month}/{year}/payslips/{payslip_id}", response_model=PayslipResponse)
+@router.put("/{month}/{year}/payslips/{payslip_id}/", response_model=PayslipResponse, include_in_schema=False)
 def update_payslip(schema_name: str, month: int, year: int, payslip_id: int, updates: PayslipUpdate, db: Session = Depends(get_tenant_db)):
     payslip = db.query(Payslip).filter(Payslip.id == payslip_id).first()
     if not payslip:
@@ -153,11 +181,12 @@ def update_payslip(schema_name: str, month: int, year: int, payslip_id: int, upd
     response_slip.employee_fecha_ingreso = str(emp.fecha_ingreso)
     response_slip.employee_nacionalidad = emp.nacionalidad or 'BOLIVIANO'
     response_slip.employee_fecha_nacimiento = str(emp.fecha_nacimiento)
-    response_slip.employee_sexo = emp.genero if hasattr(emp, 'genero') else 'M'
+    response_slip.employee_sexo = getattr(emp, 'sexo', None) or getattr(emp, 'genero', None) or 'M'
     
     return response_slip
 
 @router.post("/{month}/{year}/close", response_model=PayrollResponse)
+@router.post("/{month}/{year}/close/", response_model=PayrollResponse, include_in_schema=False)
 def close_payroll(schema_name: str, month: int, year: int, db: Session = Depends(get_tenant_db)):
     payroll = db.query(Payroll).filter(Payroll.month == month, Payroll.year == year).first()
     if not payroll:
@@ -179,17 +208,25 @@ from app.services.document_service import DocumentService
 import os
 
 @router.get("/{month}/{year}/export/excel")
+@router.get("/{month}/{year}/export/excel/", include_in_schema=False)
 def export_payroll_excel(schema_name: str, month: int, year: int, db: Session = Depends(get_tenant_db)):
     payroll = get_or_generate_payroll(schema_name, month, year, db)
     payroll_dict = payroll.model_dump()
     payslips_dicts = []
     
     for slip in payroll.payslips:
+        emp = db.query(Employee).filter(Employee.id == slip.employee_id).first()
+        ap_paterno = emp.apellido_paterno if emp else (slip.employee_name.split(' ')[0] if ' ' in slip.employee_name else slip.employee_name)
+        ap_materno = (emp.apellido_materno or '') if emp else (slip.employee_name.split(' ')[1] if len(slip.employee_name.split(' ')) > 1 else '')
+        nombres = emp.nombres if emp else (' '.join(slip.employee_name.split(' ')[2:]) if len(slip.employee_name.split(' ')) > 2 else '')
+        emp_code = (emp.internal_code if emp and emp.internal_code else slip.employee_code) or str(slip.employee_id)
+
         payslips_dicts.append({
+            'internal_code': emp_code,
             'documento_identidad': slip.employee_ci,
-            'apellido_paterno': slip.employee_name.split(' ')[0] if ' ' in slip.employee_name else slip.employee_name,
-            'apellido_materno': slip.employee_name.split(' ')[1] if len(slip.employee_name.split(' ')) > 1 else '',
-            'nombres': ' '.join(slip.employee_name.split(' ')[2:]) if len(slip.employee_name.split(' ')) > 2 else '',
+            'apellido_paterno': ap_paterno,
+            'apellido_materno': ap_materno,
+            'nombres': nombres,
             'nacionalidad': slip.employee_nacionalidad,
             'fecha_nacimiento': slip.employee_fecha_nacimiento,
             'sexo': slip.employee_sexo,
@@ -222,21 +259,32 @@ def export_payroll_excel(schema_name: str, month: int, year: int, db: Session = 
             'anio': year
         })
     
+    # Asegurar orden ascendente por código de menor a mayor
+    payslips_dicts.sort(key=lambda x: sort_code_key(x.get('internal_code', '')))
+    
     file_path = DocumentService.generate_payroll_excel(payslips_dicts, "xlsx")
     return FileResponse(path=file_path, filename=f"Planilla_Sueldos_{month}_{year}.xlsx", media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 @router.get("/{month}/{year}/export/pdf")
+@router.get("/{month}/{year}/export/pdf/", include_in_schema=False)
 def export_payroll_pdf(schema_name: str, month: int, year: int, db: Session = Depends(get_tenant_db)):
     payroll = get_or_generate_payroll(schema_name, month, year, db)
     payroll_dict = payroll.model_dump()
     payslips_dicts = []
     
     for slip in payroll.payslips:
+        emp = db.query(Employee).filter(Employee.id == slip.employee_id).first()
+        ap_paterno = emp.apellido_paterno if emp else (slip.employee_name.split(' ')[0] if ' ' in slip.employee_name else slip.employee_name)
+        ap_materno = (emp.apellido_materno or '') if emp else (slip.employee_name.split(' ')[1] if len(slip.employee_name.split(' ')) > 1 else '')
+        nombres = emp.nombres if emp else (' '.join(slip.employee_name.split(' ')[2:]) if len(slip.employee_name.split(' ')) > 2 else '')
+        emp_code = (emp.internal_code if emp and emp.internal_code else slip.employee_code) or str(slip.employee_id)
+
         payslips_dicts.append({
+            'internal_code': emp_code,
             'documento_identidad': slip.employee_ci,
-            'apellido_paterno': slip.employee_name.split(' ')[0] if ' ' in slip.employee_name else slip.employee_name,
-            'apellido_materno': slip.employee_name.split(' ')[1] if len(slip.employee_name.split(' ')) > 1 else '',
-            'nombres': ' '.join(slip.employee_name.split(' ')[2:]) if len(slip.employee_name.split(' ')) > 2 else '',
+            'apellido_paterno': ap_paterno,
+            'apellido_materno': ap_materno,
+            'nombres': nombres,
             'nacionalidad': slip.employee_nacionalidad,
             'fecha_nacimiento': slip.employee_fecha_nacimiento,
             'sexo': slip.employee_sexo,
@@ -268,10 +316,15 @@ def export_payroll_pdf(schema_name: str, month: int, year: int, db: Session = De
             'mes': month,
             'anio': year
         })
+    
+    # Asegurar orden ascendente por código de menor a mayor
+    payslips_dicts.sort(key=lambda x: sort_code_key(x.get('internal_code', '')))
+    
     file_path = DocumentService.generate_payroll_excel(payslips_dicts, "pdf")
     return FileResponse(path=file_path, filename=f"Planilla_Sueldos_{month}_{year}.pdf", media_type='application/pdf')
 
 @router.get("/{month}/{year}/payslips/{payslip_id}/export/{format}")
+@router.get("/{month}/{year}/payslips/{payslip_id}/export/{format}/", include_in_schema=False)
 def export_payslip(schema_name: str, month: int, year: int, payslip_id: int, format: str, db: Session = Depends(get_tenant_db)):
     payroll = get_or_generate_payroll(schema_name, month, year, db)
     payroll_dict = payroll.model_dump()
@@ -283,6 +336,10 @@ def export_payslip(schema_name: str, month: int, year: int, payslip_id: int, for
     emp = db.query(Employee).filter(Employee.id == target_slip.employee_id).first()
     real_internal_code = emp.internal_code if emp and emp.internal_code else str(target_slip.employee_id)
         
+    ap_paterno = emp.apellido_paterno if emp else (target_slip.employee_name.split(' ')[0] if ' ' in target_slip.employee_name else target_slip.employee_name)
+    ap_materno = (emp.apellido_materno or '') if emp else (target_slip.employee_name.split(' ')[1] if len(target_slip.employee_name.split(' ')) > 1 else '')
+    nombres = emp.nombres if emp else (' '.join(target_slip.employee_name.split(' ')[2:]) if len(target_slip.employee_name.split(' ')) > 2 else '')
+
     boleta_data = {
         'internal_code': real_internal_code,
         'empresa_nombre': payroll_dict.get('tenant_name', ''),
@@ -291,9 +348,9 @@ def export_payslip(schema_name: str, month: int, year: int, payslip_id: int, for
         'mes': month,
         'anio': year,
         'ci': target_slip.employee_ci,
-        'nombres': ' '.join(target_slip.employee_name.split(' ')[2:]) if len(target_slip.employee_name.split(' ')) > 2 else '',
-        'apellido_paterno': target_slip.employee_name.split(' ')[0] if ' ' in target_slip.employee_name else target_slip.employee_name,
-        'apellido_materno': target_slip.employee_name.split(' ')[1] if len(target_slip.employee_name.split(' ')) > 1 else '',
+        'nombres': nombres,
+        'apellido_paterno': ap_paterno,
+        'apellido_materno': ap_materno,
         'fecha_ingreso': target_slip.employee_fecha_ingreso,
         'fecha_nacimiento': target_slip.employee_fecha_nacimiento,
         'cargo': target_slip.employee_cargo,

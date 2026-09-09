@@ -4,6 +4,7 @@ import uuid
 import openpyxl
 from openpyxl.utils import get_column_letter
 from datetime import datetime
+import re
 
 class DocumentService:
 
@@ -237,6 +238,19 @@ class DocumentService:
         wb = openpyxl.load_workbook(template_path)
         ws = wb.active
         
+        # Ordenar datos por código de menor a mayor (1, 2, 3... N)
+        def _sort_code_key(item):
+            code_val = item.get('internal_code', '')
+            if not code_val:
+                return (1, 0, '')
+            code_str = str(code_val).strip()
+            digits = re.findall(r'\d+', code_str)
+            if digits:
+                return (0, int(digits[0]), code_str)
+            return (0, 999999, code_str)
+
+        payroll_data = sorted(payroll_data, key=_sort_code_key)
+
         if payroll_data:
             empresa = payroll_data[0].get('empresa_nombre', '')
             nit = payroll_data[0].get('nit', '')
@@ -245,188 +259,260 @@ class DocumentService:
             MESES = {1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO", 7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"}
             anio = payroll_data[0].get('anio', '')
             
-            DocumentService._set_cell_value(ws, 'D2', empresa.upper())
+            DocumentService._set_cell_value(ws, 'D2', str(empresa).upper())
             try:
                 ws['D2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
                 ws['D2'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
             except: pass
 
-            DocumentService._set_cell_value(ws, 'G3', nit)
+            DocumentService._set_cell_value(ws, 'G3', str(nit))
             try:
                 ws['G3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-                ws['G3'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                ws['G3'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
 
-            DocumentService._set_cell_value(ws, 'P2', nit)
+            DocumentService._set_cell_value(ws, 'P2', str(nit))
             try:
                 ws['P2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-                ws['P2'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                ws['P2'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
 
-            DocumentService._set_cell_value(ws, 'P3', patronal)
+            DocumentService._set_cell_value(ws, 'P3', str(patronal))
             try:
                 ws['P3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-                ws['P3'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                ws['P3'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
             
             # Recuperar texto original si existe o poner default
             base_text = "CORRESPONDIENTE AL MES DE"
-            DocumentService._set_cell_value(ws, 'U6', f"{base_text} {MESES.get(mes_int, str(mes_int))} DE {anio}")
+            DocumentService._set_cell_value(ws, 'U6', f" {base_text} {MESES.get(mes_int, str(mes_int))} DE {anio}")
             try:
-                ws['U6'].font = openpyxl.styles.Font(name="Arial", size=11, bold=True)
+                ws['U6'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
                 ws['U6'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
             
             # Paginacion
             DocumentService._set_cell_value(ws, 'V2', 1)
             DocumentService._set_cell_value(ws, 'X2', 1)
-        
+
+        # 1. Limpiar rangos combinados residuales en filas >= 11 para evitar corrupción de openpyxl
+        for m in list(ws.merged_cells.ranges):
+            if m.min_row >= 11:
+                ws.merged_cells.remove(m)
+
+        # 2. Eliminar filas previas del template a partir de la fila 11
+        ws.delete_rows(11, amount=30)
+
+        thin_border = openpyxl.styles.Side(border_style='thin', color='000000')
+        border_all = openpyxl.styles.Border(top=thin_border, bottom=thin_border, left=thin_border, right=thin_border)
+        font_data = openpyxl.styles.Font(name='Arial', size=9)
+        font_bold = openpyxl.styles.Font(name='Arial', size=10, bold=True)
+
         start_row = 11
         num_employees = len(payroll_data)
-        
-        if num_employees > 2:
-            ws.insert_rows(13, amount=num_employees - 2)
-            
+
         for i, emp in enumerate(payroll_data):
             row = start_row + i
-            # Para las filas normales de empleados, evitamos el helper custom si da problemas
-            # pero sabemos que A-W estan descombinadas o sus celdas principales coinciden
-            try: ws.cell(row=row, column=1).value = i + 1
-            except: pass
-            try: ws.cell(row=row, column=2).value = emp.get('documento_identidad', '')
-            except: pass
-            try: ws.cell(row=row, column=3).value = f"{emp.get('apellido_paterno','')} {emp.get('apellido_materno', '')} {emp.get('nombres','')}".strip().replace("  ", " ").upper()
-            except: pass
-            try: ws.cell(row=row, column=4).value = emp.get('nacionalidad', 'Boliviana')
-            except: pass
-            try: ws.cell(row=row, column=5).value = emp.get('fecha_nacimiento', '')
-            except: pass
-            try: ws.cell(row=row, column=6).value = emp.get('sexo', '')
-            except: pass
-            try: ws.cell(row=row, column=7).value = emp.get('ocupacion', '')
-            except: pass
-            try: ws.cell(row=row, column=8).value = emp.get('fecha_ingreso', '')
-            except: pass
-            try: ws.cell(row=row, column=9).value = emp.get('horas_pagadas', 240)
-            except: pass
-            try: ws.cell(row=row, column=10).value = emp.get('dias_pagados', 30)
-            except: pass
-            try: ws.cell(row=row, column=11).value = float(emp.get('haber_basico', 0))
-            except: pass
-            try: ws.cell(row=row, column=12).value = float(emp.get('bono_antiguedad', 0))
-            except: pass
-            try: ws.cell(row=row, column=13).value = float(emp.get('bono_produccion', 0))
-            except: pass
-            try: ws.cell(row=row, column=14).value = float(emp.get('subsidio_frontera', 0))
-            except: pass
-            try: ws.cell(row=row, column=15).value = float(emp.get('trabajo_extraordinario', 0))
-            except: pass
-            try: ws.cell(row=row, column=16).value = float(emp.get('pago_dominical', 0))
-            except: pass
-            try: ws.cell(row=row, column=17).value = float(emp.get('otros_bonos', 0))
-            except: pass
-            try: ws.cell(row=row, column=18).value = float(emp.get('total_ganado', 0))
-            except: pass
-            try: ws.cell(row=row, column=19).value = float(emp.get('aporte_gestora', 0))
-            except: pass
-            try: ws.cell(row=row, column=20).value = float(emp.get('rc_iva', 0))
-            except: pass
-            otros = float(emp.get('otros_descuentos', 0)) + float(emp.get('anticipos', 0))
-            try: ws.cell(row=row, column=21).value = otros
-            except: pass
-            try: ws.cell(row=row, column=22).value = float(emp.get('total_descuentos', 0))
-            except: pass
-            try: ws.cell(row=row, column=23).value = float(emp.get('liquido_pagable', 0))
-            except: pass
-            
-            # Formatting para los números en la tabla
-            for col in range(11, 24):
-                try: ws.cell(row=row, column=col).number_format = '#,##0.00'
-                except: pass
+            ws.row_dimensions[row].height = 22
 
-        # Fila TOTALES
-        totales_row = start_row + max(num_employees, 2)
-        try:
-            ws.cell(row=totales_row, column=1).value = 'TOTALES'
-            ws.cell(row=totales_row, column=1).font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-        except: pass
-        
-        for col in range(11, 24):
-            col_letter = get_column_letter(col)
-            try:
-                c = ws.cell(row=totales_row, column=col)
-                c.value = f"=SUM({col_letter}{start_row}:{col_letter}{totales_row-1})"
-                c.font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-                c.number_format = '#,##0.00'
-            except: pass
-            
-        # Fila EMPLEADOR
-        empleador_row = totales_row + 4
+            doc_id = str(emp.get('documento_identidad', '') or '')
+            ap_pat = str(emp.get('apellido_paterno', '') or '')
+            ap_mat = str(emp.get('apellido_materno', '') or '')
+            nombres = str(emp.get('nombres', '') or '')
+            full_name = f"{ap_pat} {ap_mat} {nombres}".strip().replace("  ", " ").upper()
+            nacionalidad = str(emp.get('nacionalidad', 'Boliviana') or 'Boliviana')
+            fecha_nac = str(emp.get('fecha_nacimiento', '') or '')
+            sexo = str(emp.get('sexo', '') or '')
+            ocupacion = str(emp.get('ocupacion', '') or '')
+            fecha_ing = str(emp.get('fecha_ingreso', '') or '')
+            horas = emp.get('horas_pagadas', 240)
+            dias = emp.get('dias_pagados', 30)
+
+            hb = float(emp.get('haber_basico', 0) or 0)
+            ba = float(emp.get('bono_antiguedad', 0) or 0)
+            bp = float(emp.get('bono_produccion', 0) or 0)
+            sf = float(emp.get('subsidio_frontera', 0) or 0)
+            te = float(emp.get('trabajo_extraordinario', 0) or 0)
+            pd = float(emp.get('pago_dominical', 0) or 0)
+            ob = float(emp.get('otros_bonos', 0) or 0)
+            tg = float(emp.get('total_ganado', 0) or 0)
+            ag = float(emp.get('aporte_gestora', 0) or 0)
+            rc = float(emp.get('rc_iva', 0) or 0)
+            otros_desc = float(emp.get('otros_descuentos', 0) or 0) + float(emp.get('anticipos', 0) or 0)
+            td = float(emp.get('total_descuentos', 0) or 0)
+            lp = float(emp.get('liquido_pagable', 0) or 0)
+
+            row_values = {
+                1: (i + 1, 'center', None),
+                2: (doc_id, 'center', None),
+                3: (full_name, 'left', None),
+                4: (nacionalidad, 'center', None),
+                5: (fecha_nac, 'center', None),
+                6: (sexo, 'center', None),
+                7: (ocupacion, 'left', None),
+                8: (fecha_ing, 'center', None),
+                9: (horas, 'right', None),
+                10: (dias, 'right', None),
+                11: (hb, 'right', '#,##0.00'),
+                12: (ba, 'right', '#,##0.00'),
+                13: (bp, 'right', '#,##0.00'),
+                14: (sf, 'right', '#,##0.00'),
+                15: (te, 'right', '#,##0.00'),
+                16: (pd, 'right', '#,##0.00'),
+                17: (ob, 'right', '#,##0.00'),
+                18: (tg, 'right', '#,##0.00'),
+                19: (ag, 'right', '#,##0.00'),
+                20: (rc, 'right', '#,##0.00'),
+                21: (otros_desc, 'right', '#,##0.00'),
+                22: (td, 'right', '#,##0.00'),
+                23: (lp, 'right', '#,##0.00'),
+                24: ('', 'center', None)
+            }
+
+            for col_idx in range(1, 25):
+                c = ws.cell(row=row, column=col_idx)
+                val, align_h, num_fmt = row_values.get(col_idx, ('', 'center', None))
+                c.value = val
+                c.font = font_data
+                c.border = border_all
+                c.alignment = openpyxl.styles.Alignment(horizontal=align_h, vertical='center')
+                if num_fmt:
+                    c.number_format = num_fmt
+
+        # Fila TOTALES (Combinada de A hasta J)
+        tot_row = start_row + max(num_employees, 1)
+        ws.row_dimensions[tot_row].height = 24
+        ws.merge_cells(start_row=tot_row, start_column=1, end_row=tot_row, end_column=10)
+        c_tot = ws.cell(row=tot_row, column=1)
+        c_tot.value = 'TOTALES'
+        c_tot.font = font_bold
+        c_tot.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+
+        for col_idx in range(1, 11):
+            ws.cell(row=tot_row, column=col_idx).border = openpyxl.styles.Border(
+                top=thin_border, bottom=thin_border,
+                left=thin_border if col_idx == 1 else None,
+                right=thin_border if col_idx == 10 else None
+            )
+
+        for col_idx in range(11, 24):
+            col_letter = get_column_letter(col_idx)
+            c = ws.cell(row=tot_row, column=col_idx)
+            c.value = f'=SUM({col_letter}11:{col_letter}{tot_row-1})' if num_employees > 0 else 0.00
+            c.font = font_bold
+            c.number_format = '#,##0.00'
+            c.alignment = openpyxl.styles.Alignment(horizontal='right', vertical='center')
+            c.border = border_all
+
+        ws.cell(row=tot_row, column=24).border = border_all
+
+        # Espaciadores antes de las firmas
+        ws.row_dimensions[tot_row + 1].height = 12
+        ws.row_dimensions[tot_row + 2].height = 12
+
+        # Líneas de puntos de firma (D a I, L a O, R a U)
+        sig_line = tot_row + 3
+        ws.row_dimensions[sig_line].height = 28
+        dot1 = '…............................................................................................................................................................'
+        dot2 = '…..........................................................................................................'
+        dot3 = '….................................................................................................'
+
+        ws.merge_cells(start_row=sig_line, start_column=4, end_row=sig_line, end_column=9)
+        c = ws.cell(row=sig_line, column=4, value=dot1)
+        c.font = openpyxl.styles.Font(name='Arial', size=10)
+        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='bottom')
+
+        ws.merge_cells(start_row=sig_line, start_column=12, end_row=sig_line, end_column=15)
+        c = ws.cell(row=sig_line, column=12, value=dot2)
+        c.font = openpyxl.styles.Font(name='Arial', size=10)
+        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='bottom')
+
+        ws.merge_cells(start_row=sig_line, start_column=18, end_row=sig_line, end_column=21)
+        c = ws.cell(row=sig_line, column=18, value=dot3)
+        c.font = openpyxl.styles.Font(name='Arial', size=10)
+        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='bottom')
+
+        # Etiquetas de firma
+        sig_lbl = tot_row + 4
+        ws.row_dimensions[sig_lbl].height = 24
+
+        ws.merge_cells(start_row=sig_lbl, start_column=4, end_row=sig_lbl, end_column=9)
+        c = ws.cell(row=sig_lbl, column=4, value='NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL')
+        c.font = font_bold
+        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+
+        ws.merge_cells(start_row=sig_lbl, start_column=12, end_row=sig_lbl, end_column=15)
+        c = ws.cell(row=sig_lbl, column=12, value='N° DE DOCUMENTO DE IDENTIDAD')
+        c.font = font_bold
+        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+
+        ws.merge_cells(start_row=sig_lbl, start_column=18, end_row=sig_lbl, end_column=21)
+        c = ws.cell(row=sig_lbl, column=18, value='FIRMA')
+        c.font = font_bold
+        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+
+        # Datos impresos de empleador (Nombre y C.I.) bajo las etiquetas
         if payroll_data:
             emp_nombres = payroll_data[0].get('empleador_nombres') or ''
             emp_pat = payroll_data[0].get('empleador_apellido_paterno') or ''
             emp_mat = payroll_data[0].get('empleador_apellido_materno') or ''
             emp_ci = payroll_data[0].get('empleador_ci') or ''
-            
             full_emp_name = f"{emp_pat} {emp_mat} {emp_nombres}".strip().replace("  ", " ").upper()
-            
-            # Nombre del Empleador (Centrado sin lineas de puntos)
-            try:
-                c1 = ws.cell(row=empleador_row, column=4)
-                c1.value = full_emp_name
-                c1.font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-                c1.alignment = openpyxl.styles.Alignment(horizontal='center')
-            except: pass
-            
-            # CI del Empleador
-            try:
-                c2 = ws.cell(row=empleador_row, column=12)
-                c2.value = f"CI: {emp_ci}"
-                c2.font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-                c2.alignment = openpyxl.styles.Alignment(horizontal='center')
-            except: pass
 
-        # Enable text wrapping and column auto-sizing ONLY for text columns (B to H)
-        for col in range(2, 9): # B to H
-            max_length = 0
-            col_letter = get_column_letter(col)
-            # Evaluate headers (row 8) and data rows (11 to totales_row)
-            rows_to_check = [8] + list(range(11, totales_row + 1))
+            sig_name = tot_row + 5
+            ws.row_dimensions[sig_name].height = 20
 
-            for row in rows_to_check:
-                try:
-                    cell_value = str(ws.cell(row=row, column=col).value or "")
-                    lines = cell_value.split('\n')
-                    for line in lines:
-                        if len(line) > max_length:
-                            max_length = len(line)
-                            
-                    if row >= 11 and row <= totales_row:
-                        current_alignment = ws.cell(row=row, column=col).alignment
-                        if current_alignment:
-                            ws.cell(row=row, column=col).alignment = openpyxl.styles.Alignment(
-                                horizontal=current_alignment.horizontal,
-                                vertical='center',
-                                wrap_text=True
-                            )
-                        else:
-                            ws.cell(row=row, column=col).alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='center')
-                except:
-                    pass
+            if full_emp_name:
+                ws.merge_cells(start_row=sig_name, start_column=4, end_row=sig_name, end_column=9)
+                c = ws.cell(row=sig_name, column=4, value=full_emp_name)
+                c.font = font_bold
+                c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
 
-            # Auto-adjust column width for B to H
-            if max_length > 0:
-                adjusted_width = min(max_length + 2, 25) # Max 25 chars for text columns
-                current_width = ws.column_dimensions[col_letter].width
-                if current_width is None or (adjusted_width > current_width):
-                    ws.column_dimensions[col_letter].width = adjusted_width
+            if emp_ci:
+                ws.merge_cells(start_row=sig_name, start_column=12, end_row=sig_name, end_column=15)
+                c = ws.cell(row=sig_name, column=12, value=f"CI: {emp_ci}")
+                c.font = font_bold
+                c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
 
-        # Page setup to ensure it fits on one page wide when exported to PDF
+        # Anchos de columna optimizados para evitar truncamiento numérico (######)
+        col_widths = {
+            'A': 6.5,   # N°
+            'B': 16.0,  # Documento de identidad
+            'C': 26.0,  # Apellidos y Nombres
+            'D': 12.0,  # Pais
+            'E': 13.0,  # Fecha nacimiento
+            'F': 8.0,   # Sexo
+            'G': 18.0,  # Cargo
+            'H': 13.0,  # Fecha ingreso
+            'I': 9.0,   # Horas
+            'J': 9.0,   # Dias
+            'K': 14.0,  # Haber basico
+            'L': 13.5,  # Bono antiguedad
+            'M': 13.5,  # Bono produccion
+            'N': 13.5,  # Subsidio frontera
+            'O': 13.5,  # Horas extras
+            'P': 13.5,  # Pago dominical
+            'Q': 13.5,  # Otros bonos
+            'R': 15.0,  # TOTAL GANADO
+            'S': 13.5,  # Gestora
+            'T': 10.0,  # RC-IVA
+            'U': 13.5,  # Otros descuentos
+            'V': 15.0,  # TOTAL DESCUENTOS
+            'W': 15.0,  # LIQUIDO PAGABLE
+            'X': 18.0   # Firma
+        }
+        for col_let, w in col_widths.items():
+            ws.column_dimensions[col_let].width = w
+
+        # Configuración de página para ajustar a 1 página horizontal
         ws.sheet_properties.pageSetUpPr.fitToPage = True
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 0
         ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
-        # ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.25, right=0.25, top=0.5, bottom=0.5)
+        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(
+            left=0.2, right=0.2, top=0.3, bottom=0.3, header=0.1, footer=0.1
+        )
 
         wb.save(output_xlsx)
         wb.close()

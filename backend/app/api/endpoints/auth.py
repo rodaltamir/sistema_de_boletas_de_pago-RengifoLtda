@@ -37,6 +37,7 @@ def create_access_token(data: dict):
     return encoded_jwt
 
 @router.post("/register", response_model=UserResponse)
+@router.post("/register/", response_model=UserResponse, include_in_schema=False)
 def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
     # Check if user exists
     user_exists = db.query(User).filter((User.email == user_in.email) | (User.username == user_in.username)).first()
@@ -62,6 +63,7 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 @router.post("/login", response_model=Token)
+@router.post("/login/", response_model=Token, include_in_schema=False)
 def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == user_credentials.email).first()
     

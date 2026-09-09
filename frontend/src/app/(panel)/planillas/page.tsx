@@ -4,11 +4,13 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calculator, Search, Loader2, Download, Edit, Eye, X, FileText, FileSpreadsheet, File, Plus, Minus, Lock, CheckCircle } from "lucide-react";
+import { getApiUrl } from "@/utils/api";
 
 interface Payslip {
   id: number;
   payroll_id: number;
   employee_id: number;
+  employee_code?: string;
   employee_name: string;
   employee_ci: string;
   employee_cargo: string;
@@ -80,6 +82,20 @@ function PlanillasPageContent() {
     }
   };
 
+  const sortedPayslips = React.useMemo(() => {
+    if (!payroll?.payslips) return [];
+    return [...payroll.payslips].sort((a, b) => {
+      const codeA = a.employee_code || a.employee_id;
+      const codeB = b.employee_code || b.employee_id;
+      const numA = parseInt(String(codeA).replace(/\D/g, ''), 10);
+      const numB = parseInt(String(codeB).replace(/\D/g, ''), 10);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return numA - numB;
+      }
+      return String(codeA).localeCompare(String(codeB));
+    });
+  }, [payroll]);
+
   // Edit State
   const [editForm, setEditForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
@@ -93,7 +109,7 @@ function PlanillasPageContent() {
     if (!tenantSchema) return;
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/${month}/${year}`);
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/payrolls/${month}/${year}`);
       if (res.ok) {
         const data = await res.json();
         setPayroll(data);
@@ -114,7 +130,7 @@ function PlanillasPageContent() {
   
   const handleExportPlanilla = (format: 'pdf' | 'excel') => {
     if (!tenantSchema || !month || !year) return;
-    const url = `${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/export/${format}`;
+    const url = `${getApiUrl()}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/export/${format}`;
     window.open(url, '_blank');
   };
 
@@ -141,7 +157,7 @@ function PlanillasPageContent() {
     if (!selectedPayslip || !payroll) return;
     setSaving(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/payslips/${selectedPayslip.id}`, {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/payslips/${selectedPayslip.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm)
@@ -171,7 +187,7 @@ function PlanillasPageContent() {
     if (!tenantSchema || !month || !year) return;
     setConfirming(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/close`, {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/close`, {
         method: "POST"
       });
       if (res.ok) {
@@ -275,15 +291,20 @@ function PlanillasPageContent() {
                 </tr>
               </thead>
               <tbody>
-                {payroll.payslips.map((slip, i) => {
+                {sortedPayslips.map((slip, i) => {
                   const isExpanded = expandedSlips.includes(slip.id);
                   return (
                     <React.Fragment key={slip.id}>
                       <tr className={`border-b border-slate-200 transition bg-white hover:bg-slate-50 cursor-pointer ${isExpanded ? 'bg-slate-50 border-l-4 border-l-teal-500' : ''}`} onClick={() => toggleExpand(slip.id)}>
                         <td className="p-4 text-center font-bold text-slate-700">{i + 1}</td>
                         <td className="p-4">
-                          <p className="font-bold text-slate-900">{slip.employee_name}</p>
-                          <p className="text-xs text-slate-500">CI: {slip.employee_ci}</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-md">
+                              Cód. {slip.employee_code || slip.employee_id}
+                            </span>
+                            <p className="font-bold text-slate-900">{slip.employee_name}</p>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5">CI: {slip.employee_ci}</p>
                         </td>
                         <td className="p-4 text-slate-600 hidden md:table-cell">{slip.employee_cargo}</td>
                         <td className="p-4 text-right font-bold text-teal-700">{formatBs(slip.total_ganado)}</td>

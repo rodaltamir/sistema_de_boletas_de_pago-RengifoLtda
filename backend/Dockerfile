@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     libreoffice-writer \
     libreoffice-calc \
     fonts-liberation \
+    poppler-utils \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*

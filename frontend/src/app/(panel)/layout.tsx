@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useState, useEffect, Suspense } from "react";
 import { Building2, Briefcase, Factory, Store, Building, LogOut, RefreshCw } from 'lucide-react';
+import { getApiUrl } from "@/utils/api";
 
 const ICON_OPTIONS = {
   Building2,
@@ -28,8 +29,7 @@ function DashboardLayoutContent({
 
   useEffect(() => {
     if (tenantSchema) {
-      const host = window.location.hostname;
-      fetch(`http://${host}:8000/api/tenants/${tenantSchema}/dashboard`)
+      fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/dashboard`)
         .then(res => res.json())
         .then(data => {
           if (data && data.tenant) {

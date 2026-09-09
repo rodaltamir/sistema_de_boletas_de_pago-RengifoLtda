@@ -23,6 +23,7 @@ def get_tenant_db(schema_name: str):
         db.close()
 
 @router.post("/preview")
+@router.post("/preview/", include_in_schema=False)
 def preview_prefiniquito(
     schema_name: str,
     data: PrefiniquitoCreate,
@@ -57,7 +58,8 @@ def preview_prefiniquito(
         **calc
     }
 
-@router.post("/", response_model=PrefiniquitoResponse)
+@router.post("", response_model=PrefiniquitoResponse)
+@router.post("/", response_model=PrefiniquitoResponse, include_in_schema=False)
 def create_prefiniquito(
     schema_name: str,
     data: PrefiniquitoCreate,
@@ -99,7 +101,8 @@ def create_prefiniquito(
     
     return pref
 
-@router.get("/", response_model=list[PrefiniquitoResponse])
+@router.get("", response_model=list[PrefiniquitoResponse])
+@router.get("/", response_model=list[PrefiniquitoResponse], include_in_schema=False)
 def get_prefiniquitos(
     schema_name: str,
     db: Session = Depends(get_tenant_db)
@@ -107,6 +110,7 @@ def get_prefiniquitos(
     return db.query(Prefiniquito).all()
 
 @router.post("/export/{format}")
+@router.post("/export/{format}/", include_in_schema=False)
 def export_prefiniquito(
     schema_name: str,
     format: str,

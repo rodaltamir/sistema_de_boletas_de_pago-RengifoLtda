@@ -40,6 +40,7 @@ class PayslipResponse(PayslipBase):
     employee_id: int
     
     # Podemos incluir info básica del empleado para la tabla de frontend
+    employee_code: Optional[str] = None
     employee_name: Optional[str] = None
     employee_ci: Optional[str] = None
     employee_cargo: Optional[str] = None

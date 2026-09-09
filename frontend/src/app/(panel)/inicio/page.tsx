@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Building2, Save, Edit3, Loader2, Users, Receipt, Briefcase, FileText } from "lucide-react";
+import { getApiUrl } from "@/utils/api";
 
 interface TenantData {
   tenant: {
@@ -61,8 +62,7 @@ function InicioDashboardContent() {
 
     const fetchData = async () => {
       try {
-        const host = window.location.hostname;
-        const res = await fetch(`http://${host}:8000/api/tenants/${tenantSchema}/dashboard`);
+        const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/dashboard`);
         if (res.ok) {
           const json = await res.json();
           setData(json);
@@ -94,8 +94,7 @@ function InicioDashboardContent() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const host = window.location.hostname;
-      const res = await fetch(`http://${host}:8000/api/tenants/${tenantSchema}/dashboard`, {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/dashboard`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData)

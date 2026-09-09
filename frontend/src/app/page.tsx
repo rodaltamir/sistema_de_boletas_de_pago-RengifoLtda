@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, User, Mail, Lock, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { getApiUrl } from "@/utils/api";
 
 export default function AuthPage() {
   const router = useRouter();
@@ -57,7 +58,7 @@ export default function AuthPage() {
 
     try {
       if (isLogin) {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/auth/login`, {
+        const res = await fetch(`${getApiUrl()}/api/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password })
@@ -74,7 +75,7 @@ export default function AuthPage() {
         
         router.push("/seleccionar-empresa");
       } else {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/auth/register`, {
+        const res = await fetch(`${getApiUrl()}/api/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, username, email, password })

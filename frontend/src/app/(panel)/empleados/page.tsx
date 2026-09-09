@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Users, Plus, Edit, Trash2, X, Search, Loader2, UserPlus, AlertCircle } from "lucide-react";
+import { getApiUrl } from "@/utils/api";
 
 interface Employee {
   id: number;
@@ -55,7 +56,7 @@ function EmpleadosPageContent() {
   const fetchEmployees = async () => {
     if (!tenantSchema) return;
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees/`);
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/employees/`);
       if (res.ok) {
         const data = await res.json();
         setEmployees(data);
@@ -116,8 +117,8 @@ function EmpleadosPageContent() {
     
     try {
       const url = isEditing 
-        ? `${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees/${formData.id}`
-        : `${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees`;
+        ? `${getApiUrl()}/api/tenants/${tenantSchema}/employees/${formData.id}`
+        : `${getApiUrl()}/api/tenants/${tenantSchema}/employees/`;
       
       const res = await fetch(url, {
         method: isEditing ? "PUT" : "POST",
@@ -143,7 +144,7 @@ function EmpleadosPageContent() {
     if (!confirm("¿Estás seguro de eliminar este empleado? Esta acción no se puede deshacer.")) return;
     
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees/${id}`, {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/employees/${id}`, {
         method: "DELETE"
       });
       if (res.ok) {

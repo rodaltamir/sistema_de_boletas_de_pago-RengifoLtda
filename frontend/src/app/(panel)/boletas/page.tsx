@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Loader2, Eye, X, FileText, FileSpreadsheet, File, Users, Calculator, Edit, Lock, CheckCircle } from "lucide-react";
+import { getApiUrl } from "@/utils/api";
 
 interface Payslip {
   id: number;
   payroll_id: number;
   employee_id: number;
+  employee_code?: string;
   employee_name: string;
   employee_ci: string;
   employee_cargo: string;
@@ -125,11 +127,25 @@ function BoletasPageContent() {
   });
   const [saving, setSaving] = useState(false);
 
+  const sortedPayslips = React.useMemo(() => {
+    if (!payroll?.payslips) return [];
+    return [...payroll.payslips].sort((a, b) => {
+      const codeA = a.employee_code || a.employee_id;
+      const codeB = b.employee_code || b.employee_id;
+      const numA = parseInt(String(codeA).replace(/\D/g, ''), 10);
+      const numB = parseInt(String(codeB).replace(/\D/g, ''), 10);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return numA - numB;
+      }
+      return String(codeA).localeCompare(String(codeB));
+    });
+  }, [payroll]);
+
   const fetchPayroll = async () => {
     if (!tenantSchema) return;
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/${month}/${year}`);
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/payrolls/${month}/${year}`);
       if (res.ok) {
         const data = await res.json();
         setPayroll(data);
@@ -150,7 +166,7 @@ function BoletasPageContent() {
   
   const handleExportBoleta = (format: 'pdf' | 'excel', id: number) => {
     if (!tenantSchema || !month || !year) return;
-    const url = `${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/payslips/${id}/export/${format}`;
+    const url = `${getApiUrl()}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/payslips/${id}/export/${format}`;
     window.open(url, '_blank');
   };
 
@@ -188,7 +204,7 @@ function BoletasPageContent() {
         ...editForm,
         horas_pagadas: editForm.horas_pagadas * editForm.dias_pagados
       };
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/slip/${selectedPayslip.id}`, {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/payrolls/slip/${selectedPayslip.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -215,7 +231,7 @@ function BoletasPageContent() {
     if (!tenantSchema || !month || !year) return;
     setConfirming(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/close`, {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/close`, {
         method: "POST"
       });
       if (res.ok) {
@@ -354,7 +370,7 @@ function BoletasPageContent() {
               No hay empleados activos para este mes.
             </div>
           ) : (
-            payroll.payslips.map((slip) => (
+            sortedPayslips.map((slip) => (
               <div 
                 key={slip.id} 
                 onClick={() => {
@@ -371,7 +387,7 @@ function BoletasPageContent() {
                     <Users className="w-6 h-6" />
                   </div>
                   <span className="text-xs font-bold text-slate-900 bg-slate-200 px-2 py-1 rounded-md">
-                    Cód. {slip.employee_id}
+                    Cód. {slip.employee_code || slip.employee_id}
                   </span>
                 </div>
                 <h3 className="font-bold text-slate-800 text-lg leading-tight truncate">{slip.employee_name}</h3>
@@ -427,7 +443,7 @@ function BoletasPageContent() {
                     </div>
                     <div className="border border-black px-2 py-1 flex gap-4">
                       <span>Número :</span>
-                      <span className="font-bold">{selectedPayslip.employee_id}</span>
+                      <span className="font-bold">{selectedPayslip.employee_code || selectedPayslip.employee_id}</span>
                     </div>
                   </div>
 
@@ -441,7 +457,7 @@ function BoletasPageContent() {
 
                   {/* Datos Empleado */}
                   <div className="grid grid-cols-2 gap-2 mb-4 font-bold">
-                    <div>CODIGO : <span className="font-normal">{selectedPayslip.employee_id}</span></div>
+                    <div>CODIGO : <span className="font-normal">{selectedPayslip.employee_code || selectedPayslip.employee_id}</span></div>
                     <div>NOMBRE : <span className="font-normal uppercase">{selectedPayslip.employee_name}</span></div>
                     <div>CARGO : <span className="font-normal uppercase">{selectedPayslip.employee_cargo}</span></div>
                     <div>FECHA INGRESO : <span className="font-normal">{formatDate(selectedPayslip.employee_fecha_ingreso)}</span></div>

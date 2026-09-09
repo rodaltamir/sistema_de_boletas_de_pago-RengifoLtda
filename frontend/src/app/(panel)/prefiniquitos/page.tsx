@@ -5,6 +5,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Loader2, UserX, FileText, Calculator, Download, CheckCircle } from "lucide-react";
+import { getApiUrl } from "@/utils/api";
 
 interface Employee {
   id: number;
@@ -81,7 +82,7 @@ function PrefiniquitosPageContent() {
   useEffect(() => {
     if (!tenantSchema) return;
     setIsAdmin(localStorage.getItem("isAdmin") === "true");
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/employees/`)
+    fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/employees/`)
       .then(r => r.json())
       .then(data => {
         // Solo podemos desvincular empleados activos
@@ -113,7 +114,7 @@ function PrefiniquitosPageContent() {
     setCalcLoading(true);
     setSuccess(false);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/prefiniquitos/preview`, {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/prefiniquitos/preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -143,7 +144,7 @@ function PrefiniquitosPageContent() {
     
     setExportLoading(format);
     
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/prefiniquitos/export/${format}`, {
+    fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/prefiniquitos/export/${format}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -182,7 +183,7 @@ function PrefiniquitosPageContent() {
     
     setSaving(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://Rengifo_Ltda:8000"}/api/tenants/${tenantSchema}/prefiniquitos/`, {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/prefiniquitos/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
