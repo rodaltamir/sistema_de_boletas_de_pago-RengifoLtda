@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, Numeric, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Date, Numeric, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.db.base_class import Base
 from app.models.employee import Employee
@@ -43,6 +43,12 @@ class Prefiniquito(Base):
     
     # Otros
     otros_pagos = Column(Numeric(12, 2), default=0)
+    tipo_otros_pagos = Column(String(20), default="directo") # 'directo' | 'cuotas'
+    otros_pagos_detalle = Column(String(255), nullable=True)
+    cuotas_total = Column(Integer, default=1)
+    cuotas_pagadas = Column(Integer, default=0)
+    monto_cuota = Column(Numeric(12, 2), default=0)
+    cuotas_historial = Column(JSON, default=list)
     descuentos = Column(Numeric(12, 2), default=0)
     
     # Multa y Totales

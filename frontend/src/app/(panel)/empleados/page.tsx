@@ -187,14 +187,12 @@ function EmpleadosPageContent() {
           <p className="text-slate-900 font-medium mt-1">Administra el personal, sus cargos y salarios base.</p>
         </div>
         
-        {isAdmin && (
-          <button 
-            onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 px-5 py-2.5 bg-teal-500 text-white font-bold rounded-xl hover:bg-teal-600 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-          >
-            <UserPlus className="w-5 h-5" /> Agregar Empleado
-          </button>
-        )}
+        <button 
+          onClick={() => handleOpenModal()}
+          className="flex items-center gap-2 px-5 py-2.5 bg-teal-500 text-white font-bold rounded-xl hover:bg-teal-600 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+        >
+          <UserPlus className="w-5 h-5" /> Agregar Empleado
+        </button>
       </div>
 
       {/* Buscador y Tabla */}
@@ -224,13 +222,13 @@ function EmpleadosPageContent() {
                 <th className="p-4 font-semibold">Cargo</th>
                 <th className="p-4 font-semibold">F. Ingreso</th>
                 <th className="p-4 font-semibold">Haber Básico</th>
-                {isAdmin && <th className="p-4 font-semibold text-center">Acciones</th>}
+                <th className="p-4 font-semibold text-center">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 6 : 5} className="p-8 text-center text-slate-900 font-semibold">
+                  <td colSpan={6} className="p-8 text-center text-slate-900 font-semibold">
                     No se encontraron empleados registrados en esta empresa.
                   </td>
                 </tr>
@@ -253,26 +251,24 @@ function EmpleadosPageContent() {
                     <td className="p-4 font-bold text-slate-800">
                       Bs. {Number(emp.haber_basico).toLocaleString('es-BO', { minimumFractionDigits: 2 })}
                     </td>
-                    {isAdmin && (
-                      <td className="p-4">
-                        <div className="flex items-center justify-center gap-2">
-                          <button 
-                            onClick={() => handleOpenModal(emp)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                            title="Editar"
-                          >
-                            <Edit className="w-5 h-5" />
-                          </button>
-                          <button 
-                            onClick={() => handleDelete(emp.id)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                            title="Eliminar"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        </div>
-                      </td>
-                    )}
+                    <td className="p-4">
+                      <div className="flex items-center justify-center gap-2">
+                        <button 
+                          onClick={() => handleOpenModal(emp)}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                          title="Editar"
+                        >
+                          <Edit className="w-5 h-5" />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(emp.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}

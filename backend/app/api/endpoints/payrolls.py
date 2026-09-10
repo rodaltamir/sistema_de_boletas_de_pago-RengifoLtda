@@ -202,6 +202,22 @@ def close_payroll(schema_name: str, month: int, year: int, db: Session = Depends
     # Obtener el modelo completo para la respuesta (reutilizando lógica si es necesario, o solo devolviendo el payroll con payslips)
     return get_or_generate_payroll(schema_name, month, year, db)
 
+@router.post("/{month}/{year}/reopen", response_model=PayrollResponse)
+@router.post("/{month}/{year}/reopen/", response_model=PayrollResponse, include_in_schema=False)
+def reopen_payroll(schema_name: str, month: int, year: int, db: Session = Depends(get_tenant_db)):
+    payroll = db.query(Payroll).filter(Payroll.month == month, Payroll.year == year).first()
+    if not payroll:
+        raise HTTPException(status_code=404, detail="Planilla no encontrada")
+    
+    if not payroll.is_closed:
+        raise HTTPException(status_code=400, detail="La planilla ya se encuentra abierta.")
+        
+    payroll.is_closed = False
+    db.commit()
+    db.refresh(payroll)
+    
+    return get_or_generate_payroll(schema_name, month, year, db)
+
 
 from fastapi.responses import FileResponse
 from app.services.document_service import DocumentService
@@ -214,6 +230,17 @@ def export_payroll_excel(schema_name: str, month: int, year: int, db: Session = 
     payroll_dict = payroll.model_dump()
     payslips_dicts = []
     
+    t_emp_ci = payroll_dict.get('tenant_empleador_ci', '')
+    t_emp_ext = ""
+    if t_emp_ci:
+        digits_only = re.sub(r'\D', '', str(t_emp_ci))
+        emp_match = db.query(Employee).filter(
+            (Employee.documento_identidad == str(t_emp_ci).strip()) | 
+            (Employee.documento_identidad == digits_only)
+        ).first()
+        if emp_match and emp_match.ext_ci:
+            t_emp_ext = emp_match.ext_ci
+
     for slip in payroll.payslips:
         emp = db.query(Employee).filter(Employee.id == slip.employee_id).first()
         ap_paterno = emp.apellido_paterno if emp else (slip.employee_name.split(' ')[0] if ' ' in slip.employee_name else slip.employee_name)
@@ -254,7 +281,8 @@ def export_payroll_excel(schema_name: str, month: int, year: int, db: Session = 
             'empleador_nombres': payroll_dict.get('tenant_empleador_nombres', ''),
             'empleador_apellido_paterno': payroll_dict.get('tenant_empleador_apellido_paterno', ''),
             'empleador_apellido_materno': payroll_dict.get('tenant_empleador_apellido_materno', ''),
-            'empleador_ci': payroll_dict.get('tenant_empleador_ci', ''),
+            'empleador_ci': t_emp_ci,
+            'empleador_ext_ci': t_emp_ext,
             'mes': month,
             'anio': year
         })
@@ -272,6 +300,17 @@ def export_payroll_pdf(schema_name: str, month: int, year: int, db: Session = De
     payroll_dict = payroll.model_dump()
     payslips_dicts = []
     
+    t_emp_ci = payroll_dict.get('tenant_empleador_ci', '')
+    t_emp_ext = ""
+    if t_emp_ci:
+        digits_only = re.sub(r'\D', '', str(t_emp_ci))
+        emp_match = db.query(Employee).filter(
+            (Employee.documento_identidad == str(t_emp_ci).strip()) | 
+            (Employee.documento_identidad == digits_only)
+        ).first()
+        if emp_match and emp_match.ext_ci:
+            t_emp_ext = emp_match.ext_ci
+
     for slip in payroll.payslips:
         emp = db.query(Employee).filter(Employee.id == slip.employee_id).first()
         ap_paterno = emp.apellido_paterno if emp else (slip.employee_name.split(' ')[0] if ' ' in slip.employee_name else slip.employee_name)
@@ -312,7 +351,8 @@ def export_payroll_pdf(schema_name: str, month: int, year: int, db: Session = De
             'empleador_nombres': payroll_dict.get('tenant_empleador_nombres', ''),
             'empleador_apellido_paterno': payroll_dict.get('tenant_empleador_apellido_paterno', ''),
             'empleador_apellido_materno': payroll_dict.get('tenant_empleador_apellido_materno', ''),
-            'empleador_ci': payroll_dict.get('tenant_empleador_ci', ''),
+            'empleador_ci': t_emp_ci,
+            'empleador_ext_ci': t_emp_ext,
             'mes': month,
             'anio': year
         })
@@ -348,6 +388,7 @@ def export_payslip(schema_name: str, month: int, year: int, payslip_id: int, for
         'mes': month,
         'anio': year,
         'ci': target_slip.employee_ci,
+        'ext_ci': emp.ext_ci if emp else getattr(target_slip, "employee_ext_ci", None),
         'nombres': nombres,
         'apellido_paterno': ap_paterno,
         'apellido_materno': ap_materno,
@@ -364,7 +405,14 @@ def export_payslip(schema_name: str, month: int, year: int, payslip_id: int, for
         'otros_descuentos': getattr(target_slip, "otros_descuentos", 0),
         'total_ganado': target_slip.total_ganado,
         'total_descuentos': target_slip.total_descuentos,
-        'liquido_pagable': target_slip.liquido_pagable
+        'liquido_pagable': target_slip.liquido_pagable,
+        'dias_pagados': getattr(target_slip, "dias_pagados", 30),
+        'horas_pagadas': getattr(target_slip, "horas_pagadas", 240),
+        'bono_produccion': getattr(target_slip, "bono_produccion", 0),
+        'subsidio_frontera': getattr(target_slip, "subsidio_frontera", 0),
+        'trabajo_extraordinario': getattr(target_slip, "trabajo_extraordinario", 0),
+        'pago_dominical': getattr(target_slip, "pago_dominical", 0),
+        'otros_bonos': getattr(target_slip, "otros_bonos", 0)
     }
     
     file_path = DocumentService.generate_payslip(boleta_data, format)

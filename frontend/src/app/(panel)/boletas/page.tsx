@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Loader2, Eye, X, FileText, FileSpreadsheet, File, Users, Calculator, Edit, Lock, CheckCircle } from "lucide-react";
+import { Search, Loader2, Eye, X, FileText, FileSpreadsheet, File, Users, Calculator, Edit, Lock, Unlock, CheckCircle } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
 
 interface Payslip {
@@ -226,6 +226,8 @@ function BoletasPageContent() {
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [showReopenModal, setShowReopenModal] = useState(false);
+  const [reopening, setReopening] = useState(false);
 
   const handleConfirmPayroll = async () => {
     if (!tenantSchema || !month || !year) return;
@@ -246,6 +248,28 @@ function BoletasPageContent() {
       alert("Error de conexión");
     } finally {
       setConfirming(false);
+    }
+  };
+
+  const handleReopenPayroll = async () => {
+    if (!tenantSchema || !month || !year) return;
+    setReopening(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/reopen`, {
+        method: "POST"
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPayroll(data);
+        setShowReopenModal(false);
+      } else {
+        const errData = await res.json();
+        alert(errData.detail || "Error al desconfirmar la planilla");
+      }
+    } catch (e) {
+      alert("Error de conexión");
+    } finally {
+      setReopening(false);
     }
   };
 
@@ -354,10 +378,24 @@ function BoletasPageContent() {
               </span>
             )}
           </div>
-          {(!payroll.is_closed && isAdmin) && (
-            <button onClick={() => setShowConfirmModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white border border-blue-700 rounded-lg hover:bg-blue-700 transition shadow-sm font-semibold">
-              <Lock className="w-4 h-4" /> Confirmar Mes
-            </button>
+          {isAdmin && (
+            payroll.is_closed ? (
+              <button 
+                onClick={() => setShowReopenModal(true)} 
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-amber-600 text-white border border-amber-700 rounded-lg hover:bg-amber-700 transition shadow-sm font-semibold"
+                title="Desconfirmar y reabrir mes para edición"
+              >
+                <Unlock className="w-4 h-4" /> Desconfirmar Mes
+              </button>
+            ) : (
+              <button 
+                onClick={() => setShowConfirmModal(true)} 
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white border border-blue-700 rounded-lg hover:bg-blue-700 transition shadow-sm font-semibold"
+                title="Confirmar y bloquear mes"
+              >
+                <Lock className="w-4 h-4" /> Confirmar Mes
+              </button>
+            )
           )}
         </div>
       )}
@@ -374,7 +412,7 @@ function BoletasPageContent() {
               <div 
                 key={slip.id} 
                 onClick={() => {
-                  if (!payroll.is_closed && isAdmin) {
+                  if (!payroll.is_closed) {
                     handleOpenEdit(slip);
                   } else {
                     handleOpenBoleta(slip);
@@ -398,15 +436,34 @@ function BoletasPageContent() {
                     <p className="text-xs text-slate-900 font-semibold">Líquido Pagable</p>
                     <p className="font-bold text-emerald-600">Bs. {formatBs(slip.liquido_pagable)}</p>
                   </div>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenBoleta(slip);
-                    }}
-                    className="flex items-center gap-1.5 bg-slate-900 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-teal-600 transition"
-                  >
-                    <Eye className="w-4 h-4" /> Ver
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {!payroll.is_closed ? (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEdit(slip);
+                        }}
+                        className="flex items-center gap-1.5 bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-1.5 rounded-lg text-sm font-semibold hover:bg-teal-600 hover:text-white transition"
+                        title="Editar Descuentos / Bonos"
+                      >
+                        <Edit className="w-3.5 h-3.5" /> Editar
+                      </button>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-lg font-medium" title="Mes cerrado / ineditable">
+                        <Lock className="w-3 h-3" /> Cerrado
+                      </span>
+                    )}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenBoleta(slip);
+                      }}
+                      className="flex items-center gap-1.5 bg-slate-900 text-white px-2.5 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-600 transition"
+                      title="Ver Boleta"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Ver
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -424,6 +481,18 @@ function BoletasPageContent() {
               <div className="bg-slate-100 p-3 flex justify-between items-center border-b border-slate-200">
                 <h3 className="font-bold text-slate-700 flex items-center gap-2"><FileText className="w-5 h-5 text-teal-600"/> Previsualización de Boleta</h3>
                 <div className="flex items-center gap-2">
+                  {!payroll.is_closed ? (
+                    <button 
+                      onClick={() => handleOpenEdit(selectedPayslip)} 
+                      className="text-xs flex items-center gap-1 bg-teal-600 text-white px-2.5 py-1 rounded hover:bg-teal-700 font-semibold transition shadow-sm"
+                    >
+                      <Edit className="w-3 h-3"/> Editar Valores
+                    </button>
+                  ) : (
+                    <span className="text-xs flex items-center gap-1 bg-slate-800 text-slate-200 px-2.5 py-1 rounded font-semibold border border-slate-700">
+                      <Lock className="w-3 h-3 text-amber-400"/> Boleta Bloqueada (Lectura)
+                    </span>
+                  )}
                   <button onClick={() => handleExportBoleta("pdf", selectedPayslip.id)} className="text-xs flex items-center gap-1 bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700"><FileText className="w-3 h-3"/> PDF</button>
                   <button onClick={() => handleExportBoleta("excel", selectedPayslip.id)} className="text-xs flex items-center gap-1 bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"><FileSpreadsheet className="w-3 h-3"/> Excel</button>
                   
@@ -763,6 +832,35 @@ function BoletasPageContent() {
                   <button onClick={handleConfirmPayroll} disabled={confirming} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 flex items-center gap-2 transition disabled:opacity-50">
                     {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                     Sí, Confirmar Planilla
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Desconfirmar Planilla */}
+      <AnimatePresence>
+        {showReopenModal && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+              <div className="p-6">
+                <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-4">
+                  <Unlock className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Desconfirmar Mes</h3>
+                <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+                  ¿Estás seguro de que deseas <strong>desconfirmar y reabrir</strong> la planilla y boletas de {MONTHS[month - 1]} {year}?
+                  Se habilitará nuevamente la edición de boletas, ingresos y descuentos para todos los usuarios.
+                </p>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button onClick={() => setShowReopenModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition">
+                    Cancelar
+                  </button>
+                  <button onClick={handleReopenPayroll} disabled={reopening} className="px-4 py-2 bg-amber-600 text-white font-semibold rounded-lg hover:bg-amber-700 flex items-center gap-2 transition disabled:opacity-50">
+                    {reopening ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
+                    Sí, Desconfirmar Mes
                   </button>
                 </div>
               </div>
