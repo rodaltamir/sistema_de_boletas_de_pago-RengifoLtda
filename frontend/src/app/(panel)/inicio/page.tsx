@@ -22,6 +22,7 @@ interface TenantData {
     icon: string | null;
   };
   total_employees: number;
+  total_desvinculados?: number;
   total_payrolls: number;
   total_departments: number;
   current_smn: number;
@@ -181,13 +182,22 @@ function InicioDashboardContent() {
 
       {/* Grid Superior: Tarjetas de Métricas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition">
-          <div className="p-4 bg-teal-50 rounded-xl">
-            <Users className="w-8 h-8 text-teal-600" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-500">Empleados Registrados</p>
-            <h3 className="text-2xl font-bold text-slate-800">{data.total_employees}</h3>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between hover:shadow-md transition">
+          <div className="flex items-center gap-4">
+            <div className="p-4 bg-teal-50 rounded-xl">
+              <Users className="w-8 h-8 text-teal-600" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-500">Personal de la Empresa</p>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <h3 className="text-2xl font-bold text-slate-800">{data.total_employees} <span className="text-xs font-bold text-emerald-600">Activos</span></h3>
+                {Number(data.total_desvinculados || 0) > 0 && (
+                  <span className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                    {data.total_desvinculados} Desvinculados
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

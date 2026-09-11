@@ -53,7 +53,17 @@ def get_employees(schema_name: str, db: Session = Depends(get_tenant_db)):
 def create_employee(schema_name: str, employee: EmployeeCreate, db: Session = Depends(get_tenant_db)):
     db_employee = db.query(Employee).filter(Employee.documento_identidad == employee.documento_identidad).first()
     if db_employee:
-        raise HTTPException(status_code=400, detail='El documento de identidad ya está registrado.')
+        if not db_employee.is_active:
+            # Reactivar y actualizar datos
+            update_data = employee.dict(exclude_unset=True)
+            for key, value in update_data.items():
+                setattr(db_employee, key, value)
+            db_employee.is_active = True
+            db.commit()
+            db.refresh(db_employee)
+            return db_employee
+        else:
+            raise HTTPException(status_code=400, detail='El documento de identidad ya está registrado y se encuentra activo.')
     
     new_emp = Employee(**employee.dict())
     db.add(new_emp)
@@ -105,6 +115,18 @@ def update_employee(schema_name: str, emp_id: int, employee: EmployeeUpdate, db:
         db.commit()
     # --------------------------------------------------
 
+    return db_emp
+
+@router.post('/{emp_id}/reactivate', response_model=EmployeeResponse)
+@router.post('/{emp_id}/reactivate/', response_model=EmployeeResponse, include_in_schema=False)
+def reactivate_employee(schema_name: str, emp_id: int, db: Session = Depends(get_tenant_db)):
+    db_emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not db_emp:
+        raise HTTPException(status_code=404, detail='Empleado no encontrado')
+    
+    db_emp.is_active = True
+    db.commit()
+    db.refresh(db_emp)
     return db_emp
 
 @router.delete('/{emp_id}')

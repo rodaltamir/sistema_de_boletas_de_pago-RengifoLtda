@@ -6,7 +6,7 @@ from sqlalchemy import text
 from app.db.session import SessionLocal, engine
 from app.models.employee import Employee
 from app.models.prefiniquito import Prefiniquito
-from app.schemas.prefiniquito import PrefiniquitoCreate, PrefiniquitoResponse, PrefiniquitoBase, CuotaPagarRequest
+from app.schemas.prefiniquito import PrefiniquitoCreate, PrefiniquitoResponse, PrefiniquitoBase, CuotaPagarRequest, PagoRegistrarRequest
 from app.services.prefiniquito_service import calculate_prefiniquito, calculate_time_worked
 from app.services.document_service import DocumentService
 from app.models.tenant import Tenant
@@ -77,29 +77,25 @@ def preview_prefiniquito(
     )
 
     cuotas_proyectadas = []
+    cuotas_pagadas_count = 0
     monto_cuota = 0.0
     if tipo_otros == "cuotas" and otros_monto > 0:
-        monto_cuota = round(otros_monto / cuotas_total, 2)
+        abono_ini = min(float(data.abono_inicial or 0.0), otros_monto)
         fecha_base = data.fecha_retiro
-        for i in range(1, cuotas_total + 1):
-            mes = (fecha_base.month - 1 + i) % 12 + 1
-            anio = fecha_base.year + (fecha_base.month - 1 + i) // 12
-            dia = min(fecha_base.day, 28)
-            f_prog = f"{dia:02d}/{mes:02d}/{anio}"
-            c_monto = monto_cuota if i < cuotas_total else round(otros_monto - (monto_cuota * (cuotas_total - 1)), 2)
+        f_base_str = fecha_base.strftime("%d/%m/%Y") if hasattr(fecha_base, 'strftime') else str(fecha_base)
+        
+        if abono_ini > 0:
             cuotas_proyectadas.append({
-                "numero": i,
-                "monto": c_monto,
-                "fecha_programada": f_prog,
-                "fecha_pago": None,
-                "estado": "pendiente",
-                "comprobante": None,
-                "observacion": None
+                "numero": 1,
+                "monto": round(abono_ini, 2),
+                "fecha_pago": f_base_str,
+                "estado": "pagado",
+                "comprobante": data.comprobante_abono_inicial or "Abono Inicial",
+                "observacion": "Abono inicial al momento de la desvinculación"
             })
+            cuotas_pagadas_count = 1
     else:
         tipo_otros = "directo"
-        cuotas_total = 1
-        monto_cuota = otros_monto
     
     return {
         "employee_id": emp.id,
@@ -110,7 +106,7 @@ def preview_prefiniquito(
         "tipo_otros_pagos": tipo_otros,
         "otros_pagos_detalle": data.otros_pagos_detalle,
         "cuotas_total": cuotas_total,
-        "cuotas_pagadas": 0,
+        "cuotas_pagadas": cuotas_pagadas_count,
         "monto_cuota": monto_cuota,
         "cuotas_historial": cuotas_proyectadas,
         "descuentos": data.descuentos or 0.0,
@@ -254,6 +250,81 @@ def revertir_cuota(
     db.refresh(pref)
     return pref
 
+@router.post("/{id}/pagos", response_model=PrefiniquitoResponse)
+def registrar_pago(
+    schema_name: str,
+    id: int,
+    data: PagoRegistrarRequest,
+    db: Session = Depends(get_tenant_db)
+):
+    pref = db.query(Prefiniquito).filter(Prefiniquito.id == id).first()
+    if not pref:
+        raise HTTPException(status_code=404, detail="Prefiniquito no encontrado")
+        
+    historial = list(pref.cuotas_historial or [])
+    
+    f_pago = data.fecha_pago
+    if f_pago and "-" in f_pago:
+        parts = f_pago.split("-")
+        if len(parts) == 3 and len(parts[0]) == 4:
+            f_pago = f"{parts[2]}/{parts[1]}/{parts[0]}"
+    elif not f_pago:
+        f_pago = date.today().strftime("%d/%m/%Y")
+        
+    nuevo_num = len(historial) + 1
+    nuevo_pago = {
+        "numero": nuevo_num,
+        "monto": float(data.monto),
+        "fecha_pago": f_pago,
+        "metodo_pago": data.metodo_pago or "Efectivo",
+        "comprobante": data.comprobante or "",
+        "observacion": data.observacion or f"Abono #{nuevo_num}",
+        "estado": "pagado"
+    }
+    historial.append(nuevo_pago)
+    
+    pref.cuotas_pagadas = len(historial)
+    pref.cuotas_historial = historial
+    flag_modified(pref, "cuotas_historial")
+    db.add(pref)
+    db.commit()
+    db.refresh(pref)
+    return pref
+
+@router.delete("/{id}/pagos/{pago_num}", response_model=PrefiniquitoResponse)
+def eliminar_pago(
+    schema_name: str,
+    id: int,
+    pago_num: int,
+    db: Session = Depends(get_tenant_db)
+):
+    pref = db.query(Prefiniquito).filter(Prefiniquito.id == id).first()
+    if not pref:
+        raise HTTPException(status_code=404, detail="Prefiniquito no encontrado")
+        
+    historial = list(pref.cuotas_historial or [])
+    target = next((p for p in historial if p.get("numero") == pago_num), None)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"Abono #{pago_num} no encontrado")
+        
+    historial = [p for p in historial if p.get("numero") != pago_num]
+    for idx, p in enumerate(historial):
+        p["numero"] = idx + 1
+        
+    pref.cuotas_pagadas = len(historial)
+    pref.cuotas_historial = historial
+    flag_modified(pref, "cuotas_historial")
+    db.add(pref)
+    db.commit()
+    db.refresh(pref)
+    return pref
+    pref.cuotas_historial = historial
+    flag_modified(pref, "cuotas_historial")
+    db.add(pref)
+    db.commit()
+    db.refresh(pref)
+    return pref
+
 def _build_export_data(schema_name: str, emp: Employee, preview_or_pref: dict):
     # Get tenant details using public schema
     engine_public = engine.execution_options(schema_translate_map={'tenant': 'public'})
@@ -274,6 +345,11 @@ def _build_export_data(schema_name: str, emp: Employee, preview_or_pref: dict):
     inicio_gestion = date(fecha_retiro_obj.year, 1, 1)
     inicio_aguinaldo = max(inicio_gestion, emp.fecha_ingreso)
     tiempo_ag = calculate_time_worked(inicio_aguinaldo, fecha_retiro_obj)
+    
+    historial = preview_or_pref.get("cuotas_historial", []) or []
+    pagos_realizados = [p for p in historial if (p.get("estado") == "pagado" or p.get("monto"))]
+    total_pagado = sum(float(p.get("monto", 0) or 0) for p in pagos_realizados)
+    saldo = max(0.0, float(preview_or_pref.get("otros_pagos", 0) or 0) - total_pagado)
     
     export_data = {
         "nombre_trabajador": f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().replace("  ", " "),
@@ -297,10 +373,12 @@ def _build_export_data(schema_name: str, emp: Employee, preview_or_pref: dict):
         "otros_pagos": float(preview_or_pref["otros_pagos"]),
         "tipo_otros_pagos": preview_or_pref.get("tipo_otros_pagos", "directo"),
         "otros_pagos_detalle": preview_or_pref.get("otros_pagos_detalle"),
-        "cuotas_total": preview_or_pref.get("cuotas_total", 1),
-        "cuotas_pagadas": preview_or_pref.get("cuotas_pagadas", 0),
+        "cuotas_total": int(preview_or_pref.get("cuotas_total", 1) or 1),
+        "cuotas_pagadas": len(pagos_realizados),
         "monto_cuota": float(preview_or_pref.get("monto_cuota", 0.0) or 0.0),
-        "cuotas_historial": preview_or_pref.get("cuotas_historial", []),
+        "cuotas_historial": historial,
+        "total_pagado": total_pagado,
+        "saldo_pendiente": saldo,
         "descuentos": float(preview_or_pref["descuentos"]),
         "total_calculo": float(preview_or_pref["total_calculo"]),
         "multa_30": float(preview_or_pref["multa_30"]),

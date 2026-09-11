@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, Plus, Edit, Trash2, X, Search, Loader2, UserPlus, AlertCircle } from "lucide-react";
+import { Users, Plus, Edit, Trash2, X, Search, Loader2, UserPlus, AlertCircle, CheckCircle, UserX, RotateCcw } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
 
 interface Employee {
@@ -31,6 +31,8 @@ function EmpleadosPageContent() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"todos" | "activos" | "desvinculados">("todos");
+  const [reactivatingId, setReactivatingId] = useState<number | null>(null);
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
@@ -140,6 +142,30 @@ function EmpleadosPageContent() {
     }
   };
 
+  const handleReactivate = async (emp: Employee) => {
+    const fullName = `${emp.nombres} ${emp.apellido_paterno}`;
+    if (!confirm(`¿Está seguro de REACTIVAR a ${fullName}? El empleado volverá a estar ACTIVO en el sistema y disponible para generar planillas y boletas.`)) return;
+    
+    setReactivatingId(emp.id);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/employees/${emp.id}/reactivate`, {
+        method: "POST"
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
+        alert(`¡Empleado ${fullName} reactivado exitosamente! Ahora está activo.`);
+      } else {
+        alert("Error al reactivar el empleado.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error de conexión al reactivar el empleado.");
+    } finally {
+      setReactivatingId(null);
+    }
+  };
+
   const handleDelete = async (id: number) => {
     if (!confirm("¿Estás seguro de eliminar este empleado? Esta acción no se puede deshacer.")) return;
     
@@ -157,11 +183,21 @@ function EmpleadosPageContent() {
     }
   };
 
-  const filteredEmployees = employees.filter(emp => 
-    emp.nombres.toLowerCase().includes(search.toLowerCase()) ||
-    (emp.apellido_paterno + " " + (emp.apellido_materno || "")).toLowerCase().includes(search.toLowerCase()) ||
-    emp.documento_identidad.includes(search)
-  );
+  const activeCount = employees.filter(e => e.is_active).length;
+  const inactiveCount = employees.filter(e => !e.is_active).length;
+
+  const filteredEmployees = employees.filter(emp => {
+    const term = search.toLowerCase();
+    const fullName = `${emp.apellido_paterno} ${emp.apellido_materno || ""} ${emp.nombres}`.toLowerCase();
+    const ci = emp.documento_identidad.toLowerCase();
+    const code = (emp.internal_code || "").toLowerCase();
+    const matchesSearch = fullName.includes(term) || ci.includes(term) || code.includes(term);
+    
+    if (!matchesSearch) return false;
+    if (filterStatus === "activos") return emp.is_active;
+    if (filterStatus === "desvinculados") return !emp.is_active;
+    return true;
+  });
 
   if (loading) {
     return (
@@ -198,17 +234,41 @@ function EmpleadosPageContent() {
       {/* Buscador y Tabla */}
       <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
         
-        {/* Barra de Búsqueda */}
-        <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-          <div className="relative max-w-md">
+        {/* Barra de Búsqueda y Filtros de Estado */}
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+          <div className="relative max-w-md flex-1">
             <Search className="absolute left-4 top-3 text-slate-900 font-semibold w-5 h-5" />
             <input 
               type="text" 
-              placeholder="Buscar por nombre, apellido o CI..."
+              placeholder="Buscar por nombre, apellido, CI o código..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+              className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white text-sm"
             />
+          </div>
+
+          {/* Filtros: Todos / Activos / Desvinculados */}
+          <div className="flex bg-slate-200/80 p-1 rounded-xl gap-1">
+            <button
+              onClick={() => setFilterStatus("todos")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${filterStatus === "todos" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Todos ({employees.length})
+            </button>
+            <button
+              onClick={() => setFilterStatus("activos")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${filterStatus === "activos" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              Activos ({activeCount})
+            </button>
+            <button
+              onClick={() => setFilterStatus("desvinculados")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${filterStatus === "desvinculados" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              <UserX className="w-3.5 h-3.5" />
+              Desvinculados ({inactiveCount})
+            </button>
           </div>
         </div>
 
@@ -222,13 +282,14 @@ function EmpleadosPageContent() {
                 <th className="p-4 font-semibold">Cargo</th>
                 <th className="p-4 font-semibold">F. Ingreso</th>
                 <th className="p-4 font-semibold">Haber Básico</th>
+                <th className="p-4 font-semibold text-center">Estado</th>
                 <th className="p-4 font-semibold text-center">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-900 font-semibold">
+                  <td colSpan={7} className="p-8 text-center text-slate-900 font-semibold">
                     No se encontraron empleados registrados en esta empresa.
                   </td>
                 </tr>
@@ -251,8 +312,32 @@ function EmpleadosPageContent() {
                     <td className="p-4 font-bold text-slate-800">
                       Bs. {Number(emp.haber_basico).toLocaleString('es-BO', { minimumFractionDigits: 2 })}
                     </td>
+                    <td className="p-4 text-center">
+                      {emp.is_active ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          Activo
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-sm">
+                          <UserX className="w-3.5 h-3.5 text-rose-600" />
+                          Desvinculado
+                        </span>
+                      )}
+                    </td>
                     <td className="p-4">
                       <div className="flex items-center justify-center gap-2">
+                        {!emp.is_active && isAdmin && (
+                          <button 
+                            onClick={() => handleReactivate(emp)}
+                            disabled={reactivatingId === emp.id}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm disabled:opacity-50"
+                            title="Reactivar / Reincorporar a la empresa"
+                          >
+                            {reactivatingId === emp.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                            Reactivar
+                          </button>
+                        )}
                         <button 
                           onClick={() => handleOpenModal(emp)}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
@@ -260,13 +345,15 @@ function EmpleadosPageContent() {
                         >
                           <Edit className="w-5 h-5" />
                         </button>
-                        <button 
-                          onClick={() => handleDelete(emp.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
+                        {isAdmin && (
+                          <button 
+                            onClick={() => handleDelete(emp.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
+                            title="Eliminar permanentemente"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

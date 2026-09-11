@@ -114,6 +114,7 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
             slip.employee_nacionalidad = emp.nacionalidad or 'BOLIVIANO'
             slip.employee_fecha_nacimiento = str(emp.fecha_nacimiento)
             slip.employee_sexo = getattr(emp, 'sexo', None) or getattr(emp, 'genero', None) or 'M'
+            slip.employee_is_active = emp.is_active
             
     # Ordenar por número de código de menor a mayor (el menor número primero y el más alto al final)
     response_data.payslips.sort(

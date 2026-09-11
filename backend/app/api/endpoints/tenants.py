@@ -93,6 +93,9 @@ def get_tenant_dashboard(schema_name: str, db: Session = Depends(get_db)):
             res_emp = conn.execute(text(f'SELECT COUNT(*) FROM "{schema_name}".employees WHERE is_active = true'))
             total_employees = res_emp.scalar() or 0
             
+            res_desv = conn.execute(text(f'SELECT COUNT(*) FROM "{schema_name}".employees WHERE is_active = false'))
+            total_desvinculados = res_desv.scalar() or 0
+            
             res_payrolls = conn.execute(text(f'SELECT COUNT(*) FROM "{schema_name}".payrolls'))
             total_payrolls = res_payrolls.scalar() or 0
             
@@ -101,12 +104,14 @@ def get_tenant_dashboard(schema_name: str, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Error contando estadisticas: {e}")
         total_employees = 0
+        total_desvinculados = 0
         total_payrolls = 0
         total_departments = 0
 
     return {
         "tenant": tenant,
         "total_employees": total_employees,
+        "total_desvinculados": total_desvinculados,
         "total_payrolls": total_payrolls,
         "total_departments": total_departments,
         "current_smn": current_smn,

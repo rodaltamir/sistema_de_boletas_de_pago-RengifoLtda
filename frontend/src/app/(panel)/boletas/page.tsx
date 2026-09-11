@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Loader2, Eye, X, FileText, FileSpreadsheet, File, Users, Calculator, Edit, Lock, Unlock, CheckCircle } from "lucide-react";
+import { Search, Loader2, Eye, X, FileText, FileSpreadsheet, File, Users, Calculator, Edit, Lock, Unlock, CheckCircle, UserX } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
 
 interface Payslip {
@@ -18,6 +18,7 @@ interface Payslip {
   employee_nacionalidad?: string;
   employee_fecha_nacimiento?: string;
   employee_sexo?: string;
+  employee_is_active?: boolean;
   
   dias_pagados: number;
   horas_pagadas: number;
@@ -424,9 +425,16 @@ function BoletasPageContent() {
                   <div className="bg-teal-50 text-teal-600 p-3 rounded-xl group-hover:bg-teal-500 group-hover:text-white transition">
                     <Users className="w-6 h-6" />
                   </div>
-                  <span className="text-xs font-bold text-slate-900 bg-slate-200 px-2 py-1 rounded-md">
-                    Cód. {slip.employee_code || slip.employee_id}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-900 bg-slate-200 px-2 py-1 rounded-md">
+                      Cód. {slip.employee_code || slip.employee_id}
+                    </span>
+                    {slip.employee_is_active === false && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 shadow-sm">
+                        <UserX className="w-3 h-3" /> Desvinculado
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <h3 className="font-bold text-slate-800 text-lg leading-tight truncate">{slip.employee_name}</h3>
                 <p className="text-slate-900 font-medium text-sm mt-1">{slip.employee_cargo}</p>

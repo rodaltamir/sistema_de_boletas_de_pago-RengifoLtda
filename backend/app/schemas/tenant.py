@@ -35,6 +35,7 @@ class TenantResponse(BaseModel):
 class TenantDashboardResponse(BaseModel):
     tenant: TenantResponse
     total_employees: int
+    total_desvinculados: Optional[int] = 0
     total_payrolls: int
     total_departments: int
     current_smn: float

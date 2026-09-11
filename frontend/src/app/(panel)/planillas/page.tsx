@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calculator, Search, Loader2, Download, Edit, Eye, X, FileText, FileSpreadsheet, File, Plus, Minus, Lock, Unlock, CheckCircle } from "lucide-react";
+import { Calculator, Search, Loader2, Download, Edit, Eye, X, FileText, FileSpreadsheet, File, Plus, Minus, Lock, Unlock, CheckCircle, UserX } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
 
 interface Payslip {
@@ -15,6 +15,7 @@ interface Payslip {
   employee_ci: string;
   employee_cargo: string;
   employee_fecha_ingreso: string;
+  employee_is_active?: boolean;
   
   dias_pagados: number;
   horas_pagadas: number;
@@ -341,6 +342,11 @@ function PlanillasPageContent() {
                               Cód. {slip.employee_code || slip.employee_id}
                             </span>
                             <p className="font-bold text-slate-900">{slip.employee_name}</p>
+                            {slip.employee_is_active === false && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 shadow-sm">
+                                <UserX className="w-3 h-3" /> Desvinculado
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-slate-500 mt-0.5">CI: {slip.employee_ci}</p>
                         </td>

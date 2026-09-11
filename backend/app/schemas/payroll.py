@@ -48,6 +48,7 @@ class PayslipResponse(PayslipBase):
     employee_nacionalidad: Optional[str] = None
     employee_fecha_nacimiento: Optional[str] = None
     employee_sexo: Optional[str] = None
+    employee_is_active: Optional[bool] = True
 
     class Config:
         from_attributes = True

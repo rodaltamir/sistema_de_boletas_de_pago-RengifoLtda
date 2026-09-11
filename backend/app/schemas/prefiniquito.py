@@ -16,6 +16,13 @@ class CuotaPagarRequest(BaseModel):
     comprobante: Optional[str] = None
     observacion: Optional[str] = None
 
+class PagoRegistrarRequest(BaseModel):
+    monto: float
+    fecha_pago: Optional[str] = None
+    metodo_pago: Optional[str] = None
+    comprobante: Optional[str] = None
+    observacion: Optional[str] = None
+
 class EmployeeSimple(BaseModel):
     id: int
     nombres: str
@@ -71,6 +78,9 @@ class PrefiniquitoCreate(BaseModel):
     tipo_otros_pagos: Optional[str] = "directo"
     otros_pagos_detalle: Optional[str] = None
     cuotas_total: Optional[int] = 1
+    abono_inicial: Optional[float] = 0.0
+    comprobante_abono_inicial: Optional[str] = None
+    metodo_abono_inicial: Optional[str] = "Efectivo"
     descuentos: Optional[float] = 0.0
     aplicar_multa: Optional[bool] = False
 
