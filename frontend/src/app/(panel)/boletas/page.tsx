@@ -409,13 +409,8 @@ function BoletasPageContent() {
             sortedPayslips.map((slip) => (
               <div 
                 key={slip.id} 
-                onClick={() => {
-                  if (!payroll.is_closed) {
-                    handleOpenEdit(slip);
-                  } else {
-                    handleOpenBoleta(slip);
-                  }
-                }}
+                onClick={() => handleOpenBoleta(slip)}
+                title="Haz clic para ver y exportar la boleta de pago"
                 className="bg-white border border-slate-100 shadow-sm rounded-2xl p-5 hover:shadow-md hover:border-teal-300 hover:ring-2 hover:ring-teal-100 transition group cursor-pointer"
               >
                 <div className="flex items-start justify-between mb-4">
@@ -458,16 +453,6 @@ function BoletasPageContent() {
                         <Lock className="w-3 h-3" /> Cerrado
                       </span>
                     )}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenBoleta(slip);
-                      }}
-                      className="flex items-center gap-1.5 bg-slate-900 text-white px-2.5 py-1.5 rounded-lg text-sm font-medium hover:bg-teal-600 transition"
-                      title="Ver Boleta"
-                    >
-                      <Eye className="w-3.5 h-3.5" /> Ver
-                    </button>
                   </div>
                 </div>
               </div>

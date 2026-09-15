@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, Plus, Edit, Trash2, X, Search, Loader2, UserPlus, AlertCircle, CheckCircle, UserX, RotateCcw } from "lucide-react";
+import { Users, Plus, Edit, Trash2, X, Search, Loader2, UserPlus, AlertCircle, CheckCircle, UserX, RotateCcw, Eye } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
 
 interface Employee {
@@ -33,6 +33,7 @@ function EmpleadosPageContent() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"todos" | "activos" | "desvinculados">("todos");
   const [reactivatingId, setReactivatingId] = useState<number | null>(null);
+  const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
@@ -339,6 +340,13 @@ function EmpleadosPageContent() {
                           </button>
                         )}
                         <button 
+                          onClick={() => setViewingEmployee(emp)}
+                          className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition"
+                          title="Ver todos los datos del empleado"
+                        >
+                          <Eye className="w-5 h-5" />
+                        </button>
+                        <button 
                           onClick={() => handleOpenModal(emp)}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
                           title="Editar"
@@ -551,6 +559,174 @@ function EmpleadosPageContent() {
                 </button>
               </div>
 
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: VER DETALLES COMPLETOS DEL EMPLEADO */}
+      <AnimatePresence>
+        {viewingEmployee && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-slate-900 border border-white/10 rounded-[2rem] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            >
+              {/* Encabezado */}
+              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-slate-900/50">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-teal-500/20 text-teal-400 rounded-xl">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">
+                      Detalles del Empleado
+                    </h2>
+                    <p className="text-sm text-slate-400">
+                      Información personal y laboral registrada en el sistema.
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setViewingEmployee(null)}
+                  className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/5 transition"
+                  title="Cerrar"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Contenido */}
+              <div className="p-6 overflow-y-auto space-y-6">
+                {/* Resumen Superior */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <span className="text-xs font-semibold text-teal-400 tracking-wider uppercase">
+                      {viewingEmployee.internal_code ? `Código: ${viewingEmployee.internal_code}` : `ID: #${viewingEmployee.id}`}
+                    </span>
+                    <h3 className="text-2xl font-bold text-white mt-0.5">
+                      {`${viewingEmployee.apellido_paterno} ${viewingEmployee.apellido_materno || ""} ${viewingEmployee.nombres}`.trim().replace(/  +/g, " ").toUpperCase()}
+                    </h3>
+                    <p className="text-slate-300 font-medium text-sm mt-1">
+                      <span className="px-2.5 py-0.5 rounded-lg bg-teal-500/20 text-teal-300 border border-teal-500/30 text-xs font-semibold">
+                        {viewingEmployee.ocupacion}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    {viewingEmployee.is_active ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm">
+                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        Activo en Planilla
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 shadow-sm">
+                        <UserX className="w-4 h-4 text-rose-400" />
+                        Desvinculado
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Sección 1: Datos Personales */}
+                <div>
+                  <h4 className="text-xs font-bold text-teal-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-teal-400"></span>
+                    Datos Personales
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                      <span className="text-xs text-slate-400 font-medium">Documento de Identidad (C.I.)</span>
+                      <p className="text-base font-bold text-white mt-0.5">
+                        {viewingEmployee.documento_identidad} {viewingEmployee.ext_ci ? `(${viewingEmployee.ext_ci})` : ''}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                      <span className="text-xs text-slate-400 font-medium">Nacionalidad</span>
+                      <p className="text-base font-bold text-white mt-0.5">
+                        {viewingEmployee.nacionalidad || "Boliviana"}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                      <span className="text-xs text-slate-400 font-medium">Fecha de Nacimiento</span>
+                      <p className="text-base font-bold text-white mt-0.5">
+                        {formatDate(viewingEmployee.fecha_nacimiento)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                      <span className="text-xs text-slate-400 font-medium">Género / Sexo</span>
+                      <p className="text-base font-bold text-white mt-0.5">
+                        {viewingEmployee.sexo === "M" || viewingEmployee.sexo === "V" ? "Masculino / Varón" : "Femenino / Mujer"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sección 2: Información Laboral y Salarial */}
+                <div>
+                  <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    Información Laboral
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                      <span className="text-xs text-slate-400 font-medium">Cargo / Ocupación</span>
+                      <p className="text-base font-bold text-white mt-0.5">
+                        {viewingEmployee.ocupacion}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                      <span className="text-xs text-slate-400 font-medium">Haber Básico (Sueldo Mensual)</span>
+                      <p className="text-base font-bold text-emerald-400 mt-0.5">
+                        Bs. {Number(viewingEmployee.haber_basico).toLocaleString('es-BO', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                      <span className="text-xs text-slate-400 font-medium">Fecha de Ingreso</span>
+                      <p className="text-base font-bold text-white mt-0.5">
+                        {formatDate(viewingEmployee.fecha_ingreso)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                      <span className="text-xs text-slate-400 font-medium">Código Interno</span>
+                      <p className="text-base font-bold text-white mt-0.5">
+                        {viewingEmployee.internal_code || "No asignado"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botonera Inferior */}
+              <div className="p-6 border-t border-white/10 bg-slate-900/40 flex justify-between items-center gap-4 mt-auto">
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    const empToEdit = viewingEmployee;
+                    setViewingEmployee(null);
+                    handleOpenModal(empToEdit);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition flex items-center gap-2 shadow-sm text-sm"
+                >
+                  <Edit className="w-4 h-4" /> Editar Datos
+                </button>
+
+                <button 
+                  type="button" 
+                  onClick={() => setViewingEmployee(null)}
+                  className="px-6 py-2.5 rounded-xl border border-white/20 text-white hover:bg-white/10 transition text-sm font-semibold"
+                >
+                  Cerrar
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
