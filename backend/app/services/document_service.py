@@ -41,7 +41,14 @@ class DocumentService:
                     tc.protection = copy(cell.protection)
                     tc.alignment = copy(cell.alignment)
         for col_letter, col_dim in source.column_dimensions.items():
-            target.column_dimensions[col_letter].width = col_dim.width
+            col_min = getattr(col_dim, 'min', None)
+            col_max = getattr(col_dim, 'max', None)
+            if col_min is not None and col_max is not None:
+                for c_idx in range(col_min, col_max + 1):
+                    let = get_column_letter(c_idx)
+                    target.column_dimensions[let].width = col_dim.width
+            else:
+                target.column_dimensions[col_letter].width = col_dim.width
         for row_idx, row_dim in source.row_dimensions.items():
             target.row_dimensions[row_idx].height = row_dim.height
         for m in list(source.merged_cells.ranges):
@@ -54,22 +61,15 @@ class DocumentService:
         target.print_options.horizontalCentered = source.print_options.horizontalCentered
         target.page_margins = copy(source.page_margins)
 
-        # Copiar imágenes y dibujos de la hoja origen a la hoja destino
+        # Copiar imágenes conservando su TwoCellAnchor y dimensiones exactas
         if hasattr(source, '_images') and source._images:
             for img in source._images:
                 try:
                     from openpyxl.drawing.image import Image as OpenPyXLImage
-                    from openpyxl.utils import get_column_letter
                     new_img = OpenPyXLImage(img.ref)
-                    new_img.width = img.width
-                    new_img.height = img.height
-                    if hasattr(img, 'anchor') and hasattr(img.anchor, '_from'):
-                        col_idx = img.anchor._from.col + 1
-                        row_idx = img.anchor._from.row + 1
-                        coord = f"{get_column_letter(col_idx)}{row_idx}"
-                    else:
-                        coord = "B2"
-                    target.add_image(new_img, coord)
+                    if hasattr(img, 'anchor') and img.anchor is not None:
+                        new_img.anchor = deepcopy(img.anchor)
+                    target.add_image(new_img)
                 except Exception:
                     pass
 
@@ -1075,29 +1075,40 @@ class DocumentService:
             ws = wb.active
             ws.title = worker_sheet
 
-        # Asegurar título oficial centrado y de tamaño adecuado para que no se entrecorte en ninguna pantalla
+        # Asegurar título oficial centrado y de tamaño original adecuado
         ws['C3'] = "PRELIQUIDACIÓN O PREFINIQUITO"
-        ws['C3'].font = openpyxl.styles.Font(name="Arial", size=13.5, bold=True)
+        ws['C3'].font = openpyxl.styles.Font(name="Arial", size=16.0, bold=True)
         ws['C3'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
 
-        # Garantizar que los dos logos oficiales estén siempre presentes en la hoja
-        if not getattr(ws, '_images', None) or len(ws._images) == 0:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            escudo_path = os.path.join(base_dir, "templates", "images", "prefiniquito_escudo.png")
-            min_path = os.path.join(base_dir, "templates", "images", "prefiniquito_ministerio.png")
+        # Garantizar que los dos logos oficiales estén siempre presentes y perfectamente proporcionados sin deformación
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        escudo_path = os.path.join(base_dir, "templates", "images", "prefiniquito_escudo.png")
+        min_path = os.path.join(base_dir, "templates", "images", "prefiniquito_ministerio.png")
+        
+        from openpyxl.drawing.image import Image as OpenPyXLImage
+        from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, AnchorMarker
+        from openpyxl.drawing.xdr import XDRPositiveSize2D
+        from openpyxl.utils.units import pixels_to_EMU
+
+        # Reemplazar imágenes existentes para garantizar proporciones exactas y que no se deformen verticalmente
+        ws._images = []
+        if os.path.exists(escudo_path):
+            img_escudo = OpenPyXLImage(escudo_path)
+            img_escudo.width = 54
+            img_escudo.height = 56
+            _from_esc = AnchorMarker(col=1, colOff=pixels_to_EMU(35), row=1, rowOff=pixels_to_EMU(10))
+            size_esc = XDRPositiveSize2D(pixels_to_EMU(54), pixels_to_EMU(56))
+            img_escudo.anchor = OneCellAnchor(_from=_from_esc, ext=size_esc)
+            ws.add_image(img_escudo)
             
-            from openpyxl.drawing.image import Image as OpenPyXLImage
-            if os.path.exists(escudo_path):
-                img_escudo = OpenPyXLImage(escudo_path)
-                img_escudo.width = 110
-                img_escudo.height = 72
-                ws.add_image(img_escudo, 'B2')
-                
-            if os.path.exists(min_path):
-                img_min = OpenPyXLImage(min_path)
-                img_min.width = 115
-                img_min.height = 72
-                ws.add_image(img_min, 'G2')
+        if os.path.exists(min_path):
+            img_min = OpenPyXLImage(min_path)
+            img_min.width = 68
+            img_min.height = 56
+            _from_min = AnchorMarker(col=6, colOff=pixels_to_EMU(28), row=1, rowOff=pixels_to_EMU(10))
+            size_min = XDRPositiveSize2D(pixels_to_EMU(68), pixels_to_EMU(56))
+            img_min.anchor = OneCellAnchor(_from=_from_min, ext=size_min)
+            ws.add_image(img_min)
         
         format_bs = lambda x: f"{float(x):,.2f} Bs".replace(",", "X").replace(".", ",").replace("X", ".") if x is not None else "0,00 Bs"
         
@@ -1201,19 +1212,32 @@ class DocumentService:
                 ws.unmerge_cells('D28:E28')
             except Exception:
                 pass
-            ws.merge_cells('D28:F28')
+            try:
+                ws.unmerge_cells('D28:F28')
+            except Exception:
+                pass
+            try:
+                ws.unmerge_cells('C28:F28')
+            except Exception:
+                pass
+            ws.merge_cells('C28:F28')
+            ws.row_dimensions[28].height = 15.0
             if saldo <= 0:
-                ws['D28'] = f"ABONADO: {format_bs(total_pagado)} ({len(pagos_realizados)} aportes)  |  TOTALMENTE LIQUIDADO (100%)"
+                ws['C28'] = f"   ABONADO: {format_bs(total_pagado)} ({len(pagos_realizados)} aportes)  |  TOTALMENTE LIQUIDADO (100%)"
             else:
-                ws['D28'] = f"ABONADO: {format_bs(total_pagado)} ({len(pagos_realizados)} aportes)  |  SALDO PENDIENTE (DEBE): {format_bs(saldo)}"
-            ws['D28'].font = openpyxl.styles.Font(name="Arial", size=8, italic=True)
+                ws['C28'] = f"   ABONADO: {format_bs(total_pagado)} ({len(pagos_realizados)} aportes)  |  SALDO PENDIENTE (DEBE): {format_bs(saldo)}"
+            ws['C28'].font = openpyxl.styles.Font(name="Arial", size=8.5, italic=True)
+            ws['C28'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
             
-            # Detalle en el recuadro interior (filas 35-37 sin romper la página)
+            # Detalle en el recuadro interior (filas 35-37 con altura adecuada y alineación centrada)
             if pagos_realizados:
                 try: ws.merge_cells('C35:F35')
                 except Exception: pass
                 ws['C35'] = "HISTORIAL DE ABONOS / APORTES REALIZADOS:"
                 ws['C35'].font = openpyxl.styles.Font(name="Arial", size=8, bold=True)
+                ws['C35'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                ws.row_dimensions[35].height = 14.0
+
                 cuotas_line1 = []
                 cuotas_line2 = []
                 for p_idx, item in enumerate(pagos_realizados[:6]):
@@ -1230,22 +1254,32 @@ class DocumentService:
                     try: ws.merge_cells('C36:F36')
                     except Exception: pass
                     ws['C36'] = " | ".join(cuotas_line1)
-                    ws['C36'].font = openpyxl.styles.Font(name="Arial", size=7)
+                    ws['C36'].font = openpyxl.styles.Font(name="Arial", size=7.5)
+                    ws['C36'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                    ws.row_dimensions[36].height = 14.0
                 if cuotas_line2:
                     try: ws.merge_cells('C37:F37')
                     except Exception: pass
                     ws['C37'] = " | ".join(cuotas_line2)
-                    ws['C37'].font = openpyxl.styles.Font(name="Arial", size=7)
+                    ws['C37'].font = openpyxl.styles.Font(name="Arial", size=7.5)
+                    ws['C37'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                    ws.row_dimensions[37].height = 14.0
             else:
                 try: ws.merge_cells('C35:F35')
                 except Exception: pass
                 ws['C35'] = f"MODALIDAD EN CUOTAS: Saldo pendiente total de {format_bs(saldo)} (Sin abonos registrados)"
                 ws['C35'].font = openpyxl.styles.Font(name="Arial", size=8, italic=True)
+                ws['C35'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                ws.row_dimensions[35].height = 14.0
         else:
             ws['D27'] = "OTROS PAGOS (PAGO ÚNICO)" if otros_monto > 0 else "OTROS PAGOS"
             set_val('F27', format_bs(otros_monto))
+            ws['C28'] = ""
             ws['D28'] = ""
             set_val('F28', "")
+            ws['C35'] = ""
+            ws['C36'] = ""
+            ws['C37'] = ""
         
         # Descuentos
         set_val('F30', format_bs(data.get('descuentos', 0)))
