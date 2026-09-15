@@ -178,12 +178,10 @@ function BoletasPageContent() {
 
   const handleOpenEdit = (slip: Payslip) => {
     setSelectedPayslip(slip);
-    // Para simplificar, la UI pide horas_pagadas como "Horas pagadas (Día)", el backend asume un total mensual (e.g. 240). 
-    // Usaremos el valor diario en el formulario y lo multiplicaremos si es necesario o simplemente lo pasaremos. 
-    // Según la captura, "Horas pagadas (Día)" es 8.
+    // Horas pagadas (Día) es 8 (horas diarias de trabajo, sin multiplicar por días)
     setEditForm({
       dias_pagados: Number(slip.dias_pagados) || 30,
-      horas_pagadas: (Number(slip.horas_pagadas) / (Number(slip.dias_pagados)||30)) || 8,
+      horas_pagadas: Number(slip.horas_pagadas) > 24 ? Math.round(Number(slip.horas_pagadas) / (Number(slip.dias_pagados) || 30)) : (Number(slip.horas_pagadas) || 8),
       bono_produccion: Number(slip.bono_produccion),
       subsidio_frontera: Number(slip.subsidio_frontera) || 0,
       trabajo_extraordinario: Number(slip.trabajo_extraordinario) || 0,
@@ -200,10 +198,9 @@ function BoletasPageContent() {
     if (!selectedPayslip || !tenantSchema || !payroll) return;
     setSaving(true);
     try {
-      // El backend espera horas totales mensuales
       const payload = {
         ...editForm,
-        horas_pagadas: editForm.horas_pagadas * editForm.dias_pagados
+        horas_pagadas: editForm.horas_pagadas
       };
       const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/payrolls/slip/${selectedPayslip.id}`, {
         method: "PUT",
@@ -782,14 +779,14 @@ function BoletasPageContent() {
                         <tbody className="bg-white text-slate-900 font-medium">
                           <tr className="hover:bg-blue-50 transition">
                             <td className="border border-slate-300 p-2">1</td>
-                            <td className="border border-slate-300 p-2">{selectedPayslip.employee_ci}</td>
+                            <td className="border border-slate-300 p-2">{selectedPayslip.employee_ci ? selectedPayslip.employee_ci.replace(/\s*-\s*/, ' ') : ''}</td>
                             <td className="border border-slate-300 p-2 uppercase font-bold text-slate-900">{selectedPayslip.employee_name}</td>
                             <td className="border border-slate-300 p-2">{selectedPayslip.employee_nacionalidad || 'BOLIVIANO'}</td>
                             <td className="border border-slate-300 p-2">{formatDate(selectedPayslip.employee_fecha_nacimiento)}</td>
                             <td className="border border-slate-300 p-2">{selectedPayslip.employee_sexo || 'M'}</td>
                             <td className="border border-slate-300 p-2 uppercase">{selectedPayslip.employee_cargo}</td>
                             <td className="border border-slate-300 p-2">{formatDate(selectedPayslip.employee_fecha_ingreso)}</td>
-                            <td className="border border-slate-300 p-2 bg-slate-50 font-bold">{Math.round((Number(selectedPayslip.horas_pagadas) / (Number(selectedPayslip.dias_pagados)||30)) * 10) / 10 || 8}</td>
+                            <td className="border border-slate-300 p-2 bg-slate-50 font-bold">{Number(selectedPayslip.horas_pagadas) > 24 ? Math.round(Number(selectedPayslip.horas_pagadas) / (Number(selectedPayslip.dias_pagados) || 30)) : (Number(selectedPayslip.horas_pagadas) || 8)}</td>
                             <td className="border border-slate-300 p-2 bg-slate-50 font-bold">{selectedPayslip.dias_pagados}</td>
                             
                             <td className="border border-slate-300 p-2 text-right">{formatBs(selectedPayslip.haber_basico)}</td>

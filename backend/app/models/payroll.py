@@ -29,7 +29,7 @@ class Payslip(Base):
     employee_id = Column(Integer, ForeignKey("tenant.employees.id"), nullable=False)
     
     dias_pagados = Column(Integer, default=30)
-    horas_pagadas = Column(Numeric(5, 2), default=240) # 8h * 30d
+    horas_pagadas = Column(Numeric(5, 2), default=8) # Horas trabajadas por día (ej. 8)
     
     # INGRESOS
     haber_basico = Column(Numeric(12, 2), nullable=False)

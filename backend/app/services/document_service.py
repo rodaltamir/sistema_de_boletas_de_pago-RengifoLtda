@@ -6,8 +6,123 @@ from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from datetime import datetime
 import re
+import unicodedata
+from copy import copy
 
 class DocumentService:
+
+    @staticmethod
+    def _slugify(text: str) -> str:
+        if not text:
+            return "general"
+        text = unicodedata.normalize('NFKD', str(text)).encode('ASCII', 'ignore').decode('utf-8')
+        text = re.sub(r'[^\w\s-]', '', text).strip().lower()
+        text = re.sub(r'[-\s]+', '_', text)
+        return text or "general"
+
+    @staticmethod
+    def _safe_sheet_title(name: str) -> str:
+        if not name:
+            return "Hoja1"
+        clean = re.sub(r'[\\/*?:\[\]]', '', str(name)).strip()
+        clean = clean[:31].strip()
+        return clean or "Hoja1"
+
+    @staticmethod
+    def _copy_sheet_structure(source, target):
+        for row in source.iter_rows():
+            for cell in row:
+                tc = target.cell(row=cell.row, column=cell.column, value=cell.value)
+                if cell.has_style:
+                    tc.font = copy(cell.font)
+                    tc.border = copy(cell.border)
+                    tc.fill = copy(cell.fill)
+                    tc.number_format = copy(cell.number_format)
+                    tc.protection = copy(cell.protection)
+                    tc.alignment = copy(cell.alignment)
+        for col_letter, col_dim in source.column_dimensions.items():
+            target.column_dimensions[col_letter].width = col_dim.width
+        for row_idx, row_dim in source.row_dimensions.items():
+            target.row_dimensions[row_idx].height = row_dim.height
+        for m in list(source.merged_cells.ranges):
+            target.merge_cells(str(m))
+        target.page_setup.orientation = source.page_setup.orientation
+        target.page_setup.paperSize = source.page_setup.paperSize
+        target.sheet_properties.pageSetUpPr.fitToPage = source.sheet_properties.pageSetUpPr.fitToPage
+        target.page_setup.fitToWidth = source.page_setup.fitToWidth
+        target.page_setup.fitToHeight = source.page_setup.fitToHeight
+        target.print_options.horizontalCentered = source.print_options.horizontalCentered
+        target.page_margins = copy(source.page_margins)
+
+        # Copiar imágenes y dibujos de la hoja origen a la hoja destino
+        if hasattr(source, '_images') and source._images:
+            for img in source._images:
+                try:
+                    from openpyxl.drawing.image import Image as OpenPyXLImage
+                    from openpyxl.utils import get_column_letter
+                    new_img = OpenPyXLImage(img.ref)
+                    new_img.width = img.width
+                    new_img.height = img.height
+                    if hasattr(img, 'anchor') and hasattr(img.anchor, '_from'):
+                        col_idx = img.anchor._from.col + 1
+                        row_idx = img.anchor._from.row + 1
+                        coord = f"{get_column_letter(col_idx)}{row_idx}"
+                    else:
+                        coord = "B2"
+                    target.add_image(new_img, coord)
+                except Exception:
+                    pass
+
+    @staticmethod
+    def get_payroll_master_path(empresa_slug: str, year: int | str) -> str:
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "planillas"))
+        return os.path.join(exports_dir, f"planilla_sueldos_{empresa_slug}_{year}.xlsx")
+
+    @staticmethod
+    def get_payslip_master_path(emp_slug: str, empresa_slug: str, year: int | str) -> str:
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "boletas"))
+        return os.path.join(exports_dir, f"boleta_pago_{emp_slug}_{empresa_slug}_{year}.xlsx")
+
+    @staticmethod
+    def get_prefiniquito_master_path(empresa_slug: str, anio: int | str) -> str:
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "prefiniquitos"))
+        return os.path.join(exports_dir, f"prefiniquitos_{empresa_slug}_{anio}.xlsx")
+
+    @staticmethod
+    def get_file_last_update_date(file_path: str, default_dt: datetime = None) -> str:
+        """
+        Retorna la fecha de la última actualización de un archivo en formato DD-MM-YYYY.
+        Si el archivo no existe o falla, retorna la fecha actual.
+        """
+        if file_path and os.path.exists(file_path):
+            try:
+                mtime = os.path.getmtime(file_path)
+                return datetime.fromtimestamp(mtime).strftime("%d-%m-%Y")
+            except Exception:
+                pass
+        dt = default_dt or datetime.now()
+        return dt.strftime("%d-%m-%Y")
+
+    @staticmethod
+    def _safe_save_workbook(wb, target_path: str) -> str:
+        """
+        Intenta guardar el libro en target_path. Si el archivo está bloqueado por el sistema operativo
+        o una aplicación abierta (como Excel en Windows: PermissionError / OSError),
+        guarda una copia en una carpeta temporal para que la operación de descarga o generación
+        continúe sin fallar con Internal Server Error.
+        Retorna la ruta efectiva donde se guardó el archivo.
+        """
+        try:
+            wb.save(target_path)
+            return target_path
+        except (PermissionError, OSError):
+            dir_name = os.path.dirname(target_path)
+            base_name = os.path.basename(target_path)
+            temp_dir = os.path.join(dir_name, "temp")
+            os.makedirs(temp_dir, exist_ok=True)
+            fallback_path = os.path.join(temp_dir, f"temp_{uuid.uuid4().hex[:8]}_{base_name}")
+            wb.save(fallback_path)
+            return fallback_path
 
     @staticmethod
     def _set_cell_value(ws, coord, value):
@@ -62,9 +177,10 @@ class DocumentService:
         return val_str
 
     @staticmethod
-    def _convert_excel_to_pdf(excel_path: str, pdf_path: str):
+    def _convert_excel_to_pdf(excel_path: str, pdf_path: str) -> str:
         """
         Convierte un archivo Excel a PDF. En Windows usa win32com, en Linux usa LibreOffice.
+        Retorna la ruta del archivo PDF generado.
         """
         if os.name == 'nt':
             import win32com.client
@@ -75,8 +191,17 @@ class DocumentService:
             excel.DisplayAlerts = False
             try:
                 wb = excel.Workbooks.Open(os.path.abspath(excel_path))
-                wb.ExportAsFixedFormat(0, os.path.abspath(pdf_path))
+                target_pdf = os.path.abspath(pdf_path)
+                try:
+                    wb.ExportAsFixedFormat(0, target_pdf)
+                except Exception:
+                    outdir = os.path.dirname(target_pdf)
+                    temp_dir = os.path.join(outdir, "temp")
+                    os.makedirs(temp_dir, exist_ok=True)
+                    target_pdf = os.path.join(temp_dir, f"temp_{uuid.uuid4().hex[:8]}_{os.path.basename(target_pdf)}")
+                    wb.ExportAsFixedFormat(0, target_pdf)
                 wb.Close(False)
+                return target_pdf
             finally:
                 excel.Quit()
                 pythoncom.CoUninitialize()
@@ -84,6 +209,7 @@ class DocumentService:
             import subprocess
             # LibreOffice headless mode
             outdir = os.path.dirname(os.path.abspath(pdf_path))
+            os.makedirs(outdir, exist_ok=True)
             subprocess.run([
                 'libreoffice', '--headless', '--convert-to', 'pdf',
                 '--outdir', outdir, os.path.abspath(excel_path)
@@ -94,19 +220,26 @@ class DocumentService:
             generated_pdf = os.path.join(outdir, f"{base_name}.pdf")
             
             # Rename it to the target pdf_path if it differs
-            if generated_pdf != os.path.abspath(pdf_path):
-                if os.path.exists(pdf_path):
-                    os.remove(pdf_path)
-                os.rename(generated_pdf, pdf_path)
+            target_pdf = os.path.abspath(pdf_path)
+            if generated_pdf != target_pdf:
+                try:
+                    if os.path.exists(target_pdf):
+                        os.remove(target_pdf)
+                    os.rename(generated_pdf, target_pdf)
+                    return target_pdf
+                except Exception:
+                    return generated_pdf
+            return target_pdf
 
     @staticmethod
-    def _convert_pdf_to_docx(pdf_path: str, docx_path: str):
+    def _convert_pdf_to_docx(pdf_path: str, docx_path: str) -> str:
         """
         Convierte un archivo PDF a DOCX utilizando LibreOffice Writer con writer_pdf_import.
         Esto mantiene exactamente la disposición visual, tablas y logos de la plantilla.
         """
         import subprocess
         outdir = os.path.dirname(os.path.abspath(docx_path))
+        os.makedirs(outdir, exist_ok=True)
         subprocess.run([
             'libreoffice', '--headless', '--infilter=writer_pdf_import',
             '--convert-to', 'docx',
@@ -116,28 +249,55 @@ class DocumentService:
         base_name = os.path.splitext(os.path.basename(pdf_path))[0]
         generated_docx = os.path.join(outdir, f"{base_name}.docx")
         
-        if generated_docx != os.path.abspath(docx_path):
-            if os.path.exists(docx_path):
-                os.remove(docx_path)
-            if os.path.exists(generated_docx):
-                os.rename(generated_docx, docx_path)
+        target_docx = os.path.abspath(docx_path)
+        if generated_docx != target_docx:
+            try:
+                if os.path.exists(target_docx):
+                    os.remove(target_docx)
+                if os.path.exists(generated_docx):
+                    os.rename(generated_docx, target_docx)
+                return target_docx
+            except Exception:
+                return generated_docx
+        return target_docx
 
     @staticmethod
-    def generate_payslip(boleta_data: dict, output_format: str = "xlsx") -> str:
+    def generate_payslip(boleta_data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
         """
         Genera la Boleta de Pago en Excel con dos boletas idénticas enmarcadas (recuadro grande)
-        en una sola página Carta Vertical (Superior e Inferior) y opcionalmente la convierte a PDF.
+        en una sola página Carta Vertical (Superior e Inferior) en un archivo organizado multi-hoja por mes
+        (boleta_pago_{empleado}_{empresa}_{anio}.xlsx) y opcionalmente exporta la hoja del mes a PDF.
         """
-        unique_id = uuid.uuid4().hex[:8]
         exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "boletas"))
         os.makedirs(exports_dir, exist_ok=True)
         
-        output_xlsx = os.path.join(exports_dir, f"boleta_{unique_id}.xlsx")
-        output_pdf = os.path.join(exports_dir, f"boleta_{unique_id}.pdf")
+        emp_nombres = boleta_data.get('nombres') or ''
+        emp_pat = boleta_data.get('apellido_paterno') or ''
+        emp_mat = boleta_data.get('apellido_materno') or ''
+        full_emp_name = f"{emp_pat} {emp_mat} {emp_nombres}".strip().replace("  ", " ").upper()
+        if not full_emp_name:
+            full_emp_name = str(boleta_data.get('employee_name', '') or '').upper()
+        emp_slug = DocumentService._slugify(full_emp_name) if full_emp_name else "empleado"
+
+        empresa = str(boleta_data.get('empresa_nombre', '') or '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
+
+        mes_int = int(boleta_data.get('mes', 0))
+        MESES = {1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO", 7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"}
+        mes_nombre = MESES.get(mes_int, f"MES_{mes_int}")
+        anio = str(boleta_data.get('anio', datetime.now().year))
         
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Boleta"
+        output_xlsx = os.path.join(exports_dir, f"boleta_pago_{emp_slug}_{empresa_slug}_{anio}.xlsx")
+
+        if os.path.exists(output_xlsx):
+            wb = openpyxl.load_workbook(output_xlsx)
+            if mes_nombre in wb.sheetnames:
+                wb.remove(wb[mes_nombre])
+            ws = wb.create_sheet(title=mes_nombre)
+        else:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = mes_nombre
         
         # Configuración de página: Portrait Letter, exactamente 1 página vertical, centrada
         ws.sheet_properties.pageSetUpPr.fitToPage = True
@@ -175,16 +335,9 @@ class DocumentService:
         font_bold_lg = Font(name="Arial", size=10, bold=True)
         font_regular = Font(name="Arial", size=8.5)
 
-        # Datos del empleado y empresa
-        empresa = str(boleta_data.get('empresa_nombre', '') or '').upper()
         patronal = str(boleta_data.get('numero_patronal', '') or '')
         nit = str(boleta_data.get('nit', '') or '')
         internal_code = str(boleta_data.get('internal_code', '') or '').replace('"', '').replace("'", "")
-        
-        mes_int = int(boleta_data.get('mes', 0))
-        MESES = {1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO", 7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"}
-        mes_nombre = MESES.get(mes_int, str(mes_int))
-        anio = boleta_data.get('anio', '')
         
         # Fecha fin de mes en formato DD-MM-YYYY
         dias_mes = 28 if mes_int == 2 else (30 if mes_int in [4, 6, 9, 11] else 31)
@@ -465,34 +618,49 @@ class DocumentService:
         # 3. Renderizar Boleta Inferior (Copia Idéntica)
         _render_boleta(start_r=23)
 
-        wb.save(output_xlsx)
+        # Ordenar sheets cronológicamente por mes
+        MESES_ORDEN = {
+            "ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4,
+            "MAYO": 5, "JUNIO": 6, "JULIO": 7, "AGOSTO": 8,
+            "SEPTIEMBRE": 9, "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12
+        }
+        wb._sheets.sort(key=lambda s: MESES_ORDEN.get(s.title.upper(), 99))
+        wb.active = ws
+        saved_xlsx = DocumentService._safe_save_workbook(wb, output_xlsx)
         wb.close()
         
         if output_format == "pdf":
-            DocumentService._convert_excel_to_pdf(output_xlsx, output_pdf)
-            os.remove(output_xlsx)
+            mes_slug = DocumentService._slugify(mes_nombre)
+            output_pdf = os.path.join(exports_dir, f"boleta_pago_{emp_slug}_{empresa_slug}_{mes_slug}_{anio}.pdf")
+            wb_single = openpyxl.load_workbook(saved_xlsx)
+            for sname in wb_single.sheetnames:
+                if sname != mes_nombre:
+                    wb_single.remove(wb_single[sname])
+            temp_xlsx = os.path.join(exports_dir, f"_temp_{uuid.uuid4().hex[:8]}.xlsx")
+            wb_single.save(temp_xlsx)
+            wb_single.close()
+            try:
+                output_pdf = DocumentService._convert_excel_to_pdf(temp_xlsx, output_pdf)
+            finally:
+                if os.path.exists(temp_xlsx):
+                    try: os.remove(temp_xlsx)
+                    except Exception: pass
             return output_pdf
             
-        return output_xlsx
+        return saved_xlsx
 
     @staticmethod
-    def generate_payroll_excel(payroll_data: list[dict], output_format: str = "xlsx") -> str:
+    def generate_payroll_excel(payroll_data: list[dict], output_format: str = "xlsx", schema_name: str = None) -> str:
         """
-        Genera un archivo Excel con la Planilla de Sueldos y opcionalmente a PDF.
+        Genera un archivo Excel con la Planilla de Sueldos organizada multi-hoja por mes
+        (planilla_sueldos_{empresa}_{anio}.xlsx) y opcionalmente exporta la hoja del mes a PDF.
         """
         template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "templates", "excel", "plantilla_de_sueldos_y_salarios.xlsx"))
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Plantilla no encontrada en {template_path}")
             
-        unique_id = uuid.uuid4().hex[:8]
         exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "planillas"))
         os.makedirs(exports_dir, exist_ok=True)
-        
-        output_xlsx = os.path.join(exports_dir, f"planilla_{unique_id}.xlsx")
-        output_pdf = os.path.join(exports_dir, f"planilla_{unique_id}.pdf")
-        
-        wb = openpyxl.load_workbook(template_path)
-        ws = wb.active
         
         # Ordenar datos por código de menor a mayor (1, 2, 3... N)
         def _sort_code_key(item):
@@ -507,18 +675,37 @@ class DocumentService:
 
         payroll_data = sorted(payroll_data, key=_sort_code_key)
 
+        empresa_raw = payroll_data[0].get('empresa_nombre', '') if payroll_data else (schema_name or "empresa")
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa_raw)
+        mes_int = int(payroll_data[0].get('mes', 0)) if payroll_data else 1
+        MESES = {1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO", 7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"}
+        mes_nombre = MESES.get(mes_int, f"MES_{mes_int}")
+        anio = str(payroll_data[0].get('anio', datetime.now().year) if payroll_data else datetime.now().year)
+        
+        output_xlsx = os.path.join(exports_dir, f"planilla_sueldos_{empresa_slug}_{anio}.xlsx")
+
+        if os.path.exists(output_xlsx):
+            wb = openpyxl.load_workbook(output_xlsx)
+            if mes_nombre in wb.sheetnames:
+                wb.remove(wb[mes_nombre])
+            wb_tpl = openpyxl.load_workbook(template_path)
+            ws = wb.create_sheet(title=mes_nombre)
+            DocumentService._copy_sheet_structure(wb_tpl.active, ws)
+            wb_tpl.close()
+        else:
+            wb = openpyxl.load_workbook(template_path)
+            ws = wb.active
+            ws.title = mes_nombre
+
         if payroll_data:
             empresa = payroll_data[0].get('empresa_nombre', '')
             nit = payroll_data[0].get('nit', '')
             patronal = payroll_data[0].get('numero_patronal', '')
-            mes_int = int(payroll_data[0].get('mes', 0))
-            MESES = {1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO", 7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"}
-            anio = payroll_data[0].get('anio', '')
             
             DocumentService._set_cell_value(ws, 'D2', str(empresa).upper())
             try:
                 ws['D2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
-                ws['D2'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
+                ws['D2'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
 
             DocumentService._set_cell_value(ws, 'G3', str(nit))
@@ -538,18 +725,37 @@ class DocumentService:
                 ws['P3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
                 ws['P3'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
-            
-            # Recuperar texto original si existe o poner default
-            base_text = "CORRESPONDIENTE AL MES DE"
-            DocumentService._set_cell_value(ws, 'U6', f"{base_text} {MESES.get(mes_int, str(mes_int))} DE {anio}")
+
+            # Título principal y moneda centrados y sin cortes
             try:
-                ws['U6'].font = openpyxl.styles.Font(name="Arial", size=9.5, bold=True)
-                ws['U6'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+                ws['G5'].font = openpyxl.styles.Font(name="Arial", size=15, bold=True)
+                ws['G5'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=False)
+                ws['G6'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
+                ws['G6'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=False)
+            except: pass
+            
+            # Periodo correspondiente al mes (celda principal combinada S6:X6)
+            base_text = "CORRESPONDIENTE AL MES DE"
+            DocumentService._set_cell_value(ws, 'S6', f"{base_text} {MESES.get(mes_int, str(mes_int))} DE {anio}")
+            try:
+                ws['S6'].font = openpyxl.styles.Font(name="Arial", size=9.5, bold=True)
+                ws['S6'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=False)
             except: pass
             
             # Paginacion
             DocumentService._set_cell_value(ws, 'V2', 1)
             DocumentService._set_cell_value(ws, 'X2', 1)
+
+        # Altura de filas superiores y cabeceras para expandir verticalmente
+        ws.row_dimensions[2].height = 20
+        ws.row_dimensions[3].height = 20
+        ws.row_dimensions[4].height = 12
+        ws.row_dimensions[5].height = 30
+        ws.row_dimensions[6].height = 20
+        ws.row_dimensions[7].height = 12
+        ws.row_dimensions[8].height = 22
+        ws.row_dimensions[9].height = 20
+        ws.row_dimensions[10].height = 20
 
         # 1. Limpiar rangos combinados residuales en filas >= 11 para evitar corrupción de openpyxl
         for m in list(ws.merged_cells.ranges):
@@ -573,9 +779,13 @@ class DocumentService:
 
         for i, emp in enumerate(payroll_data):
             row = start_row + i
-            ws.row_dimensions[row].height = 29
+            ws.row_dimensions[row].height = 34  # Expandido verticalmente para filas de empleados
 
-            doc_id = str(emp.get('documento_identidad', '') or '')
+            # Documento de identidad sin guion: solo número y complemento/extensión separados por un espacio
+            raw_doc = str(emp.get('documento_identidad', '') or '').strip()
+            doc_id = re.sub(r'\s*-\s*', ' ', raw_doc).strip()
+            doc_id = re.sub(r'\s+', ' ', doc_id)
+
             ap_pat = str(emp.get('apellido_paterno', '') or '')
             ap_mat = str(emp.get('apellido_materno', '') or '')
             nombres = str(emp.get('nombres', '') or '')
@@ -585,7 +795,17 @@ class DocumentService:
             sexo = str(emp.get('sexo', '') or '')
             ocupacion = str(emp.get('ocupacion', '') or '')
             fecha_ing = DocumentService.format_date_dmy(emp.get('fecha_ingreso', '') or '')
-            horas = emp.get('horas_pagadas', 240)
+
+            # Horas pagadas: exactamente 8 (o lo que esté en DB/datos del empleado), sin multiplicar por 30
+            horas_raw = emp.get('horas_pagadas', 8)
+            try:
+                h_num = float(horas_raw) if horas_raw is not None else 8.0
+                if h_num > 24:
+                    d_val = float(emp.get('dias_pagados', 30) or 30)
+                    h_num = round(h_num / d_val) if d_val > 0 else 8.0
+                horas = int(h_num) if h_num.is_integer() else round(h_num, 2)
+            except:
+                horas = 8
             dias = emp.get('dias_pagados', 30)
 
             hb = float(emp.get('haber_basico', 0) or 0)
@@ -611,8 +831,8 @@ class DocumentService:
                 6: (sexo, 'center', None),
                 7: (ocupacion, 'left', None),
                 8: (fecha_ing, 'center', None),
-                9: (horas, 'right', None),
-                10: (dias, 'right', None),
+                9: (horas, 'center', None),
+                10: (dias, 'center', None),
                 11: (hb, 'right', '#,##0.00'),
                 12: (ba, 'right', '#,##0.00'),
                 13: (bp, 'right', '#,##0.00'),
@@ -643,7 +863,7 @@ class DocumentService:
 
         # Fila TOTALES (Combinada de A hasta J)
         tot_row = start_row + max(num_employees, 1)
-        ws.row_dimensions[tot_row].height = 26
+        ws.row_dimensions[tot_row].height = 32  # Expandido verticalmente
         ws.merge_cells(start_row=tot_row, start_column=1, end_row=tot_row, end_column=10)
         c_tot = ws.cell(row=tot_row, column=1)
         c_tot.value = 'TOTALES'
@@ -671,32 +891,14 @@ class DocumentService:
         ws.cell(row=tot_row, column=24).border = border_all
 
         # Espaciadores antes de las firmas
-        ws.row_dimensions[tot_row + 1].height = 16
-        ws.row_dimensions[tot_row + 2].height = 16
+        ws.row_dimensions[tot_row + 1].height = 24
+        ws.row_dimensions[tot_row + 2].height = 24
 
-        # Líneas de puntos de firma (D a I, L a O, R a U)
+        # Fila superior de firmas: valores respectivos arriba de las líneas (sin puntos)
         sig_line = tot_row + 3
-        ws.row_dimensions[sig_line].height = 26
-        dot1 = '…..................................................................................................................................'
-        dot2 = '…................................................................................................'
-        dot3 = '…................................................................................................'
+        ws.row_dimensions[sig_line].height = 38  # Espacio vertical para firmar y posicionar datos
 
-        ws.merge_cells(start_row=sig_line, start_column=4, end_row=sig_line, end_column=9)
-        c = ws.cell(row=sig_line, column=4, value=dot1)
-        c.font = openpyxl.styles.Font(name='Arial', size=10)
-        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='bottom')
-
-        ws.merge_cells(start_row=sig_line, start_column=12, end_row=sig_line, end_column=15)
-        c = ws.cell(row=sig_line, column=12, value=dot2)
-        c.font = openpyxl.styles.Font(name='Arial', size=10)
-        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='bottom')
-
-        ws.merge_cells(start_row=sig_line, start_column=18, end_row=sig_line, end_column=21)
-        c = ws.cell(row=sig_line, column=18, value=dot3)
-        c.font = openpyxl.styles.Font(name='Arial', size=10)
-        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='bottom')
-
-        # Reemplazar directamente los títulos por los datos del empleador (Nombre y CI con extensión) y FIRMA
+        # Fila inferior de firmas: títulos descriptivos
         sig_lbl = tot_row + 4
         ws.row_dimensions[sig_lbl].height = 24
 
@@ -707,60 +909,89 @@ class DocumentService:
         emp_ext = str(payroll_data[0].get('empleador_ext_ci') or '' if payroll_data else '').strip()
 
         full_emp_name = f"{emp_pat} {emp_mat} {emp_nombres}".strip().replace("  ", " ").upper()
-        if not full_emp_name:
-            full_emp_name = "NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL"
 
         if emp_ci:
             if emp_ext and emp_ext.upper() not in emp_ci.upper():
-                ci_display = f"{emp_ci} - {emp_ext.upper()}"
+                ci_display = f"{emp_ci} {emp_ext.upper()}"
             else:
                 ci_display = emp_ci
-            if not ci_display.upper().startswith("CI"):
-                ci_display = f"CI: {ci_display}"
+            ci_display = re.sub(r'^(CI|C\.I\.?)\s*:?\s*', '', ci_display, flags=re.IGNORECASE)
+            ci_display = re.sub(r'\s*-\s*', ' ', ci_display).strip()
+            ci_display = re.sub(r'\s+', ' ', ci_display)
         else:
-            ci_display = "N° DE DOCUMENTO DE IDENTIDAD"
+            ci_display = ""
 
+        font_sig_val = openpyxl.styles.Font(name='Arial', size=9.5, bold=True)
+        font_sig_lbl = openpyxl.styles.Font(name='Arial', size=8.5, bold=True)
+
+        # 1. D a I: Nombre del empleador arriba, línea continua abajo
+        ws.merge_cells(start_row=sig_line, start_column=4, end_row=sig_line, end_column=9)
+        c_name = ws.cell(row=sig_line, column=4, value=full_emp_name)
+        c_name.font = font_sig_val
+        c_name.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='bottom')
+        for col in range(4, 10):
+            ws.cell(row=sig_line, column=col).border = openpyxl.styles.Border(bottom=thin_border)
+
+        # 2. L a O: N° Documento de identidad del empleador arriba, línea continua abajo
+        ws.merge_cells(start_row=sig_line, start_column=12, end_row=sig_line, end_column=15)
+        c_ci = ws.cell(row=sig_line, column=12, value=ci_display)
+        c_ci.font = font_sig_val
+        c_ci.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='bottom')
+        for col in range(12, 16):
+            ws.cell(row=sig_line, column=col).border = openpyxl.styles.Border(bottom=thin_border)
+
+        # 3. R a U: Línea de FIRMA para firma manual (en blanco arriba)
+        ws.merge_cells(start_row=sig_line, start_column=18, end_row=sig_line, end_column=21)
+        c_sign = ws.cell(row=sig_line, column=18, value="")
+        c_sign.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='bottom')
+        for col in range(18, 22):
+            ws.cell(row=sig_line, column=col).border = openpyxl.styles.Border(bottom=thin_border)
+
+        # TÍTULOS DEBAJO DE LAS LÍNEAS
+        # D a I: "NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL"
         ws.merge_cells(start_row=sig_lbl, start_column=4, end_row=sig_lbl, end_column=9)
-        c = ws.cell(row=sig_lbl, column=4, value=full_emp_name)
-        c.font = font_bold
-        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+        c_lbl1 = ws.cell(row=sig_lbl, column=4, value="NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL")
+        c_lbl1.font = font_sig_lbl
+        c_lbl1.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='top')
 
+        # L a O: "Nº DE DOCUMENTO DE IDENTIDAD"
         ws.merge_cells(start_row=sig_lbl, start_column=12, end_row=sig_lbl, end_column=15)
-        c = ws.cell(row=sig_lbl, column=12, value=ci_display)
-        c.font = font_bold
-        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+        c_lbl2 = ws.cell(row=sig_lbl, column=12, value="Nº DE DOCUMENTO DE IDENTIDAD")
+        c_lbl2.font = font_sig_lbl
+        c_lbl2.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='top')
 
+        # R a U: "FIRMA"
         ws.merge_cells(start_row=sig_lbl, start_column=18, end_row=sig_lbl, end_column=21)
-        c = ws.cell(row=sig_lbl, column=18, value='FIRMA')
-        c.font = font_bold
-        c.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+        c_lbl3 = ws.cell(row=sig_lbl, column=18, value="FIRMA")
+        c_lbl3.font = font_sig_lbl
+        c_lbl3.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='top')
 
-        # Anchos de columna balanceados y armoniosos
+        # Anchos de columna optimizados horizontalmente
         col_widths = {
-            'A': 5.0,   # N°
-            'B': 14.5,  # Documento de identidad
-            'C': 33.0,  # Apellidos y Nombres (amplio para nombres largos)
-            'D': 10.0,  # Pais
-            'E': 12.0,  # Fecha nacimiento
-            'F': 6.5,   # Sexo
-            'G': 17.5,  # Cargo
-            'H': 12.0,  # Fecha ingreso
-            'I': 7.5,   # Horas
-            'J': 7.0,   # Dias
-            'K': 12.5,  # Haber basico
-            'L': 11.5,  # Bono antiguedad
-            'M': 10.5,  # Bono produccion
-            'N': 10.5,  # Subsidio frontera
-            'O': 10.5,  # Horas extras
-            'P': 10.5,  # Pago dominical
-            'Q': 10.5,  # Otros bonos
-            'R': 13.5,  # TOTAL GANADO (destacado)
-            'S': 11.5,  # Gestora
-            'T': 8.5,   # RC-IVA
-            'U': 11.0,  # Otros descuentos
-            'V': 13.5,  # TOTAL DESCUENTOS (destacado)
-            'W': 13.5,  # LIQUIDO PAGABLE (destacado)
-            'X': 15.0   # Firma
+            'A': 4.5,   # N°
+            'B': 13.5,  # Documento de identidad
+            'C': 29.0,  # Apellidos y Nombres
+            'D': 9.5,   # Pais
+            'E': 11.5,  # Fecha nacimiento
+            'F': 5.5,   # Sexo
+            'G': 16.5,  # Cargo
+            'H': 11.5,  # Fecha ingreso
+            'I': 8.5,   # Horas Pagadas (Dia)
+            'J': 8.0,   # Dias pagados (Mes)
+            'K': 11.5,  # Haber basico
+            'L': 11.0,  # Bono antiguedad
+            'M': 9.5,   # Bono produccion
+            'N': 9.5,   # Subsidio frontera
+            'O': 11.5,  # Horas extras
+            'P': 11.5,  # Pago dominical
+            'Q': 9.0,   # Otros bonos
+            'R': 12.0,  # TOTAL GANADO (destacado)
+            'S': 11.0,  # Gestora
+            'T': 8.0,   # RC-IVA
+            'U': 9.5,   # Otros descuentos
+            'V': 12.0,  # TOTAL DESCUENTOS (destacado)
+            'W': 12.5,  # LIQUIDO PAGABLE (destacado)
+            'X': 14.5   # Firma
         }
         for col_let, w in col_widths.items():
             ws.column_dimensions[col_let].width = w
@@ -775,35 +1006,98 @@ class DocumentService:
             left=0.25, right=0.25, top=0.35, bottom=0.35, header=0.1, footer=0.1
         )
 
-        wb.save(output_xlsx)
+        # Ordenar sheets cronológicamente por mes
+        MESES_ORDEN = {
+            "ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4,
+            "MAYO": 5, "JUNIO": 6, "JULIO": 7, "AGOSTO": 8,
+            "SEPTIEMBRE": 9, "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12
+        }
+        wb._sheets.sort(key=lambda s: MESES_ORDEN.get(s.title.upper(), 99))
+        wb.active = ws
+        saved_xlsx = DocumentService._safe_save_workbook(wb, output_xlsx)
         wb.close()
         
         if output_format == "pdf":
-            DocumentService._convert_excel_to_pdf(output_xlsx, output_pdf)
-            os.remove(output_xlsx)
+            mes_slug = DocumentService._slugify(mes_nombre)
+            output_pdf = os.path.join(exports_dir, f"planilla_sueldos_{empresa_slug}_{mes_slug}_{anio}.pdf")
+            wb_single = openpyxl.load_workbook(saved_xlsx)
+            for sname in wb_single.sheetnames:
+                if sname != mes_nombre:
+                    wb_single.remove(wb_single[sname])
+            temp_xlsx = os.path.join(exports_dir, f"_temp_{uuid.uuid4().hex[:8]}.xlsx")
+            wb_single.save(temp_xlsx)
+            wb_single.close()
+            try:
+                output_pdf = DocumentService._convert_excel_to_pdf(temp_xlsx, output_pdf)
+            finally:
+                if os.path.exists(temp_xlsx):
+                    try: os.remove(temp_xlsx)
+                    except Exception: pass
             return output_pdf
             
-        return output_xlsx
+        return saved_xlsx
 
     @staticmethod
-    def generate_prefiniquito_excel(data: dict, output_format: str = "xlsx") -> str:
+    def generate_prefiniquito_excel(data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
         """
-        Genera un archivo Excel con la preliquidación basado en la plantilla y opcionalmente lo exporta a PDF.
+        Genera un archivo Excel con la preliquidación organizado multi-hoja por empleado
+        (prefiniquitos_{empresa}_{anio}.xlsx) y opcionalmente lo exporta a PDF o Word.
         """
         template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "templates", "excel", "plantilla_prefiniquitos.xlsx"))
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Plantilla no encontrada en {template_path}")
             
-        unique_id = uuid.uuid4().hex[:8]
         exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "prefiniquitos"))
         os.makedirs(exports_dir, exist_ok=True)
         
-        output_xlsx = os.path.join(exports_dir, f"prefiniquito_{unique_id}.xlsx")
-        output_pdf = os.path.join(exports_dir, f"prefiniquito_{unique_id}.pdf")
-        output_docx = os.path.join(exports_dir, f"prefiniquito_{unique_id}.docx")
+        empresa_raw = str(data.get('razon_social', '') or '')
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa_raw)
+        nombre_trabajador = str(data.get('nombre_trabajador', '') or '').strip()
+        trabajador_slug = DocumentService._slugify(nombre_trabajador) if nombre_trabajador else "trabajador"
         
-        wb = openpyxl.load_workbook(template_path)
-        ws = wb.active
+        fecha_retiro = str(data.get('fecha_retiro', '') or '')
+        match_year = re.search(r'\b(20\d\d)\b', fecha_retiro)
+        anio = match_year.group(1) if match_year else str(datetime.now().year)
+
+        worker_sheet = DocumentService._safe_sheet_title(nombre_trabajador.upper())
+        output_xlsx = os.path.join(exports_dir, f"prefiniquitos_{empresa_slug}_{anio}.xlsx")
+
+        if os.path.exists(output_xlsx):
+            wb = openpyxl.load_workbook(output_xlsx)
+            if worker_sheet in wb.sheetnames:
+                wb.remove(wb[worker_sheet])
+            wb_tpl = openpyxl.load_workbook(template_path)
+            ws = wb.create_sheet(title=worker_sheet)
+            DocumentService._copy_sheet_structure(wb_tpl.active, ws)
+            wb_tpl.close()
+        else:
+            wb = openpyxl.load_workbook(template_path)
+            ws = wb.active
+            ws.title = worker_sheet
+
+        # Asegurar título oficial centrado y de tamaño adecuado para que no se entrecorte en ninguna pantalla
+        ws['C3'] = "PRELIQUIDACIÓN O PREFINIQUITO"
+        ws['C3'].font = openpyxl.styles.Font(name="Arial", size=13.5, bold=True)
+        ws['C3'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+
+        # Garantizar que los dos logos oficiales estén siempre presentes en la hoja
+        if not getattr(ws, '_images', None) or len(ws._images) == 0:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            escudo_path = os.path.join(base_dir, "templates", "images", "prefiniquito_escudo.png")
+            min_path = os.path.join(base_dir, "templates", "images", "prefiniquito_ministerio.png")
+            
+            from openpyxl.drawing.image import Image as OpenPyXLImage
+            if os.path.exists(escudo_path):
+                img_escudo = OpenPyXLImage(escudo_path)
+                img_escudo.width = 110
+                img_escudo.height = 72
+                ws.add_image(img_escudo, 'B2')
+                
+            if os.path.exists(min_path):
+                img_min = OpenPyXLImage(min_path)
+                img_min.width = 115
+                img_min.height = 72
+                ws.add_image(img_min, 'G2')
         
         format_bs = lambda x: f"{float(x):,.2f} Bs".replace(",", "X").replace(".", ",").replace("X", ".") if x is not None else "0,00 Bs"
         
@@ -967,22 +1261,31 @@ class DocumentService:
         ws.page_setup.fitToHeight = 1
         ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
 
-        wb.save(output_xlsx)
+        wb.active = ws
+        saved_xlsx = DocumentService._safe_save_workbook(wb, output_xlsx)
         wb.close()
         
         if output_format == "pdf":
-            DocumentService._convert_excel_to_pdf(output_xlsx, output_pdf)
-            if os.path.exists(output_xlsx):
-                try: os.remove(output_xlsx)
-                except Exception: pass
+            output_pdf = os.path.join(exports_dir, f"prefiniquito_{trabajador_slug}_{empresa_slug}_{anio}.pdf")
+            wb_single = openpyxl.load_workbook(saved_xlsx)
+            for sname in wb_single.sheetnames:
+                if sname != worker_sheet:
+                    wb_single.remove(wb_single[sname])
+            temp_xlsx = os.path.join(exports_dir, f"_temp_{uuid.uuid4().hex[:8]}.xlsx")
+            wb_single.save(temp_xlsx)
+            wb_single.close()
+            try:
+                output_pdf = DocumentService._convert_excel_to_pdf(temp_xlsx, output_pdf)
+            finally:
+                if os.path.exists(temp_xlsx):
+                    try: os.remove(temp_xlsx)
+                    except Exception: pass
             return output_pdf
         elif output_format in ["word", "docx"]:
-            if os.path.exists(output_xlsx):
-                try: os.remove(output_xlsx)
-                except Exception: pass
+            output_docx = os.path.join(exports_dir, f"prefiniquito_{trabajador_slug}_{empresa_slug}_{anio}.docx")
             return DocumentService.generate_prefiniquito_word(data, output_docx)
             
-        return output_xlsx
+        return saved_xlsx
 
     @staticmethod
     def generate_prefiniquito_word(data: dict, output_path: str = None) -> str:

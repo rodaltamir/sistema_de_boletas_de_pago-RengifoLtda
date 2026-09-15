@@ -348,7 +348,7 @@ function PlanillasPageContent() {
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-slate-500 mt-0.5">CI: {slip.employee_ci}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">CI: {slip.employee_ci ? slip.employee_ci.replace(/\s*-\s*/, ' ') : ''}</p>
                         </td>
                         <td className="p-4 text-slate-600 hidden md:table-cell">{slip.employee_cargo}</td>
                         <td className="p-4 text-right font-bold text-teal-700">{formatBs(slip.total_ganado)}</td>
@@ -382,7 +382,7 @@ function PlanillasPageContent() {
                                     <div className="space-y-2 text-sm">
                                       <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Fecha Ingreso:</span><span className="font-semibold text-slate-800">{slip.employee_fecha_ingreso}</span></div>
                                       <div className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-500">Días Pagados:</span><span className="font-semibold text-slate-800">{slip.dias_pagados}</span></div>
-                                      <div className="flex justify-between pb-1"><span className="text-slate-500">Horas Pagadas:</span><span className="font-semibold text-slate-800">{Math.round(slip.horas_pagadas / (slip.dias_pagados || 30))}</span></div>
+                                      <div className="flex justify-between pb-1"><span className="text-slate-500">Horas Pagadas:</span><span className="font-semibold text-slate-800">{slip.horas_pagadas > 24 ? Math.round(slip.horas_pagadas / (slip.dias_pagados || 30)) : slip.horas_pagadas}</span></div>
                                     </div>
                                   </div>
                                   

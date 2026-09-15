@@ -5,7 +5,7 @@ from app.schemas.employee import EmployeeResponse
 
 class PayslipBase(BaseModel):
     dias_pagados: int = 30
-    horas_pagadas: Decimal = Decimal("240.00")
+    horas_pagadas: Decimal = Decimal("8.00")
     haber_basico: Decimal
     bono_antiguedad: Decimal = Decimal("0.00")
     bono_produccion: Decimal = Decimal("0.00")

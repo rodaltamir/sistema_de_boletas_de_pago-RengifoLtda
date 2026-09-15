@@ -1,0 +1,19 @@
+# Exportaciones generadas (Backups locales en disco)
+backend/exports/
+
+# Entornos virtuales y dependencias
+backend/venv/
+node_modules/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*.class
+
+# Next.js Build
+frontend/.next/
+frontend/out/
+
+# Logs y entornos
+.env
+*.log

@@ -265,16 +265,25 @@ function PrefiniquitosPageContent() {
           aplicar_multa: aplicarMulta
         })
     })
-    .then(res => {
+    .then(async res => {
       if (!res.ok) throw new Error("Error exporting");
-      return res.blob();
+      const disposition = res.headers.get("content-disposition") || res.headers.get("Content-Disposition");
+      let downloadName = "";
+      if (disposition && disposition.includes("filename=")) {
+        const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+        if (matches && matches[1]) {
+          downloadName = matches[1].replace(/['"]/g, "").trim();
+        }
+      }
+      const blob = await res.blob();
+      return { blob, downloadName };
     })
-    .then(blob => {
+    .then(({ blob, downloadName }) => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       const extension = format === 'excel' ? 'xlsx' : format === 'word' ? 'docx' : 'pdf';
-      a.download = `Prefiniquito_${selectedEmp?.nombres}_${selectedEmp?.apellido_paterno}.${extension}`;
+      a.download = downloadName || `Prefiniquito_${selectedEmp?.nombres}_${selectedEmp?.apellido_paterno}.${extension}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -287,16 +296,25 @@ function PrefiniquitosPageContent() {
   const handleExportSaved = (id: number, format: "excel" | "pdf" | "word", trabajadorNombre: string = "Prefiniquito") => {
     setExportLoading(`saved_${id}_${format}`);
     fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/prefiniquitos/${id}/export/${format}`)
-      .then(res => {
+      .then(async res => {
         if (!res.ok) throw new Error("Error al exportar");
-        return res.blob();
+        const disposition = res.headers.get("content-disposition") || res.headers.get("Content-Disposition");
+        let downloadName = "";
+        if (disposition && disposition.includes("filename=")) {
+          const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+          if (matches && matches[1]) {
+            downloadName = matches[1].replace(/['"]/g, "").trim();
+          }
+        }
+        const blob = await res.blob();
+        return { blob, downloadName };
       })
-      .then(blob => {
+      .then(({ blob, downloadName }) => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         const extension = format === 'excel' ? 'xlsx' : format === 'word' ? 'docx' : 'pdf';
-        a.download = `Prefiniquito_${trabajadorNombre.replace(/\s+/g, "_")}.${extension}`;
+        a.download = downloadName || `Prefiniquito_${trabajadorNombre.replace(/\s+/g, "_")}.${extension}`;
         document.body.appendChild(a);
         a.click();
         a.remove();
