@@ -1699,3 +1699,176 @@ class DocumentService:
         doc.render(context)
         doc.save(output_path)
         return output_path
+
+
+    @staticmethod
+    def generate_asientos_excel(sheet_data, output_path: str = None) -> str:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = DocumentService._safe_sheet_title(f"Asientos {sheet_data.month_name[:3]} {sheet_data.year}")
+        ws.views.sheetView[0].showGridLines = True
+
+        # Styles
+        font_header_title = Font(name="Arial", size=11, bold=True, color="000000")
+        font_header_month = Font(name="Arial", size=11, bold=True, color="1E3A8A")
+        font_col_header = Font(name="Arial", size=10, bold=True, color="000000")
+        font_row = Font(name="Arial", size=9)
+        font_subcuenta = Font(name="Arial", size=8, italic=True, color="475569")
+        font_subtotal = Font(name="Arial", size=10, bold=True)
+        font_total = Font(name="Arial", size=11, bold=True)
+        font_payment_header = Font(name="Arial", size=9, bold=True, color="7C2D12")
+
+        fill_header_title = PatternFill(start_color="FEF08A", end_color="FEF08A", fill_type="solid")
+        fill_col_header = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+        fill_payment_header = PatternFill(start_color="FFEDD5", end_color="FFEDD5", fill_type="solid")
+        fill_total = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
+
+        thin_side = Side(border_style="thin", color="CBD5E1")
+        double_side = Side(border_style="double", color="1E293B")
+        border_subtotal = Border(top=thin_side, bottom=thin_side)
+        border_total = Border(top=thin_side, bottom=double_side)
+
+        ws.column_dimensions['A'].width = 32
+        ws.column_dimensions['B'].width = 15
+        ws.column_dimensions['C'].width = 15
+        ws.column_dimensions['D'].width = 18
+        ws.column_dimensions['E'].width = 18
+
+        # Row 1: Header (Title left, Month right)
+        ws.merge_cells("A1:C1")
+        c_title = ws["A1"]
+        c_title.value = f"{sheet_data.tenant_name} {sheet_data.year}"
+        c_title.font = font_header_title
+        c_title.fill = fill_header_title
+        c_title.alignment = Alignment(horizontal="center", vertical="center")
+        
+        ws.merge_cells("D1:E1")
+        c_month = ws["D1"]
+        c_month.value = sheet_data.month_name
+        c_month.font = font_header_month
+        c_month.alignment = Alignment(horizontal="center", vertical="center")
+
+        # Row 2: Headers
+        ws.merge_cells("A2:C2")
+        ws["A2"] = "DETALLE"
+        ws["A2"].font = font_col_header
+        ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
+        ws["A2"].fill = fill_col_header
+
+        ws["D2"] = "DEBE"
+        ws["D2"].font = font_col_header
+        ws["D2"].alignment = Alignment(horizontal="center", vertical="center")
+        ws["D2"].fill = fill_col_header
+
+        ws["E2"] = "HABER"
+        ws["E2"].font = font_col_header
+        ws["E2"].alignment = Alignment(horizontal="center", vertical="center")
+        ws["E2"].fill = fill_col_header
+
+        curr_row = 3
+        for section in sheet_data.sections:
+            if section.is_payment and section.payment_label:
+                ws.merge_cells(f"A{curr_row}:E{curr_row}")
+                cell_p = ws[f"A{curr_row}"]
+                cell_p.value = section.payment_label
+                cell_p.font = font_payment_header
+                cell_p.fill = fill_payment_header
+                cell_p.alignment = Alignment(horizontal="center", vertical="center")
+                curr_row += 1
+
+            for item in section.items:
+                ws.merge_cells(f"A{curr_row}:C{curr_row}")
+                ws[f"A{curr_row}"] = item.cuenta
+                ws[f"A{curr_row}"].font = font_row
+                ws[f"A{curr_row}"].alignment = Alignment(horizontal="left", vertical="center")
+
+                c_debe = ws[f"D{curr_row}"]
+                if item.debe > 0:
+                    c_debe.value = item.debe
+                    c_debe.number_format = "#,##0.00"
+                c_debe.font = font_row
+                c_debe.alignment = Alignment(horizontal="right", vertical="center")
+
+                c_haber = ws[f"E{curr_row}"]
+                if item.haber > 0:
+                    c_haber.value = item.haber
+                    c_haber.number_format = "#,##0.00"
+                c_haber.font = font_row
+                c_haber.alignment = Alignment(horizontal="right", vertical="center")
+
+                curr_row += 1
+
+                if item.subcuentas:
+                    for sub in item.subcuentas:
+                        ws.merge_cells(f"A{curr_row}:C{curr_row}")
+                        ws[f"A{curr_row}"] = f"   {sub}"
+                        ws[f"A{curr_row}"].font = font_subcuenta
+                        ws[f"A{curr_row}"].alignment = Alignment(horizontal="left", vertical="center")
+                        curr_row += 1
+
+            # Subtotal row
+            ws.merge_cells(f"A{curr_row}:C{curr_row}")
+            ws[f"A{curr_row}"] = ""
+            
+            c_sdebe = ws[f"D{curr_row}"]
+            c_sdebe.value = section.subtotal_debe
+            c_sdebe.number_format = "#,##0.00"
+            c_sdebe.font = font_subtotal
+            c_sdebe.border = border_subtotal
+            c_sdebe.alignment = Alignment(horizontal="right", vertical="center")
+
+            c_shaber = ws[f"E{curr_row}"]
+            c_shaber.value = section.subtotal_haber
+            c_shaber.number_format = "#,##0.00"
+            c_shaber.font = font_subtotal
+            c_shaber.border = border_subtotal
+            c_shaber.alignment = Alignment(horizontal="right", vertical="center")
+
+            curr_row += 1
+
+        # Totales
+        ws.merge_cells(f"A{curr_row}:C{curr_row}")
+        ws[f"A{curr_row}"] = "TOTALES"
+        ws[f"A{curr_row}"].font = font_total
+        ws[f"A{curr_row}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"A{curr_row}"].fill = fill_total
+
+        c_tot_debe = ws[f"D{curr_row}"]
+        c_tot_debe.value = sheet_data.total_debe
+        c_tot_debe.number_format = "#,##0.00"
+        c_tot_debe.font = font_total
+        c_tot_debe.border = border_total
+        c_tot_debe.fill = fill_total
+        c_tot_debe.alignment = Alignment(horizontal="right", vertical="center")
+
+        c_tot_haber = ws[f"E{curr_row}"]
+        c_tot_haber.value = sheet_data.total_haber
+        c_tot_haber.number_format = "#,##0.00"
+        c_tot_haber.font = font_total
+        c_tot_haber.border = border_total
+        c_tot_haber.fill = fill_total
+        c_tot_haber.alignment = Alignment(horizontal="right", vertical="center")
+
+        if not output_path:
+            os.makedirs("exports", exist_ok=True)
+            output_path = f"exports/Asientos_{DocumentService._slugify(sheet_data.tenant_name)}_{sheet_data.month}_{sheet_data.year}.xlsx"
+        
+        wb.save(output_path)
+        return output_path
+
+    @staticmethod
+    def generate_asientos_pdf(sheet_data, output_path: str = None) -> str:
+        import tempfile
+        xlsx_temp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False).name
+        DocumentService.generate_asientos_excel(sheet_data, xlsx_temp)
+
+        if not output_path:
+            os.makedirs("exports", exist_ok=True)
+            output_path = f"exports/Asientos_{DocumentService._slugify(sheet_data.tenant_name)}_{sheet_data.month}_{sheet_data.year}.pdf"
+
+        pdf_result = DocumentService.convert_excel_to_pdf(xlsx_temp, output_path)
+        try:
+            os.remove(xlsx_temp)
+        except Exception:
+            pass
+        return pdf_result

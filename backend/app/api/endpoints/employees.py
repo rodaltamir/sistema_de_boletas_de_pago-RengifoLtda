@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, sessionmaker
 from app.db.session import engine
 from app.models.employee import Employee
+from app.models.department import Department
 from app.models.payroll import Payslip, Payroll
 from app.models.prefiniquito import Prefiniquito
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
@@ -65,7 +66,12 @@ def create_employee(schema_name: str, employee: EmployeeCreate, db: Session = De
         else:
             raise HTTPException(status_code=400, detail='El documento de identidad ya está registrado y se encuentra activo.')
     
-    new_emp = Employee(**employee.dict())
+    emp_data = employee.dict()
+    if emp_data.get("department_id"):
+        dept = db.query(Department).filter(Department.id == emp_data["department_id"]).first()
+        if dept:
+            emp_data["departamento"] = dept.name
+    new_emp = Employee(**emp_data)
     db.add(new_emp)
     db.commit()
     db.refresh(new_emp)
@@ -79,6 +85,14 @@ def update_employee(schema_name: str, emp_id: int, employee: EmployeeUpdate, db:
         raise HTTPException(status_code=404, detail='Empleado no encontrado')
     
     update_data = employee.dict(exclude_unset=True)
+    if "department_id" in update_data:
+        if update_data["department_id"]:
+            dept = db.query(Department).filter(Department.id == update_data["department_id"]).first()
+            if dept:
+                update_data["departamento"] = dept.name
+        else:
+            update_data["departamento"] = None
+
     for key, value in update_data.items():
         setattr(db_emp, key, value)
         

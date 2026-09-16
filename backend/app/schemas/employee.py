@@ -14,6 +14,8 @@ class EmployeeBase(BaseModel):
     fecha_nacimiento: date
     sexo: str
     ocupacion: str
+    department_id: Optional[int] = None
+    departamento: Optional[str] = None
     fecha_ingreso: date
     haber_basico: Decimal
     is_active: bool = True
@@ -32,6 +34,8 @@ class EmployeeUpdate(BaseModel):
     fecha_nacimiento: Optional[date] = None
     sexo: Optional[str] = None
     ocupacion: Optional[str] = None
+    department_id: Optional[int] = None
+    departamento: Optional[str] = None
     fecha_ingreso: Optional[date] = None
     haber_basico: Optional[Decimal] = None
     is_active: Optional[bool] = None

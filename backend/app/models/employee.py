@@ -22,6 +22,8 @@ class Employee(Base):
     sexo = Column(String(1), nullable=False) # M o V (Mujer/Varón)
     
     ocupacion = Column(String(100), nullable=False) # Cargo
+    department_id = Column(Integer, nullable=True) # ID del departamento
+    departamento = Column(String(100), nullable=True) # Nombre del departamento
     fecha_ingreso = Column(Date, nullable=False)
     
     haber_basico = Column(Numeric(12, 2), nullable=False) # Sueldo base contratado

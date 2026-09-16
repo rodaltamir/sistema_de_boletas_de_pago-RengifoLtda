@@ -26,7 +26,8 @@ import {
   Sparkles,
   Info,
   CheckCircle,
-  UserCheck
+  UserCheck,
+  BookOpen
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { getApiUrl } from "@/utils/api";
@@ -372,6 +373,16 @@ function InicioDashboardContent() {
       badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
       accent: "from-amber-600 to-orange-600",
       borderHover: "hover:border-amber-400"
+    },
+    {
+      title: "Asientos Contables",
+      subtitle: "Comprobantes de nómina y cargas patronales",
+      href: `/asientos?tenant=${tenantSchema}`,
+      icon: BookOpen,
+      badge: "Planillas & Pagos",
+      badgeClass: "bg-teal-50 text-teal-700 border-teal-200",
+      accent: "from-emerald-600 to-teal-600",
+      borderHover: "hover:border-emerald-400"
     }
   ];
 
@@ -482,7 +493,7 @@ function InicioDashboardContent() {
           <span className="text-xs text-slate-500">Módulos principales del entorno</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {quickActions.map((action, idx) => {
             const IconComp = action.icon;
             return (
