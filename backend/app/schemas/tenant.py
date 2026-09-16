@@ -18,19 +18,38 @@ class TenantResponse(BaseModel):
     id: int
     name: str
     schema_name: str
-    nit: Optional[str]
-    numero_patronal: Optional[str]
-    min_trabajo_id: Optional[str]
-    empleador_nombres: Optional[str]
-    empleador_apellido_paterno: Optional[str]
-    empleador_apellido_materno: Optional[str]
-    empleador_ci: Optional[str]
-    empleador_nit: Optional[str]
-    icon: Optional[str]
+    nit: Optional[str] = None
+    numero_patronal: Optional[str] = None
+    min_trabajo_id: Optional[str] = None
+    empleador_nombres: Optional[str] = None
+    empleador_apellido_paterno: Optional[str] = None
+    empleador_apellido_materno: Optional[str] = None
+    empleador_ci: Optional[str] = None
+    empleador_nit: Optional[str] = None
+    icon: Optional[str] = "Building2"
+    logo_base64: Optional[str] = None
     is_active: bool
 
     class Config:
         from_attributes = True
+
+class DepartmentStat(BaseModel):
+    name: str
+    count: int
+
+class RecentEmployeeStat(BaseModel):
+    id: int
+    full_name: str
+    cargo: str
+    fecha_ingreso: Optional[str] = None
+    haber_basico: float
+
+class LatestPayrollStat(BaseModel):
+    id: int
+    month: int
+    year: int
+    is_closed: bool
+    payslips_count: int = 0
 
 class TenantDashboardResponse(BaseModel):
     tenant: TenantResponse
@@ -38,6 +57,13 @@ class TenantDashboardResponse(BaseModel):
     total_desvinculados: Optional[int] = 0
     total_payrolls: int
     total_departments: int
+    total_payroll_base: Optional[float] = 0.0
+    avg_salary: Optional[float] = 0.0
+    gender_distribution: Optional[dict[str, int]] = None
+    top_departments: Optional[list[DepartmentStat]] = []
+    recent_employees: Optional[list[RecentEmployeeStat]] = []
+    latest_payroll: Optional[LatestPayrollStat] = None
+    total_prefiniquitos: Optional[int] = 0
     current_smn: float
     current_year: int
 
@@ -51,4 +77,6 @@ class TenantUpdateRequest(BaseModel):
     empleador_apellido_materno: Optional[str] = None
     empleador_ci: Optional[str] = None
     empleador_nit: Optional[str] = None
+    icon: Optional[str] = None
+    logo_base64: Optional[str] = None
     current_smn: Optional[float] = None

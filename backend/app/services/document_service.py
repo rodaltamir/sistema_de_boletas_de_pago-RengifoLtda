@@ -392,17 +392,17 @@ class DocumentService:
             ("Otros Ingresos / Bonos", otros_ing, "", None),
         ]
 
-        def _render_boleta(start_r: int):
+        def _render_boleta(start_r: int, copia_num: int = 1):
             end_r = start_r + 18  # 19 filas por boleta
 
-            # 1. Fila 1: Empresa y N° de Boleta
+            # 1. Fila 1: Empresa y N° de Boleta / Copia
             ws.row_dimensions[start_r].height = 19
             ws.merge_cells(start_row=start_r, start_column=2, end_row=start_r, end_column=4)
             c_emp = ws.cell(row=start_r, column=2, value=empresa)
             c_emp.font = font_company
             c_emp.alignment = Alignment(horizontal='left', vertical='center', indent=1)
 
-            c_num = ws.cell(row=start_r, column=5, value=f"N°: {internal_code}")
+            c_num = ws.cell(row=start_r, column=5, value=f"N°: {copia_num}")
             c_num.font = font_bol_num
             c_num.alignment = Alignment(horizontal='right', vertical='center')
 
@@ -602,8 +602,8 @@ class DocumentService:
                     right_b = border_frame_thick if c == 5 else cell.border.right
                     cell.border = Border(top=top_b, bottom=bot_b, left=left_b, right=right_b)
 
-        # 1. Renderizar Boleta Superior
-        _render_boleta(start_r=1)
+        # 1. Renderizar Boleta Superior (Copia 1 - Empresa)
+        _render_boleta(start_r=1, copia_num=1)
 
         # 2. Separador de Corte
         ws.row_dimensions[20].height = 10
@@ -615,8 +615,8 @@ class DocumentService:
         c_cut.alignment = Alignment(horizontal='center', vertical='center')
         ws.row_dimensions[22].height = 10
 
-        # 3. Renderizar Boleta Inferior (Copia Idéntica)
-        _render_boleta(start_r=23)
+        # 3. Renderizar Boleta Inferior (Copia 2 - Empleado)
+        _render_boleta(start_r=23, copia_num=2)
 
         # Ordenar sheets cronológicamente por mes
         MESES_ORDEN = {

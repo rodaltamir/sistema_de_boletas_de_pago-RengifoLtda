@@ -500,9 +500,9 @@ function BoletasPageContent() {
                       <div className="font-bold text-lg uppercase">{payroll.tenant_name?.toUpperCase() || "EMPRESA AQUI"}</div>
                       <div className="font-bold">Nro. Patronal: <span className="font-normal">{payroll.tenant_nro_patronal || "--"}</span></div>
                     </div>
-                    <div className="border border-black px-2 py-1 flex gap-4">
-                      <span>Número :</span>
-                      <span className="font-bold">{selectedPayslip.employee_code || selectedPayslip.employee_id}</span>
+                    <div className="border border-black px-2 py-1 flex items-center gap-2">
+                      <span className="font-bold">N°:</span>
+                      <span className="font-bold">1</span>
                     </div>
                   </div>
 

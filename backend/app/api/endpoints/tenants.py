@@ -88,6 +88,18 @@ def get_tenant_dashboard(schema_name: str, db: Session = Depends(get_db)):
     current_smn = float(smn_record.amount) if smn_record else 3300.0 # Default fallback
     
     # Contar estadisticas en el esquema de esta empresa
+    total_employees = 0
+    total_desvinculados = 0
+    total_payrolls = 0
+    total_departments = 0
+    total_payroll_base = 0.0
+    avg_salary = 0.0
+    gender_distribution = {"V": 0, "M": 0}
+    top_departments = []
+    recent_employees = []
+    latest_payroll = None
+    total_prefiniquitos = 0
+
     try:
         with engine.connect() as conn:
             res_emp = conn.execute(text(f'SELECT COUNT(*) FROM "{schema_name}".employees WHERE is_active = true'))
@@ -101,12 +113,58 @@ def get_tenant_dashboard(schema_name: str, db: Session = Depends(get_db)):
             
             res_depts = conn.execute(text(f'SELECT COUNT(DISTINCT ocupacion) FROM "{schema_name}".employees WHERE is_active = true'))
             total_departments = res_depts.scalar() or 0
+
+            # Masa salarial activa
+            res_sum = conn.execute(text(f'SELECT COALESCE(SUM(haber_basico), 0), COALESCE(AVG(haber_basico), 0) FROM "{schema_name}".employees WHERE is_active = true')).fetchone()
+            if res_sum:
+                total_payroll_base = float(res_sum[0] or 0)
+                avg_salary = round(float(res_sum[1] or 0), 2)
+
+            # Distribución de género (V: Varón, M: Mujer)
+            gender_res = conn.execute(text(f'SELECT UPPER(TRIM(sexo)), COUNT(*) FROM "{schema_name}".employees WHERE is_active = true GROUP BY UPPER(TRIM(sexo))'))
+            for g_row in gender_res:
+                g_key = g_row[0]
+                if g_key in ["V", "M"]:
+                    gender_distribution[g_key] = g_row[1]
+
+            # Top cargos
+            dept_res = conn.execute(text(f'SELECT ocupacion, COUNT(*) FROM "{schema_name}".employees WHERE is_active = true GROUP BY ocupacion ORDER BY 2 DESC LIMIT 5'))
+            top_departments = [{"name": d_row[0] or "Sin Cargo", "count": d_row[1]} for d_row in dept_res]
+
+            # Empleados recientes activos
+            emp_recent = conn.execute(text(f'SELECT id, nombres, apellido_paterno, apellido_materno, ocupacion, fecha_ingreso, haber_basico FROM "{schema_name}".employees WHERE is_active = true ORDER BY fecha_ingreso DESC, id DESC LIMIT 4'))
+            for r_row in emp_recent:
+                full_name = f"{r_row[2] or ''} {r_row[3] or ''} {r_row[1] or ''}".strip().replace("  ", " ").title()
+                recent_employees.append({
+                    "id": r_row[0],
+                    "full_name": full_name,
+                    "cargo": (r_row[4] or "Sin cargo").title(),
+                    "fecha_ingreso": str(r_row[5]) if r_row[5] else None,
+                    "haber_basico": float(r_row[6] or 0)
+                })
+
+            # Última planilla generada
+            latest_pay_res = conn.execute(text(f'SELECT id, month, year, is_closed FROM "{schema_name}".payrolls ORDER BY year DESC, month DESC LIMIT 1')).fetchone()
+            if latest_pay_res:
+                p_id = latest_pay_res[0]
+                count_slips = conn.execute(text(f'SELECT COUNT(*) FROM "{schema_name}".payslips WHERE payroll_id = {p_id}')).scalar() or 0
+                latest_payroll = {
+                    "id": latest_pay_res[0],
+                    "month": latest_pay_res[1],
+                    "year": latest_pay_res[2],
+                    "is_closed": bool(latest_pay_res[3]),
+                    "payslips_count": count_slips
+                }
+
+            # Prefiniquitos
+            try:
+                res_pref = conn.execute(text(f'SELECT COUNT(*) FROM "{schema_name}".prefiniquitos'))
+                total_prefiniquitos = res_pref.scalar() or 0
+            except Exception:
+                total_prefiniquitos = 0
+
     except Exception as e:
         print(f"Error contando estadisticas: {e}")
-        total_employees = 0
-        total_desvinculados = 0
-        total_payrolls = 0
-        total_departments = 0
 
     return {
         "tenant": tenant,
@@ -114,6 +172,13 @@ def get_tenant_dashboard(schema_name: str, db: Session = Depends(get_db)):
         "total_desvinculados": total_desvinculados,
         "total_payrolls": total_payrolls,
         "total_departments": total_departments,
+        "total_payroll_base": total_payroll_base,
+        "avg_salary": avg_salary,
+        "gender_distribution": gender_distribution,
+        "top_departments": top_departments,
+        "recent_employees": recent_employees,
+        "latest_payroll": latest_payroll,
+        "total_prefiniquitos": total_prefiniquitos,
         "current_smn": current_smn,
         "current_year": current_year
     }
@@ -136,8 +201,10 @@ def update_tenant_dashboard(schema_name: str, data: TenantUpdateRequest, db: Ses
     if data.empleador_apellido_materno is not None: tenant.empleador_apellido_materno = data.empleador_apellido_materno
     if data.empleador_ci is not None: tenant.empleador_ci = data.empleador_ci
     if data.empleador_nit is not None: tenant.empleador_nit = data.empleador_nit
+    if data.icon is not None: tenant.icon = data.icon
+    if data.logo_base64 is not None: tenant.logo_base64 = data.logo_base64
     
-    # Actualizar SMN global (simulado por ahora para el admin global)
+    # Actualizar SMN global
     current_year = date.today().year
     if data.current_smn is not None:
         smn_record = db.query(SalarioMinimoNacional).filter(SalarioMinimoNacional.year == current_year).first()
@@ -148,6 +215,7 @@ def update_tenant_dashboard(schema_name: str, data: TenantUpdateRequest, db: Ses
             db.add(new_smn)
             
     db.commit()
+    db.refresh(tenant)
     
     return get_tenant_dashboard(schema_name, db)
 
