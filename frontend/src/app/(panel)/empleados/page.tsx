@@ -655,30 +655,21 @@ function EmpleadosPageContent() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Nombre del Departamento *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ej. Administración, Ventas, Taller..."
-                        value={deptName}
-                        onChange={(e) => setDeptName(e.target.value)}
-                        className="w-full text-xs font-semibold border border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-900 focus:ring-2 focus:ring-teal-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Clasificación Contable *</label>
-                      <select
-                        value={deptType}
-                        onChange={(e) => setDeptType(e.target.value)}
-                        className="w-full text-xs font-semibold border border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-900 focus:ring-2 focus:ring-teal-500"
-                      >
-                        <option value="ADMINISTRACION">Administración (Sueldos y Salarios)</option>
-                        <option value="MANO_DE_OBRA">Mano de Obra / Producción (Costo Operativo)</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Nombre del Departamento / Área *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Administración, Mano de Obra, Marketing, Ventas, Taller..."
+                      value={deptName}
+                      onChange={(e) => setDeptName(e.target.value)}
+                      className="w-full text-xs font-semibold border border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-900 focus:ring-2 focus:ring-teal-500"
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Cada departamento generará automáticamente sus cuentas de Sueldos y Salarios y Bono de Antigüedad en los Asientos Contables.
+                    </p>
                   </div>
 
                   <div>
@@ -721,15 +712,6 @@ function EmpleadosPageContent() {
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-slate-900 text-sm">{d.name}</span>
-                              <span
-                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                  d.account_type === "ADMINISTRACION"
-                                    ? "bg-blue-50 text-blue-700 border border-blue-200"
-                                    : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                }`}
-                              >
-                                {d.account_type === "ADMINISTRACION" ? "Administración" : "Mano de Obra"}
-                              </span>
                               <span className="text-xs text-slate-500 font-mono">
                                 ({d.employee_count || 0} empleados)
                               </span>
@@ -946,12 +928,12 @@ function EmpleadosPageContent() {
                       <option value="">-- Sin Departamento Asignado --</option>
                       {departments.map((d) => (
                         <option key={d.id} value={d.id}>
-                          {d.name} ({d.account_type === "ADMINISTRACION" ? "Administración" : "Mano de Obra / Prod."})
+                          {d.name}
                         </option>
                       ))}
                     </select>
                     <p className="text-[11px] text-teal-300/70 mt-1">
-                      Clasifica al trabajador para el devengamiento contable de sueldos o mano de obra.
+                      Asigna el departamento para la distribución contable de sueldos y bonos en los asientos.
                     </p>
                   </div>
 

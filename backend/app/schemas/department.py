@@ -4,7 +4,7 @@ from datetime import datetime
 
 class DepartmentBase(BaseModel):
     name: str
-    account_type: str = "MANO_DE_OBRA"  # "ADMINISTRACION" o "MANO_DE_OBRA"
+    account_type: Optional[str] = None
     description: Optional[str] = None
 
 class DepartmentCreate(DepartmentBase):

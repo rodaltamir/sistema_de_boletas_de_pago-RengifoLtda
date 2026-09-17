@@ -1702,85 +1702,124 @@ class DocumentService:
 
 
     @staticmethod
-    def generate_asientos_excel(sheet_data, output_path: str = None) -> str:
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = DocumentService._safe_sheet_title(f"Asientos {sheet_data.month_name[:3]} {sheet_data.year}")
+    def get_asientos_master_path(empresa_slug: str, year: int | str) -> str:
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "asientos"))
+        os.makedirs(exports_dir, exist_ok=True)
+        return os.path.join(exports_dir, f"asientos_contables_{empresa_slug}_{year}.xlsx")
+
+    @staticmethod
+    def render_asientos_worksheet(ws, sheet_data):
+        # 1. Configuración de página: Organizar todo en una sola hoja (Fit to 1 page) y mostrar cuadrícula
         ws.views.sheetView[0].showGridLines = True
+        ws.print_options.gridLines = True
+        ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+        ws.page_margins.left = 0.35
+        ws.page_margins.right = 0.35
+        ws.page_margins.top = 0.4
+        ws.page_margins.bottom = 0.4
+        ws.page_margins.header = 0.2
+        ws.page_margins.footer = 0.2
 
-        # Styles
-        font_header_title = Font(name="Arial", size=11, bold=True, color="000000")
-        font_header_month = Font(name="Arial", size=11, bold=True, color="1E3A8A")
-        font_col_header = Font(name="Arial", size=10, bold=True, color="000000")
-        font_row = Font(name="Arial", size=9)
-        font_subcuenta = Font(name="Arial", size=8, italic=True, color="475569")
-        font_subtotal = Font(name="Arial", size=10, bold=True)
-        font_total = Font(name="Arial", size=11, bold=True)
-        font_payment_header = Font(name="Arial", size=9, bold=True, color="7C2D12")
+        # 2. Tipografía y Estilos Visuales (Fieles al comprobante de referencia)
+        font_header_title = Font(name="Arial", size=10.5, bold=True, color="000000")
+        font_header_month = Font(name="Arial", size=10.5, bold=True, color="1F4E78")
+        font_col_header = Font(name="Arial", size=9.5, bold=True, color="000000")
+        font_row = Font(name="Arial", size=8.5)
+        font_subcuenta = Font(name="Arial", size=8.0, italic=True, color="595959")
+        font_glosa = Font(name="Arial", size=8.0, italic=True, color="475569")
+        font_subtotal = Font(name="Arial", size=9.0, bold=True)
+        font_total = Font(name="Arial", size=10.0, bold=True)
+        font_payment_header = Font(name="Arial", size=9.0, bold=True, color="833C0C")
 
-        fill_header_title = PatternFill(start_color="FEF08A", end_color="FEF08A", fill_type="solid")
-        fill_col_header = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
-        fill_payment_header = PatternFill(start_color="FFEDD5", end_color="FFEDD5", fill_type="solid")
-        fill_total = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
+        fill_header_title = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        fill_col_header = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+        fill_payment_header = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")
+        fill_total = PatternFill(start_color="E9EEF4", end_color="E9EEF4", fill_type="solid")
 
-        thin_side = Side(border_style="thin", color="CBD5E1")
-        double_side = Side(border_style="double", color="1E293B")
-        border_subtotal = Border(top=thin_side, bottom=thin_side)
-        border_total = Border(top=thin_side, bottom=double_side)
+        thin_black = Side(border_style="thin", color="000000")
+        thin_grid = Side(border_style="thin", color="A6A6A6")
+        double_black = Side(border_style="double", color="000000")
 
+        # 3. Dimensiones de columnas proporcionales
         ws.column_dimensions['A'].width = 32
-        ws.column_dimensions['B'].width = 15
-        ws.column_dimensions['C'].width = 15
-        ws.column_dimensions['D'].width = 18
-        ws.column_dimensions['E'].width = 18
+        ws.column_dimensions['B'].width = 12
+        ws.column_dimensions['C'].width = 12
+        ws.column_dimensions['D'].width = 15
+        ws.column_dimensions['E'].width = 15
 
-        # Row 1: Header (Title left, Month right)
+        # Fila 1: Título Empresa Año (Amarillo pastel) y Mes (Azul)
+        ws.row_dimensions[1].height = 20
         ws.merge_cells("A1:C1")
         c_title = ws["A1"]
         c_title.value = f"{sheet_data.tenant_name} {sheet_data.year}"
         c_title.font = font_header_title
         c_title.fill = fill_header_title
         c_title.alignment = Alignment(horizontal="center", vertical="center")
-        
+        for col in ["A", "B", "C"]:
+            ws[f"{col}1"].border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
+            ws[f"{col}1"].fill = fill_header_title
+
         ws.merge_cells("D1:E1")
         c_month = ws["D1"]
-        c_month.value = sheet_data.month_name
+        c_month.value = sheet_data.month_name.upper()
         c_month.font = font_header_month
         c_month.alignment = Alignment(horizontal="center", vertical="center")
+        for col in ["D", "E"]:
+            ws[f"{col}1"].border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
 
-        # Row 2: Headers
+        # Fila 2: Cabeceras DETALLE, DEBE, HABER con líneas de separación
+        ws.row_dimensions[2].height = 18
         ws.merge_cells("A2:C2")
         ws["A2"] = "DETALLE"
         ws["A2"].font = font_col_header
         ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
-        ws["A2"].fill = fill_col_header
+        for col in ["A", "B", "C"]:
+            ws[f"{col}2"].fill = fill_col_header
+            ws[f"{col}2"].border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
 
-        ws["D2"] = "DEBE"
-        ws["D2"].font = font_col_header
-        ws["D2"].alignment = Alignment(horizontal="center", vertical="center")
-        ws["D2"].fill = fill_col_header
+        for col, label in [("D", "DEBE"), ("E", "HABER")]:
+            ws[f"{col}2"] = label
+            ws[f"{col}2"].font = font_col_header
+            ws[f"{col}2"].alignment = Alignment(horizontal="center", vertical="center")
+            ws[f"{col}2"].fill = fill_col_header
+            ws[f"{col}2"].border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
 
-        ws["E2"] = "HABER"
-        ws["E2"].font = font_col_header
-        ws["E2"].alignment = Alignment(horizontal="center", vertical="center")
-        ws["E2"].fill = fill_col_header
+        def apply_data_row_borders(row_idx):
+            ws[f"A{row_idx}"].border = Border(left=thin_black, top=thin_grid, bottom=thin_grid)
+            ws[f"B{row_idx}"].border = Border(top=thin_grid, bottom=thin_grid)
+            ws[f"C{row_idx}"].border = Border(right=thin_black, top=thin_grid, bottom=thin_grid)
+            ws[f"D{row_idx}"].border = Border(left=thin_black, right=thin_black, top=thin_grid, bottom=thin_grid)
+            ws[f"E{row_idx}"].border = Border(left=thin_black, right=thin_black, top=thin_grid, bottom=thin_grid)
 
         curr_row = 3
         for section in sheet_data.sections:
+            # Cabecera de asiento de pago (Franja melocotón)
             if section.is_payment and section.payment_label:
+                ws.row_dimensions[curr_row].height = 17
                 ws.merge_cells(f"A{curr_row}:E{curr_row}")
                 cell_p = ws[f"A{curr_row}"]
                 cell_p.value = section.payment_label
                 cell_p.font = font_payment_header
-                cell_p.fill = fill_payment_header
                 cell_p.alignment = Alignment(horizontal="center", vertical="center")
+                for col in ["A", "B", "C", "D", "E"]:
+                    ws[f"{col}{curr_row}"].fill = fill_payment_header
+                    ws[f"{col}{curr_row}"].border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
                 curr_row += 1
 
             for item in section.items:
+                # Omitir cuentas que tengan 0 en debe y haber si no tienen subcuentas (si no hay, no aparece)
+                if item.debe == 0 and item.haber == 0 and not item.subcuentas:
+                    continue
+
+                ws.row_dimensions[curr_row].height = 15
                 ws.merge_cells(f"A{curr_row}:C{curr_row}")
                 ws[f"A{curr_row}"] = item.cuenta
                 ws[f"A{curr_row}"].font = font_row
-                ws[f"A{curr_row}"].alignment = Alignment(horizontal="left", vertical="center")
+                ws[f"A{curr_row}"].alignment = Alignment(horizontal="left", vertical="center", indent=1)
 
                 c_debe = ws[f"D{curr_row}"]
                 if item.debe > 0:
@@ -1796,48 +1835,91 @@ class DocumentService:
                 c_haber.font = font_row
                 c_haber.alignment = Alignment(horizontal="right", vertical="center")
 
+                apply_data_row_borders(curr_row)
                 curr_row += 1
 
                 if item.subcuentas:
                     for sub in item.subcuentas:
+                        ws.row_dimensions[curr_row].height = 13.5
                         ws.merge_cells(f"A{curr_row}:C{curr_row}")
                         ws[f"A{curr_row}"] = f"   {sub}"
                         ws[f"A{curr_row}"].font = font_subcuenta
                         ws[f"A{curr_row}"].alignment = Alignment(horizontal="left", vertical="center")
+                        apply_data_row_borders(curr_row)
                         curr_row += 1
 
-            # Subtotal row
+            # Glosa descriptiva bajo el asiento con bordes delimitados (solo si existe glosa)
+            if section.glosa:
+                glosa_len = len(section.glosa)
+                if glosa_len > 140:
+                    ws.row_dimensions[curr_row].height = 28
+                elif glosa_len > 70:
+                    ws.row_dimensions[curr_row].height = 20
+                else:
+                    ws.row_dimensions[curr_row].height = 16
+
+                ws.merge_cells(f"A{curr_row}:E{curr_row}")
+                c_glo = ws[f"A{curr_row}"]
+                c_glo.value = section.glosa
+                c_glo.font = font_glosa
+                c_glo.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True, indent=1)
+                for col in ["A", "B", "C", "D", "E"]:
+                    ws[f"{col}{curr_row}"].border = Border(
+                        left=thin_black if col == "A" else None,
+                        right=thin_black if col == "E" else None,
+                        top=thin_grid,
+                        bottom=thin_grid
+                    )
+                curr_row += 1
+
+            # Fila de Subtotal del Asiento con líneas contables
+            ws.row_dimensions[curr_row].height = 16.5
             ws.merge_cells(f"A{curr_row}:C{curr_row}")
             ws[f"A{curr_row}"] = ""
-            
+            for col in ["A", "B", "C"]:
+                ws[f"{col}{curr_row}"].border = Border(
+                    left=thin_black if col == "A" else None,
+                    right=thin_black if col == "C" else None,
+                    top=thin_black,
+                    bottom=thin_black
+                )
+
             c_sdebe = ws[f"D{curr_row}"]
             c_sdebe.value = section.subtotal_debe
             c_sdebe.number_format = "#,##0.00"
             c_sdebe.font = font_subtotal
-            c_sdebe.border = border_subtotal
+            c_sdebe.border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
             c_sdebe.alignment = Alignment(horizontal="right", vertical="center")
 
             c_shaber = ws[f"E{curr_row}"]
             c_shaber.value = section.subtotal_haber
             c_shaber.number_format = "#,##0.00"
             c_shaber.font = font_subtotal
-            c_shaber.border = border_subtotal
+            c_shaber.border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
             c_shaber.alignment = Alignment(horizontal="right", vertical="center")
 
             curr_row += 1
 
-        # Totales
+        # Fila de Totales Generales con doble subrayado contable
+        ws.row_dimensions[curr_row].height = 19
         ws.merge_cells(f"A{curr_row}:C{curr_row}")
         ws[f"A{curr_row}"] = "TOTALES"
         ws[f"A{curr_row}"].font = font_total
         ws[f"A{curr_row}"].alignment = Alignment(horizontal="center", vertical="center")
-        ws[f"A{curr_row}"].fill = fill_total
+        for col in ["A", "B", "C"]:
+            ws[f"{col}{curr_row}"].fill = fill_total
+            ws[f"{col}{curr_row}"].border = Border(
+                left=thin_black if col == "A" else None,
+                right=thin_black if col == "C" else None,
+                top=thin_black,
+                bottom=double_black
+            )
 
         c_tot_debe = ws[f"D{curr_row}"]
         c_tot_debe.value = sheet_data.total_debe
         c_tot_debe.number_format = "#,##0.00"
         c_tot_debe.font = font_total
-        c_tot_debe.border = border_total
+        c_tot_debe.border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=double_black)
         c_tot_debe.fill = fill_total
         c_tot_debe.alignment = Alignment(horizontal="right", vertical="center")
 
@@ -1845,28 +1927,108 @@ class DocumentService:
         c_tot_haber.value = sheet_data.total_haber
         c_tot_haber.number_format = "#,##0.00"
         c_tot_haber.font = font_total
-        c_tot_haber.border = border_total
+        c_tot_haber.border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=double_black)
         c_tot_haber.fill = fill_total
         c_tot_haber.alignment = Alignment(horizontal="right", vertical="center")
 
-        if not output_path:
-            os.makedirs("exports", exist_ok=True)
-            output_path = f"exports/Asientos_{DocumentService._slugify(sheet_data.tenant_name)}_{sheet_data.month}_{sheet_data.year}.xlsx"
-        
-        wb.save(output_path)
-        return output_path
+    @staticmethod
+    def update_asientos_master_workbook(sheet_data, schema_name: str = None) -> str:
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else sheet_data.tenant_name)
+        master_path = DocumentService.get_asientos_master_path(empresa_slug, sheet_data.year)
+
+        sheet_title = DocumentService._safe_sheet_title(sheet_data.month_name.capitalize())
+
+        if os.path.exists(master_path):
+            try:
+                wb = openpyxl.load_workbook(master_path)
+            except Exception:
+                wb = openpyxl.Workbook()
+                if "Sheet" in wb.sheetnames:
+                    wb.remove(wb["Sheet"])
+        else:
+            wb = openpyxl.Workbook()
+            if "Sheet" in wb.sheetnames:
+                wb.remove(wb["Sheet"])
+
+        if sheet_title in wb.sheetnames:
+            del wb[sheet_title]
+        ws = wb.create_sheet(title=sheet_title)
+
+        DocumentService.render_asientos_worksheet(ws, sheet_data)
+        wb.save(master_path)
+        return master_path
 
     @staticmethod
-    def generate_asientos_pdf(sheet_data, output_path: str = None) -> str:
+    def generate_asientos_excel(sheet_data, output_path: str = None, schema_name: str = None) -> str:
+        # 1. Actualizar siempre en el libro maestro multimes
+        DocumentService.update_asientos_master_workbook(sheet_data, schema_name)
+
+        # 2. Generar archivo específico para la descarga mensual con una sola hoja (el mes activo)
+        # Esto asegura que si el usuario descarga desde la vista del mes, todo esté organizado en una sola hoja
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else sheet_data.tenant_name)
+        month_name = sheet_data.month_name.capitalize()
+        single_path = output_path or os.path.join(
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "asientos")),
+            f"asientos_{empresa_slug}_{DocumentService._slugify(month_name)}_{sheet_data.year}.xlsx"
+        )
+        os.makedirs(os.path.dirname(single_path), exist_ok=True)
+
+        wb_single = openpyxl.Workbook()
+        ws_single = wb_single.active
+        ws_single.title = DocumentService._safe_sheet_title(month_name)
+        DocumentService.render_asientos_worksheet(ws_single, sheet_data)
+        wb_single.save(single_path)
+        return single_path
+
+    @staticmethod
+    def generate_asientos_master_excel(tenant_session, public_session, schema_name: str, year: int) -> str:
+        from app.services.accounting_service import AccountingService
+        from app.models.tenant import Tenant
+        tenant = public_session.query(Tenant).filter(Tenant.schema_name == schema_name).first()
+        empresa_slug = DocumentService._slugify(tenant.name if tenant else schema_name)
+        master_path = DocumentService.get_asientos_master_path(empresa_slug, year)
+
+        wb = openpyxl.Workbook()
+        if "Sheet" in wb.sheetnames:
+            wb.remove(wb["Sheet"])
+
+        MONTH_NAMES = [
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        ]
+
+        # Generar pestañas para todos los meses del año
+        for m in range(1, 13):
+            sheet = AccountingService.get_or_calculate_sheet(
+                tenant_session=tenant_session,
+                public_session=public_session,
+                schema_name=schema_name,
+                month=m,
+                year=year,
+                force_recalculate=False
+            )
+            title = DocumentService._safe_sheet_title(MONTH_NAMES[m - 1])
+            ws = wb.create_sheet(title=title)
+            DocumentService.render_asientos_worksheet(ws, sheet)
+
+        wb.save(master_path)
+        return master_path
+
+    @staticmethod
+    def generate_asientos_pdf(sheet_data, output_path: str = None, schema_name: str = None) -> str:
         import tempfile
         xlsx_temp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False).name
-        DocumentService.generate_asientos_excel(sheet_data, xlsx_temp)
+        wb_single = openpyxl.Workbook()
+        ws_single = wb_single.active
+        ws_single.title = DocumentService._safe_sheet_title(sheet_data.month_name.capitalize())
+        DocumentService.render_asientos_worksheet(ws_single, sheet_data)
+        wb_single.save(xlsx_temp)
 
         if not output_path:
             os.makedirs("exports", exist_ok=True)
             output_path = f"exports/Asientos_{DocumentService._slugify(sheet_data.tenant_name)}_{sheet_data.month}_{sheet_data.year}.pdf"
 
-        pdf_result = DocumentService.convert_excel_to_pdf(xlsx_temp, output_path)
+        pdf_result = DocumentService._convert_excel_to_pdf(xlsx_temp, output_path)
         try:
             os.remove(xlsx_temp)
         except Exception:

@@ -54,7 +54,7 @@ def create_department(schema_name: str, dept_in: DepartmentCreate):
 
         new_dept = Department(
             name=dept_in.name.strip(),
-            account_type=dept_in.account_type or "MANO_DE_OBRA",
+            account_type=dept_in.account_type or dept_in.name.strip(),
             description=dept_in.description
         )
         session.add(new_dept)

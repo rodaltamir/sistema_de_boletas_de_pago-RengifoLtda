@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -21,7 +21,23 @@ import {
   Layers,
   HelpCircle,
   Briefcase,
-  Users
+  Users,
+  Plus,
+  Trash2,
+  Lock,
+  Unlock,
+  Eye,
+  CreditCard,
+  Receipt,
+  HeartPulse,
+  Scale,
+  ArrowRight,
+  ShieldAlert,
+  ChevronRight,
+  Check,
+  Building,
+  History,
+  X
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { getApiUrl } from "@/utils/api";
@@ -41,6 +57,130 @@ const MONTHS = [
   { id: 12, name: "Diciembre" }
 ];
 
+interface NumericInputProps {
+  value: number | undefined | null;
+  onChange: (val: number) => void;
+  disabled?: boolean;
+  className?: string;
+  placeholder?: string;
+}
+
+/**
+ * Componente de entrada numérica que permite borrar ceros y dejar el campo en blanco
+ * sin forzar un "0" pegajoso mientras el usuario escribe o edita.
+ */
+function NumericInput({
+  value,
+  onChange,
+  disabled = false,
+  className = "",
+  placeholder = "0.00"
+}: NumericInputProps) {
+  const [text, setText] = useState<string>(() => {
+    if (value === undefined || value === null || value === 0) return "";
+    return String(value);
+  });
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      if (value === undefined || value === null || value === 0) {
+        setText("");
+      } else {
+        setText(String(value));
+      }
+    }
+  }, [value, isFocused]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    setText(raw);
+    const parsed = raw === "" ? 0 : parseFloat(raw);
+    onChange(isNaN(parsed) ? 0 : parsed);
+  };
+
+  const handleFocus = () => {
+    setIsFocused(true);
+    if (text === "0" || text === "0.00") {
+      setText("");
+    }
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    if (text === "") {
+      onChange(0);
+    } else {
+      const parsed = parseFloat(text);
+      onChange(isNaN(parsed) ? 0 : parsed);
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      step="0.01"
+      disabled={disabled}
+      placeholder={placeholder}
+      value={text}
+      onFocus={handleFocus}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      className={className}
+    />
+  );
+}
+
+interface PaymentExtraItem {
+  id?: string;
+  tipo: string; // 'interes' | 'actualizacion' | 'multa'
+  concepto?: string;
+  monto: number;
+}
+
+interface GestoraPaymentData {
+  fecha?: string;
+  nro_transaccion?: string;
+  intereses: PaymentExtraItem[];
+}
+
+interface CajaPaymentData {
+  caja_tipo: string;
+  fecha?: string;
+  nro_transaccion?: string;
+  ajustes: PaymentExtraItem[];
+}
+
+interface MinTrabajoPaymentData {
+  fecha?: string;
+  nro_transaccion?: string;
+  ajustes: PaymentExtraItem[];
+}
+
+interface DepartmentPayrollItem {
+  id?: number;
+  nombre: string;
+  sueldos: number;
+  bono_antiguedad: number;
+  total_depto: number;
+}
+
+interface DevengamientoData {
+  departamentos?: DepartmentPayrollItem[];
+  sueldos_adm: number;
+  bono_antiguedad_adm: number;
+  sueldos_mo: number;
+  bono_antiguedad_mo: number;
+  retenciones_ley: number;
+  sueldos_por_pagar: number;
+  arancel_min_trabajo: number;
+  caja_salud_choice: string;
+  patronal_gestora?: number;
+  patronal_caja?: number;
+  aguinaldo?: number;
+  indemnizacion?: number;
+}
+
 interface AccountingEntryItem {
   cuenta: string;
   debe: number;
@@ -49,7 +189,47 @@ interface AccountingEntryItem {
   tag?: string | null;
 }
 
+interface PaymentInfoSummary {
+  fecha?: string;
+  nro_transaccion?: string;
+  monto_total: number;
+  glosa?: string | null;
+  tipo_entidad?: string;
+}
+
+interface AccountingMonthHistoryItem {
+  month: number;
+  year: number;
+  month_name: string;
+  has_data: boolean;
+  is_customized: boolean;
+  is_cuadrado: boolean;
+  diferencia: number;
+  total_debe: number;
+  total_haber: number;
+  total_ganado: number;
+  patronal_total: number;
+  beneficios_total: number;
+  liquido_pagable: number;
+  retenciones_ley: number;
+  departamentos_count: number;
+  pago_gestora?: PaymentInfoSummary | null;
+  pago_caja?: PaymentInfoSummary | null;
+  pago_min_trabajo?: PaymentInfoSummary | null;
+  updated_at?: string | null;
+}
+
+interface AnnualHistoryResponse {
+  year: number;
+  tenant_name: string;
+  months: AccountingMonthHistoryItem[];
+  total_anual_debe: number;
+  total_anual_haber: number;
+  meses_registrados: number;
+}
+
 interface AccountingSection {
+  glosa?: string | null;
   id: string;
   title: string;
   is_payment: boolean;
@@ -66,10 +246,11 @@ interface AccountingSheetData {
   tenant_name: string;
   caja_banco_name: string;
   caja_salud_name: string;
-  fecha_pago_gestora?: string;
-  fecha_pago_caja?: string;
-  fecha_pago_min_trabajo?: string;
   arancel_min_trabajo: number;
+  devengamiento?: DevengamientoData;
+  gestora_payment: GestoraPaymentData;
+  caja_payment: CajaPaymentData;
+  min_trabajo_payment: MinTrabajoPaymentData;
   sections: AccountingSection[];
   total_debe: number;
   total_haber: number;
@@ -78,6 +259,8 @@ interface AccountingSheetData {
   has_payroll: boolean;
   payroll_id?: number | null;
   is_customized: boolean;
+  is_locked_by_date: boolean;
+  is_manually_unlocked: boolean;
 }
 
 function AsientosPageContent() {
@@ -90,632 +273,2238 @@ function AsientosPageContent() {
   const [sheetData, setSheetData] = useState<AccountingSheetData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState<"guiado" | "oficial" | "historial">("guiado");
+  const [historyData, setHistoryData] = useState<AnnualHistoryResponse | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [exportingMasterExcel, setExportingMasterExcel] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Form state for guided editing
+  const [devengamiento, setDevengamiento] = useState<DevengamientoData>({
+    departamentos: [],
+    sueldos_adm: 0,
+    bono_antiguedad_adm: 0,
+    sueldos_mo: 0,
+    bono_antiguedad_mo: 0,
+    retenciones_ley: 0,
+    sueldos_por_pagar: 0,
+    arancel_min_trabajo: 27.0,
+    caja_salud_choice: "Caja Petrolera de Salud",
+    patronal_gestora: undefined,
+    patronal_caja: undefined,
+    aguinaldo: undefined,
+    indemnizacion: undefined
+  });
+
+  const [gestoraPayment, setGestoraPayment] = useState<GestoraPaymentData>({
+    fecha: new Date().toISOString().split("T")[0],
+    nro_transaccion: "",
+    intereses: []
+  });
+
+  const [cajaPayment, setCajaPayment] = useState<CajaPaymentData>({
+    caja_tipo: "Caja Petrolera de Salud",
+    fecha: new Date().toISOString().split("T")[0],
+    nro_transaccion: "",
+    ajustes: []
+  });
+
+  const [minTrabajoPayment, setMinTrabajoPayment] = useState<MinTrabajoPaymentData>({
+    fecha: new Date().toISOString().split("T")[0],
+    nro_transaccion: "",
+    ajustes: []
+  });
+
+  const [isManuallyUnlocked, setIsManuallyUnlocked] = useState(false);
+
+  // Estado para modal de crear departamento desde Asientos
+  const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+  const [newDeptName, setNewDeptName] = useState("");
+  const [newDeptDesc, setNewDeptDesc] = useState("");
+  const [savingNewDept, setSavingNewDept] = useState(false);
 
   useEffect(() => {
     if (!tenantSchema) {
       router.push("/seleccionar-empresa");
       return;
     }
-    setIsAdmin(localStorage.getItem("isAdmin") === "true");
-    fetchSheet(selectedMonth, selectedYear);
+    fetchSheetData();
   }, [tenantSchema, selectedMonth, selectedYear]);
 
-  const fetchSheet = async (m: number, y: number) => {
-    if (!tenantSchema) return;
-    setLoading(true);
+  const fetchSheetData = async () => {
     try {
-      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/asientos/?month=${m}&year=${y}`);
-      if (res.ok) {
-        const data: AccountingSheetData = await res.json();
-        setSheetData(data);
+      setLoading(true);
+      const res = await fetch(
+        `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/?month=${selectedMonth}&year=${selectedYear}`
+      );
+      if (!res.ok) {
+        throw new Error("No se pudo cargar la información de asientos contables");
+      }
+      const data: AccountingSheetData = await res.json();
+      setSheetData(data);
+      setIsManuallyUnlocked(data.is_manually_unlocked || false);
+
+      // Cargar lista de departamentos de la empresa para asegurar sincronización completa
+      let currentDeptList: DepartmentPayrollItem[] = data.devengamiento?.departamentos ? [...data.devengamiento.departamentos] : [];
+      try {
+        const deptRes = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/departments/`);
+        if (deptRes.ok) {
+          const allTenantDepts: Array<{ id: number; name: string; description?: string }> = await deptRes.json();
+          const existingIds = new Set(currentDeptList.map(d => d.id).filter(Boolean));
+          const existingNames = new Set(currentDeptList.map(d => d.nombre.toLowerCase().trim()));
+
+          for (const td of allTenantDepts) {
+            if (!existingIds.has(td.id) && !existingNames.has(td.name.toLowerCase().trim())) {
+              currentDeptList.push({
+                id: td.id,
+                nombre: td.name,
+                sueldos: 0,
+                bono_antiguedad: 0,
+                total_depto: 0
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error cargando departamentos complementarios:", e);
+      }
+
+      if (data.devengamiento) {
+        setDevengamiento({
+          ...data.devengamiento,
+          departamentos: currentDeptList
+        });
       } else {
-        const err = await res.json().catch(() => ({}));
-        Swal.fire({
-          title: "Aviso",
-          text: err.detail || "No se pudo cargar la hoja de asientos.",
-          icon: "info",
-          confirmButtonColor: "#0d9488"
+        setDevengamiento({
+          departamentos: currentDeptList,
+          sueldos_adm: 0,
+          bono_antiguedad_adm: 0,
+          sueldos_mo: 0,
+          bono_antiguedad_mo: 0,
+          retenciones_ley: 0,
+          sueldos_por_pagar: 0,
+          arancel_min_trabajo: 27.0,
+          caja_salud_choice: "Caja Petrolera de Salud",
+          patronal_gestora: undefined,
+          patronal_caja: undefined,
+          aguinaldo: undefined,
+          indemnizacion: undefined
         });
       }
-    } catch (err) {
-      console.error("Error al cargar asientos:", err);
+
+      if (data.gestora_payment) {
+        setGestoraPayment(data.gestora_payment);
+      }
+      if (data.caja_payment) {
+        setCajaPayment(data.caja_payment);
+      }
+      if (data.min_trabajo_payment) {
+        setMinTrabajoPayment(data.min_trabajo_payment);
+      }
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al cargar asientos",
+        text: err.message || "Ocurrió un error inesperado.",
+        confirmButtonColor: "#1E3A8A"
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleItemChange = (secIdx: number, itemIdx: number, field: "cuenta" | "debe" | "haber", val: any) => {
-    if (!sheetData) return;
-    const newSections = [...sheetData.sections];
-    const sec = { ...newSections[secIdx] };
-    const items = [...sec.items];
-    const item = { ...items[itemIdx] };
+  // 1. Total Ganado devengado (Suma dinámica de todos los departamentos definidos)
+  const totalGanado = useMemo(() => {
+    if (devengamiento.departamentos && devengamiento.departamentos.length > 0) {
+      return Number(
+        devengamiento.departamentos
+          .reduce((acc, d) => {
+            const s = Number(d.sueldos) || 0;
+            const b = Number(d.bono_antiguedad) || 0;
+            return acc + s + b;
+          }, 0)
+          .toFixed(2)
+      );
+    }
+    const sAdm = Number(devengamiento.sueldos_adm) || 0;
+    const bAdm = Number(devengamiento.bono_antiguedad_adm) || 0;
+    const sMo = Number(devengamiento.sueldos_mo) || 0;
+    const bMo = Number(devengamiento.bono_antiguedad_mo) || 0;
+    return Number((sAdm + bAdm + sMo + bMo).toFixed(2));
+  }, [
+    devengamiento.departamentos,
+    devengamiento.sueldos_adm,
+    devengamiento.bono_antiguedad_adm,
+    devengamiento.sueldos_mo,
+    devengamiento.bono_antiguedad_mo
+  ]);
 
-    if (field === "cuenta") {
-      item.cuenta = val;
-    } else if (field === "debe") {
-      item.debe = parseFloat(val) || 0;
-    } else if (field === "haber") {
-      item.haber = parseFloat(val) || 0;
+  // Crear un nuevo departamento directamente desde el módulo de Asientos
+  const handleCreateDepartmentFromAsientos = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDeptName.trim()) {
+      Swal.fire({
+        icon: "warning",
+        title: "Nombre requerido",
+        text: "Ingresa el nombre del nuevo departamento."
+      });
+      return;
     }
 
-    items[itemIdx] = item;
-    sec.items = items;
+    setSavingNewDept(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/departments/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newDeptName.trim(),
+          account_type: newDeptName.trim(),
+          description: newDeptDesc.trim() || null
+        })
+      });
 
-    // Recalcular subtotales de la sección
-    sec.subtotal_debe = round2(items.reduce((sum, it) => sum + (it.debe || 0), 0));
-    sec.subtotal_haber = round2(items.reduce((sum, it) => sum + (it.haber || 0), 0));
-    newSections[secIdx] = sec;
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "No se pudo crear el departamento");
+      }
 
-    // Recalcular totales generales
-    const totDebe = round2(newSections.reduce((sum, s) => sum + s.subtotal_debe, 0));
-    const totHaber = round2(newSections.reduce((sum, s) => sum + s.subtotal_haber, 0));
-    const dif = round2(Math.abs(totDebe - totHaber));
+      const createdDept = await res.json();
+      const updatedList = [...(devengamiento.departamentos || [])];
+      updatedList.push({
+        id: createdDept.id,
+        nombre: createdDept.name,
+        sueldos: 0,
+        bono_antiguedad: 0,
+        total_depto: 0
+      });
 
-    setSheetData({
-      ...sheetData,
-      sections: newSections,
-      total_debe: totDebe,
-      total_haber: totHaber,
-      diferencia: dif,
-      is_cuadrado: dif === 0
+      setDevengamiento({
+        ...devengamiento,
+        departamentos: updatedList
+      });
+
+      setNewDeptName("");
+      setNewDeptDesc("");
+      setIsDeptModalOpen(false);
+
+      Swal.fire({
+        icon: "success",
+        title: "¡Departamento Creado!",
+        text: `El departamento "${createdDept.name}" ha sido añadido a los asientos contables.`,
+        timer: 1800,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al crear departamento",
+        text: err.message || "Ocurrió un error inesperado."
+      });
+    } finally {
+      setSavingNewDept(false);
+    }
+  };
+
+  // Quitar departamento de la vista de asientos
+  const handleRemoveDepartment = (idx: number) => {
+    const list = [...(devengamiento.departamentos || [])];
+    const dept = list[idx];
+    Swal.fire({
+      title: "¿Quitar departamento?",
+      text: `¿Deseas quitar "${dept.nombre}" de este asiento contable?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#EF4444",
+      cancelButtonColor: "#6B7280",
+      confirmButtonText: "Sí, quitar",
+      cancelButtonText: "Cancelar"
+    }).then((result) => {
+      if (result.isConfirmed) {
+        list.splice(idx, 1);
+        setDevengamiento({ ...devengamiento, departamentos: list });
+      }
     });
   };
 
-  const handlePaymentLabelChange = (secIdx: number, newLabel: string) => {
-    if (!sheetData) return;
-    const newSections = [...sheetData.sections];
-    newSections[secIdx] = { ...newSections[secIdx], payment_label: newLabel };
-    setSheetData({ ...sheetData, sections: newSections });
+  // Actualizar sueldos o bonos de un departamento específico
+  const updateDepartmentItem = (index: number, field: "sueldos" | "bono_antiguedad", value: number) => {
+    const list = [...(devengamiento.departamentos || [])];
+    const item = { ...list[index], [field]: value };
+    item.total_depto = Number(((Number(item.sueldos) || 0) + (Number(item.bono_antiguedad) || 0)).toFixed(2));
+    list[index] = item;
+    setDevengamiento({ ...devengamiento, departamentos: list });
   };
 
-  const round2 = (num: number) => {
-    return Math.round((num + Number.EPSILON) * 100) / 100;
+  // 2. Cuadrante 2: Aportes Patronales (editables o automáticos s/ Total Ganado)
+  const patronalGestora = useMemo(() => {
+    if (devengamiento.patronal_gestora !== undefined && devengamiento.patronal_gestora !== null && devengamiento.patronal_gestora > 0) {
+      return Number(Number(devengamiento.patronal_gestora).toFixed(2));
+    }
+    return Number((totalGanado * 0.0721).toFixed(2));
+  }, [devengamiento.patronal_gestora, totalGanado]);
+
+  const patronalCaja = useMemo(() => {
+    if (devengamiento.patronal_caja !== undefined && devengamiento.patronal_caja !== null && devengamiento.patronal_caja > 0) {
+      return Number(Number(devengamiento.patronal_caja).toFixed(2));
+    }
+    return Number((totalGanado * 0.10).toFixed(2));
+  }, [devengamiento.patronal_caja, totalGanado]);
+
+  const subtotalPatronal = useMemo(() => {
+    return Number((patronalGestora + patronalCaja).toFixed(2));
+  }, [patronalGestora, patronalCaja]);
+
+  // 3. Cuadrante 3: Beneficios Sociales (editables o automáticos 1/12)
+  const aguinaldo = useMemo(() => {
+    if (devengamiento.aguinaldo !== undefined && devengamiento.aguinaldo !== null && devengamiento.aguinaldo > 0) {
+      return Number(Number(devengamiento.aguinaldo).toFixed(2));
+    }
+    return Number((totalGanado * (1 / 12)).toFixed(2));
+  }, [devengamiento.aguinaldo, totalGanado]);
+
+  const indemnizacion = useMemo(() => {
+    if (devengamiento.indemnizacion !== undefined && devengamiento.indemnizacion !== null && devengamiento.indemnizacion > 0) {
+      return Number(Number(devengamiento.indemnizacion).toFixed(2));
+    }
+    return Number((totalGanado * (1 / 12)).toFixed(2));
+  }, [devengamiento.indemnizacion, totalGanado]);
+
+  const subtotalBeneficios = useMemo(() => {
+    return Number((aguinaldo + indemnizacion).toFixed(2));
+  }, [aguinaldo, indemnizacion]);
+
+  // 4. Arancel Min Trabajo
+  const arancelMt = useMemo(() => {
+    const val = devengamiento.arancel_min_trabajo !== undefined ? devengamiento.arancel_min_trabajo : 27.0;
+    return Number(Number(val).toFixed(2));
+  }, [devengamiento.arancel_min_trabajo]);
+
+  // 5. Totales de Asientos de Pago
+  const sumInteresesGestora = useMemo(() => {
+    return (gestoraPayment.intereses || []).reduce((acc, it) => acc + (Number(it.monto) || 0), 0);
+  }, [gestoraPayment.intereses]);
+
+  const totalPagoGestora = useMemo(() => {
+    const ret = Number(devengamiento.retenciones_ley) || 0;
+    return Number((ret + patronalGestora + sumInteresesGestora).toFixed(2));
+  }, [devengamiento.retenciones_ley, patronalGestora, sumInteresesGestora]);
+
+  const sumAjustesCaja = useMemo(() => {
+    return (cajaPayment.ajustes || []).reduce((acc, it) => acc + (Number(it.monto) || 0), 0);
+  }, [cajaPayment.ajustes]);
+
+  const totalPagoCaja = useMemo(() => {
+    return Number((patronalCaja + sumAjustesCaja).toFixed(2));
+  }, [patronalCaja, sumAjustesCaja]);
+
+  const sumAjustesMt = useMemo(() => {
+    return (minTrabajoPayment.ajustes || []).reduce((acc, it) => acc + (Number(it.monto) || 0), 0);
+  }, [minTrabajoPayment.ajustes]);
+
+  const totalPagoMinTrabajo = useMemo(() => {
+    return Number((arancelMt + sumAjustesMt).toFixed(2));
+  }, [arancelMt, sumAjustesMt]);
+
+  // 6. Totales Generales DEBE y HABER en tiempo real
+  const liveTotalDebe = useMemo(() => {
+    return Number((
+      totalGanado +
+      subtotalPatronal +
+      subtotalBeneficios +
+      arancelMt +
+      totalPagoGestora +
+      totalPagoCaja +
+      totalPagoMinTrabajo
+    ).toFixed(2));
+  }, [totalGanado, subtotalPatronal, subtotalBeneficios, arancelMt, totalPagoGestora, totalPagoCaja, totalPagoMinTrabajo]);
+
+  const liveTotalHaber = useMemo(() => {
+    const ret = Number(devengamiento.retenciones_ley) || 0;
+    const liq = Number(devengamiento.sueldos_por_pagar) || 0;
+    const haberDevengamiento = Number((ret + liq).toFixed(2));
+
+    return Number((
+      haberDevengamiento +
+      subtotalPatronal +
+      subtotalBeneficios +
+      arancelMt +
+      totalPagoGestora +
+      totalPagoCaja +
+      totalPagoMinTrabajo
+    ).toFixed(2));
+  }, [devengamiento.retenciones_ley, devengamiento.sueldos_por_pagar, subtotalPatronal, subtotalBeneficios, arancelMt, totalPagoGestora, totalPagoCaja, totalPagoMinTrabajo]);
+
+  const liveDiferencia = useMemo(() => {
+    return Number(Math.abs(liveTotalDebe - liveTotalHaber).toFixed(2));
+  }, [liveTotalDebe, liveTotalHaber]);
+
+  const isCuadrado = liveDiferencia === 0.0;
+
+  // Manejador para guardar cambios
+  // Obtener historial anual de asientos
+  const fetchAnnualHistory = async (year: number) => {
+    if (!tenantSchema) return;
+    try {
+      setLoadingHistory(true);
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/asientos/history?year=${year}`);
+      if (!res.ok) throw new Error("Error al obtener el historial de asientos");
+      const data: AnnualHistoryResponse = await res.json();
+      setHistoryData(data);
+    } catch (err: any) {
+      console.error("Error fetching history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
   };
 
-  const formatBs = (val?: number) => {
-    return `Bs. ${(val || 0).toLocaleString("es-BO", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}`;
+  // Descargar libro maestro con todas las hojas por mes
+  const handleExportMasterExcel = async () => {
+    if (!tenantSchema) return;
+    try {
+      setExportingMasterExcel(true);
+      const res = await fetch(
+        `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/export/master-excel?year=${selectedYear}`
+      );
+      if (!res.ok) throw new Error("Error al exportar libro maestro");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `asientos_contables_${tenantSchema}_${selectedYear}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al exportar Excel",
+        text: err.message || "No se pudo descargar el libro maestro."
+      });
+    } finally {
+      setExportingMasterExcel(false);
+    }
+  };
+
+  const handleExportMonthExcel = async (mNum: number) => {
+    if (!tenantSchema) return;
+    try {
+      const res = await fetch(
+        `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/export/excel?month=${mNum}&year=${selectedYear}`
+      );
+      if (!res.ok) throw new Error("Error al exportar Excel del mes");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Asientos_${tenantSchema}_${mNum}_${selectedYear}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      Swal.fire({ icon: "error", title: "Error", text: err.message });
+    }
+  };
+
+  const handleExportMonthPdf = async (mNum: number) => {
+    if (!tenantSchema) return;
+    try {
+      const res = await fetch(
+        `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/export/pdf?month=${mNum}&year=${selectedYear}`
+      );
+      if (!res.ok) throw new Error("Error al exportar PDF del mes");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Asientos_${tenantSchema}_${mNum}_${selectedYear}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      Swal.fire({ icon: "error", title: "Error", text: err.message });
+    }
   };
 
   const handleSave = async () => {
-    if (!sheetData || !tenantSchema) return;
-    setSaving(true);
     try {
+      setSaving(true);
       const payload = {
-        month: sheetData.month,
-        year: sheetData.year,
-        caja_banco_name: sheetData.caja_banco_name,
-        caja_salud_name: sheetData.caja_salud_name,
-        fecha_pago_gestora: sheetData.fecha_pago_gestora,
-        fecha_pago_caja: sheetData.fecha_pago_caja,
-        fecha_pago_min_trabajo: sheetData.fecha_pago_min_trabajo,
-        sections: sheetData.sections
+        month: selectedMonth,
+        year: selectedYear,
+        caja_banco_name: sheetData?.caja_banco_name || "Caja Moneda Nacional",
+        caja_salud_name: cajaPayment.caja_tipo || devengamiento.caja_salud_choice || "Caja Petrolera de Salud",
+        arancel_min_trabajo: devengamiento.arancel_min_trabajo,
+        devengamiento: {
+          ...devengamiento,
+          caja_salud_choice: cajaPayment.caja_tipo || devengamiento.caja_salud_choice,
+          patronal_gestora: patronalGestora,
+          patronal_caja: patronalCaja,
+          aguinaldo: aguinaldo,
+          indemnizacion: indemnizacion
+        },
+        gestora_payment: gestoraPayment,
+        caja_payment: cajaPayment,
+        min_trabajo_payment: minTrabajoPayment,
+        is_manually_unlocked: isManuallyUnlocked
       };
 
-      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/asientos/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      const res = await fetch(
+        `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }
+      );
 
-      if (res.ok) {
-        const updated: AccountingSheetData = await res.json();
-        setSheetData(updated);
-        setIsEditing(false);
-        Swal.fire({
-          title: "¡Asientos Guardados!",
-          text: "Los comprobantes contables y modificaciones fueron guardados exitosamente.",
-          icon: "success",
-          timer: 2000,
-          showConfirmButton: false
-        });
-      } else {
-        const err = await res.json().catch(() => ({}));
-        Swal.fire({
-          title: "Error al guardar",
-          text: err.detail || "No se pudo guardar la hoja de asientos.",
-          icon: "error",
-          confirmButtonColor: "#e11d48"
-        });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Error al guardar el asiento contable");
       }
-    } catch (err) {
-      console.error(err);
+
+      const updatedSheet: AccountingSheetData = await res.json();
+      setSheetData(updatedSheet);
+
       Swal.fire({
-        title: "Error de conexión",
-        text: "Ocurrió un error al contactar el servidor.",
-        icon: "error"
+        icon: "success",
+        title: "¡Asientos Guardados!",
+        text: "Los cambios en cuadrantes y asientos de pago se guardaron exitosamente.",
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al guardar",
+        text: err.message || "No se pudo guardar la información.",
+        confirmButtonColor: "#1E3A8A"
       });
     } finally {
       setSaving(false);
     }
   };
 
+  // Restablecer desde planilla
   const handleReset = async () => {
     const result = await Swal.fire({
-      title: "¿Restablecer a valores de planilla?",
-      text: "Esto recalculará todas las cuentas automáticamente desde la planilla de sueldos de este mes y descartará ajustes manuales.",
-      icon: "question",
+      title: "¿Restablecer asientos contables?",
+      text: "Se descartarán las modificaciones personalizadas y se recalcularán automáticamente todos los cuadrantes a partir de la planilla de sueldos del mes.",
+      icon: "warning",
       showCancelButton: true,
+      confirmButtonColor: "#1E3A8A",
+      cancelButtonColor: "#EF4444",
       confirmButtonText: "Sí, restablecer",
-      cancelButtonText: "Cancelar",
-      confirmButtonColor: "#0d9488"
+      cancelButtonText: "Cancelar"
     });
 
-    if (result.isConfirmed) {
+    if (!result.isConfirmed) return;
+
+    try {
       setLoading(true);
-      try {
-        const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/asientos/reset?month=${selectedMonth}&year=${selectedYear}`, {
-          method: "POST"
-        });
-        if (res.ok) {
-          const freshData = await res.json();
-          setSheetData(freshData);
-          setIsEditing(false);
-          Swal.fire({
-            title: "¡Restablecido!",
-            text: "Los asientos fueron recalculados desde la nómina original.",
-            icon: "success",
-            timer: 1800,
-            showConfirmButton: false
-          });
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+      const res = await fetch(
+        `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/reset?month=${selectedMonth}&year=${selectedYear}`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        throw new Error("No se pudo restablecer el asiento contable");
       }
+      const data: AccountingSheetData = await res.json();
+      setSheetData(data);
+      if (data.devengamiento) setDevengamiento(data.devengamiento);
+      if (data.gestora_payment) setGestoraPayment(data.gestora_payment);
+      if (data.caja_payment) setCajaPayment(data.caja_payment);
+      if (data.min_trabajo_payment) setMinTrabajoPayment(data.min_trabajo_payment);
+
+      Swal.fire({
+        icon: "success",
+        title: "Restablecido",
+        text: "Los datos han sido recalculados de la planilla original.",
+        timer: 2000,
+        showConfirmButton: false
+      });
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: err.message || "Error al restablecer.",
+        confirmButtonColor: "#1E3A8A"
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Exportar a Excel
   const handleExportExcel = async () => {
-    if (!tenantSchema) return;
-    setExportingExcel(true);
     try {
-      const url = `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/export/excel?month=${selectedMonth}&year=${selectedYear}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Error generando Excel");
+      setExportingExcel(true);
+      const res = await fetch(
+        `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/export/excel?month=${selectedMonth}&year=${selectedYear}`
+      );
+      if (!res.ok) throw new Error("Error generando el archivo Excel");
       const blob = await res.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = downloadUrl;
+      a.href = url;
       a.download = `Asientos_${tenantSchema}_${selectedMonth}_${selectedYear}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
-    } catch (err) {
-      console.error(err);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
       Swal.fire({
-        title: "Error al exportar",
-        text: "No se pudo generar el archivo Excel.",
-        icon: "error"
+        icon: "error",
+        title: "Error de Exportación",
+        text: err.message || "No se pudo exportar a Excel.",
+        confirmButtonColor: "#1E3A8A"
       });
     } finally {
       setExportingExcel(false);
     }
   };
 
+  // Exportar a PDF
   const handleExportPdf = async () => {
-    if (!tenantSchema) return;
-    setExportingPdf(true);
     try {
-      const url = `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/export/pdf?month=${selectedMonth}&year=${selectedYear}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Error generando PDF");
+      setExportingPdf(true);
+      const res = await fetch(
+        `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/export/pdf?month=${selectedMonth}&year=${selectedYear}`
+      );
+      if (!res.ok) throw new Error("Error generando el archivo PDF");
       const blob = await res.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = downloadUrl;
+      a.href = url;
       a.download = `Asientos_${tenantSchema}_${selectedMonth}_${selectedYear}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
-    } catch (err) {
-      console.error(err);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
       Swal.fire({
-        title: "Error al exportar",
-        text: "No se pudo generar el documento PDF.",
-        icon: "error"
+        icon: "error",
+        title: "Error de Exportación",
+        text: err.message || "No se pudo exportar a PDF.",
+        confirmButtonColor: "#1E3A8A"
       });
     } finally {
       setExportingPdf(false);
     }
   };
 
+  // Manejo de Desbloqueo Extraordinario de Administrador
+  const handleToggleUnlock = () => {
+    if (!isManuallyUnlocked) {
+      Swal.fire({
+        title: "¿Habilitar edición administrativa?",
+        text: "Este periodo se encuentra cerrado por fecha calendario. Al habilitar la edición extraordinaria, podrás ajustar los valores de nómina y aranceles bajo tu responsabilidad.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#F59E0B",
+        cancelButtonColor: "#6B7280",
+        confirmButtonText: "Sí, desbloquear edición",
+        cancelButtonText: "Cancelar"
+      }).then((result) => {
+        if (result.isConfirmed) {
+          setIsManuallyUnlocked(true);
+        }
+      });
+    } else {
+      setIsManuallyUnlocked(false);
+    }
+  };
+
+  // Métodos para lista dinámica de Gestora (Selector tipo + monto, sin descripción)
+  const addInteresGestora = () => {
+    setGestoraPayment({
+      ...gestoraPayment,
+      intereses: [
+        ...(gestoraPayment.intereses || []),
+        { id: Math.random().toString(), tipo: "interes", concepto: "", monto: 0 }
+      ]
+    });
+  };
+
+  const removeInteresGestora = (index: number) => {
+    const list = [...(gestoraPayment.intereses || [])];
+    list.splice(index, 1);
+    setGestoraPayment({ ...gestoraPayment, intereses: list });
+  };
+
+  const updateInteresGestora = (index: number, field: keyof PaymentExtraItem, value: any) => {
+    const list = [...(gestoraPayment.intereses || [])];
+    list[index] = { ...list[index], [field]: value };
+    setGestoraPayment({ ...gestoraPayment, intereses: list });
+  };
+
+  // Métodos para lista dinámica de Caja (Selector 2 tipos + monto, sin descripción)
+  const addAjusteCaja = () => {
+    setCajaPayment({
+      ...cajaPayment,
+      ajustes: [
+        ...(cajaPayment.ajustes || []),
+        { id: Math.random().toString(), tipo: "interes", concepto: "", monto: 0 }
+      ]
+    });
+  };
+
+  const removeAjusteCaja = (index: number) => {
+    const list = [...(cajaPayment.ajustes || [])];
+    list.splice(index, 1);
+    setCajaPayment({ ...cajaPayment, ajustes: list });
+  };
+
+  const updateAjusteCaja = (index: number, field: keyof PaymentExtraItem, value: any) => {
+    const list = [...(cajaPayment.ajustes || [])];
+    list[index] = { ...list[index], [field]: value };
+    setCajaPayment({ ...cajaPayment, ajustes: list });
+  };
+
+  // Métodos para lista dinámica de Min Trabajo (Selector 2 tipos + monto, sin descripción)
+  const addAjusteMinTrabajo = () => {
+    setMinTrabajoPayment({
+      ...minTrabajoPayment,
+      ajustes: [
+        ...(minTrabajoPayment.ajustes || []),
+        { id: Math.random().toString(), tipo: "multa", concepto: "", monto: 0 }
+      ]
+    });
+  };
+
+  const removeAjusteMinTrabajo = (index: number) => {
+    const list = [...(minTrabajoPayment.ajustes || [])];
+    list.splice(index, 1);
+    setMinTrabajoPayment({ ...minTrabajoPayment, ajustes: list });
+  };
+
+  const updateAjusteMinTrabajo = (index: number, field: keyof PaymentExtraItem, value: any) => {
+    const list = [...(minTrabajoPayment.ajustes || [])];
+    list[index] = { ...list[index], [field]: value };
+    setMinTrabajoPayment({ ...minTrabajoPayment, ajustes: list });
+  };
+
+  // Comprobar si los cuadrantes 1 a 4 están bloqueados
+  const isLockedCuadrantes = Boolean(sheetData?.is_locked_by_date && !isManuallyUnlocked);
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-8 max-w-7xl mx-auto pb-16"
-    >
-      {/* 1. CABECERA PRINCIPAL */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200">
-              <BookOpen className="w-3.5 h-3.5 text-teal-600" /> Contabilidad de Nómina
-            </span>
-            {sheetData?.is_customized && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                Ajustes Personalizados
-              </span>
-            )}
-          </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-            Asientos Contables de Nómina
-          </h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Comprobantes de devengamiento, cargas sociales patronales, provisiones de beneficios y asientos de pago en caja/bancos.
-          </p>
-        </div>
-
-        {/* Selectores de Mes y Año */}
-        <div className="flex flex-wrap items-center gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-slate-400 ml-2" />
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-              className="text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-teal-500"
-            >
-              {MONTHS.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-            className="text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-teal-500"
-          >
-            {[2024, 2025, 2026, 2027, 2028].map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-
-          <button
-            onClick={() => fetchSheet(selectedMonth, selectedYear)}
-            disabled={loading}
-            className="p-2 text-slate-500 hover:text-teal-600 hover:bg-slate-100 rounded-xl transition"
-            title="Actualizar hoja"
-          >
-            <RotateCcw className={`w-4 h-4 ${loading ? "animate-spin text-teal-600" : ""}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* 2. BARRA DE ESTADO DE CUADRE Y BOTONES DE ACCIÓN */}
-      <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="flex items-center gap-3">
-          <div
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-              sheetData?.is_cuadrado
-                ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
-                : "bg-rose-50 text-rose-600 border border-rose-200"
-            }`}
-          >
-            {sheetData?.is_cuadrado ? (
-              <CheckCircle2 className="w-6 h-6" />
-            ) : (
-              <AlertTriangle className="w-6 h-6" />
-            )}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-bold text-slate-900 text-base">
-                {sheetData?.is_cuadrado ? "Asientos Cuadrados y Balanceados" : "Atención: Descuadre en Asientos"}
-              </h3>
-              <span
-                className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                  sheetData?.is_cuadrado
-                    ? "bg-emerald-100 text-emerald-800"
-                    : "bg-rose-100 text-rose-800"
-                }`}
-              >
-                Diferencia: {formatBs(sheetData?.diferencia || 0)}
-              </span>
+    <div className="space-y-6 pb-20 max-w-[1500px] mx-auto">
+      {/* 1. Header principal */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 md:p-6 transition-all">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-50 text-blue-800 rounded-xl border border-blue-200">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <div>
+                <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  Asientos Contables
+                  <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                    Nómina & Pagos
+                  </span>
+                </h1>
+                <p className="text-sm text-slate-500">
+                  Devengamiento por departamentos, aportes patronales editables, beneficios sociales y pagos efectivos.
+                </p>
+              </div>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Total DEBE: <strong>{formatBs(sheetData?.total_debe)}</strong> | Total HABER:{" "}
-              <strong>{formatBs(sheetData?.total_haber)}</strong>
-            </p>
           </div>
-        </div>
 
-        {/* Acciones de Edición y Exportación */}
-        <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto justify-end">
-          {isAdmin && (
-            !isEditing ? (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs transition border border-slate-200"
+          {/* Selectores de Periodo y Acciones */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Selector de Mes y Año */}
+            <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+              <Calendar className="w-4 h-4 text-slate-500 ml-2" />
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="bg-transparent text-sm font-semibold text-slate-800 focus:outline-none cursor-pointer pr-2"
               >
-                <Edit3 className="w-3.5 h-3.5 text-teal-600" /> Editar Asientos
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => {
-                    setIsEditing(false);
-                    fetchSheet(selectedMonth, selectedYear);
-                  }}
-                  disabled={saving}
-                  className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs transition shadow-xs"
-                >
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  Guardar Cambios
-                </button>
-              </>
-            )
-          )}
+                {MONTHS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <span className="text-slate-300">|</span>
+              <input
+                type="number"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="w-16 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none pl-1"
+                min="2020"
+                max="2035"
+              />
+            </div>
 
-          {isAdmin && (
+            {/* Botones de Exportar */}
+            <button
+              onClick={handleExportExcel}
+              disabled={exportingExcel || loading}
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs md:text-sm font-semibold transition shadow-sm disabled:opacity-50"
+              title="Exportar comprobante a Excel"
+            >
+              {exportingExcel ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+              Excel
+            </button>
+
+            <button
+              onClick={handleExportPdf}
+              disabled={exportingPdf || loading}
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 rounded-xl text-xs md:text-sm font-semibold transition shadow-sm disabled:opacity-50"
+              title="Exportar comprobante a PDF"
+            >
+              {exportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+              PDF
+            </button>
+
+            {/* Restablecer */}
             <button
               onClick={handleReset}
-              disabled={loading}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition"
-              title="Recalcular desde la planilla"
+              disabled={loading || saving}
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 rounded-xl text-xs md:text-sm font-medium transition"
+              title="Restablecer cálculos automáticos desde la planilla"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-slate-500" /> Restablecer a Planilla
+              <RotateCcw className="w-4 h-4" />
+              <span className="hidden sm:inline">Restablecer</span>
             </button>
-          )}
 
-          <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+            {/* Guardar */}
+            <button
+              onClick={handleSave}
+              disabled={loading || saving}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-800 text-white hover:bg-blue-900 rounded-xl text-xs md:text-sm font-bold transition shadow-md shadow-blue-900/20 disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              <span>Guardar Cambios</span>
+            </button>
+          </div>
+        </div>
 
-          <button
-            onClick={handleExportExcel}
-            disabled={exportingExcel || loading}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-xs"
-          >
-            {exportingExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
-            Exportar Excel
-          </button>
+        {/* Barra de Estado y Balance */}
+        <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs md:text-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Estado de Cuadratura */}
+            <div
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border font-semibold ${
+                isCuadrado
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                  : "bg-red-50 text-red-800 border-red-200"
+              }`}
+            >
+              {isCuadrado ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Balance Cuadrado: Bs. {liveTotalDebe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-red-600" />
+                  <span>Descuadrado: Dif. Bs. {liveDiferencia.toLocaleString("es-BO", { minimumFractionDigits: 2 })} (DEBE: {liveTotalDebe} / HABER: {liveTotalHaber})</span>
+                </>
+              )}
+            </div>
 
-          <button
-            onClick={handleExportPdf}
-            disabled={exportingPdf || loading}
-            className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition shadow-xs"
-          >
-            {exportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
-            Exportar PDF
-          </button>
+            {/* Estado de Bloqueo por Fecha */}
+            {sheetData?.is_locked_by_date ? (
+              <div className="flex items-center gap-2">
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                    isManuallyUnlocked
+                      ? "bg-amber-50 text-amber-800 border-amber-300"
+                      : "bg-rose-50 text-rose-800 border-rose-200"
+                  }`}
+                >
+                  {isManuallyUnlocked ? (
+                    <>
+                      <Unlock className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Edición Administrativa Habilitada</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Periodo Cerrado por Fecha (Solo Lectura Cuadrantes 1-4)</span>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleToggleUnlock}
+                  className="text-xs text-blue-700 hover:text-blue-900 underline font-medium cursor-pointer"
+                >
+                  {isManuallyUnlocked ? "Volver a Proteger" : "¿Desbloquear edición?"}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
+                <Check className="w-3.5 h-3.5 text-blue-600" />
+                <span>Periodo Abierto para Edición</span>
+              </div>
+            )}
+          </div>
+
+          {/* Switch de Vistas */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              onClick={() => setActiveTab("guiado")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === "guiado"
+                  ? "bg-white text-blue-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Panel Modular Guiado
+            </button>
+            <button
+              onClick={() => setActiveTab("oficial")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === "oficial"
+                  ? "bg-white text-blue-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Comprobante Oficial
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("historial");
+                fetchAnnualHistory(selectedYear);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === "historial"
+                  ? "bg-white text-blue-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              Historial de Asientos
+            </button>
+          </div>
         </div>
       </div>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center p-16 gap-3">
-          <Loader2 className="w-10 h-10 text-teal-600 animate-spin" />
-          <p className="text-slate-500 text-sm font-medium animate-pulse">
-            Calculando comprobantes y asientos contables...
-          </p>
+        <div className="bg-white rounded-2xl p-16 flex flex-col items-center justify-center text-slate-500 border border-slate-200">
+          <Loader2 className="w-10 h-10 animate-spin text-blue-800 mb-3" />
+          <p className="text-sm font-medium">Cargando asientos contables y cuadrantes...</p>
         </div>
-      ) : !sheetData ? (
-        <div className="text-center py-12 bg-white rounded-3xl border border-slate-200 text-slate-400">
-          No se encontró información contable para el periodo seleccionado.
-        </div>
-      ) : (
-        /* 3. HOJA CONTABLE PRINCIPAL (DISEÑO FIEL AL DOCUMENTO FÍSICO) */
-        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md overflow-hidden">
-          {/* Header Superior idéntico a la hoja */}
-          <div className="border-b border-slate-200 flex flex-col sm:flex-row items-stretch">
-            {/* Título de Empresa en Amarillo */}
-            <div className="bg-yellow-300 px-6 py-3.5 flex-1 flex items-center justify-center border-b sm:border-b-0 sm:border-r border-slate-300">
-              <span className="font-black text-slate-900 text-sm sm:text-base tracking-wider uppercase">
-                {sheetData.tenant_name} {sheetData.year}
-              </span>
+      ) : activeTab === "guiado" ? (
+        /* ================= VISTA MODULAR GUIADA (TARJETAS INTUITIVAS) ================= */
+        <div className="space-y-6">
+          {/* Mensaje de Bloqueo por Fecha si corresponde */}
+          {isLockedCuadrantes && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-amber-900">
+              <ShieldAlert className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div className="text-xs md:text-sm">
+                <span className="font-bold">Periodo Contable Cerrado: </span>
+                Los valores de nómina corresponden a un mes vencido y han sido congelados a partir del primer día del mes siguiente. Los pagos y sus adicionales continúan siendo editables.
+                <span
+                  onClick={handleToggleUnlock}
+                  className="font-bold underline ml-1 cursor-pointer text-amber-800 hover:text-amber-950"
+                >
+                  Habilitar edición administrativa
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* CUADRANTE 1: PLANILLA Y DEVENGAMIENTO DE SUELDOS (DINÁMICO POR DEPARTAMENTO) */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-linear-to-r from-blue-900 to-indigo-900 text-white p-4 md:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-white/10 rounded-xl">
+                  <Users className="w-5 h-5 text-blue-200" />
+                </div>
+                <div>
+                  <h2 className="text-base md:text-lg font-bold">
+                    Cuadrante 1: Devengamiento de Nómina (Por Departamento)
+                  </h2>
+                  <p className="text-xs text-blue-200">
+                    Distribución de Sueldos y Bonos de Antigüedad para cada departamento ({devengamiento.departamentos?.length || 0} activos)
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsDeptModalOpen(true)}
+                  disabled={isLockedCuadrantes}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition shadow-xs disabled:opacity-50"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Añadir Departamento
+                </button>
+                <span className="text-xs px-2.5 py-1 bg-white/20 rounded-full font-medium">
+                  {isLockedCuadrantes ? "Solo Lectura" : "Editable"}
+                </span>
+              </div>
             </div>
 
-            {/* Mes en Azul Centrado */}
-            <div className="bg-slate-50 sm:w-64 px-6 py-3.5 flex items-center justify-center">
-              <span className="font-black text-blue-900 text-sm sm:text-base tracking-widest uppercase">
-                {sheetData.month_name}
-              </span>
+            <div className="p-6 space-y-6">
+              {/* Tarjetas Dinámicas por Cada Departamento */}
+              {devengamiento.departamentos && devengamiento.departamentos.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {devengamiento.departamentos.map((depto, idx) => {
+                    const deptoTotal = Number(((Number(depto.sueldos) || 0) + (Number(depto.bono_antiguedad) || 0)).toFixed(2));
+                    return (
+                      <div
+                        key={depto.id || `dept-${idx}-${depto.nombre}`}
+                        className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 shadow-2xs hover:border-slate-300 transition"
+                      >
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+                            <span className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                              {depto.nombre}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                              Bs. {deptoTotal.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                            </span>
+                            {!isLockedCuadrantes && devengamiento.departamentos && devengamiento.departamentos.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDepartment(idx)}
+                                title={`Quitar ${depto.nombre}`}
+                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Sueldos y Salarios de este departamento */}
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-slate-600 block">
+                            Sueldos y Salarios {depto.nombre}
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">Bs.</span>
+                            <NumericInput
+                              disabled={isLockedCuadrantes}
+                              value={depto.sueldos}
+                              onChange={(val) => updateDepartmentItem(idx, "sueldos", val)}
+                              className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs md:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 text-right"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Bono de Antigüedad de este departamento */}
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-slate-600 block">
+                            Bono de Antigüedad {depto.nombre}
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">Bs.</span>
+                            <NumericInput
+                              disabled={isLockedCuadrantes}
+                              value={depto.bono_antiguedad}
+                              onChange={(val) => updateDepartmentItem(idx, "bono_antiguedad", val)}
+                              className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs md:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100 text-right"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-300 rounded-xl space-y-3">
+                  <Users className="w-10 h-10 text-slate-400 mx-auto" />
+                  <p className="text-sm font-medium text-slate-600">
+                    No hay departamentos configurados para esta empresa.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsDeptModalOpen(true)}
+                    disabled={isLockedCuadrantes}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Añadir Primer Departamento
+                  </button>
+                </div>
+              )}
+
+              {/* Barra de Subtotal Total Ganado */}
+              <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-blue-900">
+                  <Sparkles className="w-5 h-5 text-blue-700" />
+                  <div>
+                    <span className="text-sm font-bold">TOTAL GANADO DEVENGADO (DEBE):</span>
+                    <p className="text-xs text-blue-700">
+                      Base imponible consolidada para Aportes Patronales y Beneficios Sociales.
+                    </p>
+                  </div>
+                </div>
+                <div className="text-xl md:text-2xl font-black text-blue-900">
+                  Bs. {totalGanado.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+
+              {/* Pasivos Laborales: Retenciones de Ley y Sueldos por Pagar */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Retenciones Laborales (12.71%)
+                    </label>
+                    {!isLockedCuadrantes && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const calc = Number((totalGanado * 0.1271).toFixed(2));
+                          const liq = Number((totalGanado - calc).toFixed(2));
+                          setDevengamiento({ ...devengamiento, retenciones_ley: calc, sueldos_por_pagar: liq });
+                        }}
+                        className="text-[11px] font-bold text-blue-700 hover:text-blue-900 underline"
+                      >
+                        Auto-calcular (12.71%)
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">Bs.</span>
+                    <NumericInput
+                      disabled={isLockedCuadrantes}
+                      value={devengamiento.retenciones_ley}
+                      onChange={(val) => {
+                        setDevengamiento({
+                          ...devengamiento,
+                          retenciones_ley: val,
+                          sueldos_por_pagar: Number((totalGanado - val).toFixed(2))
+                        });
+                      }}
+                      className="w-full pl-10 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500">Pasivo Laboral - Aporte Gestora Pública (12.71%)</p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Sueldos por Pagar (Líquido)
+                    </label>
+                    {!isLockedCuadrantes && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ret = Number(devengamiento.retenciones_ley) || 0;
+                          setDevengamiento({ ...devengamiento, sueldos_por_pagar: Number((totalGanado - ret).toFixed(2)) });
+                        }}
+                        className="text-[11px] font-bold text-blue-700 hover:text-blue-900 underline"
+                      >
+                        Ajustar Diferencia
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">Bs.</span>
+                    <NumericInput
+                      disabled={isLockedCuadrantes}
+                      value={devengamiento.sueldos_por_pagar}
+                      onChange={(val) => setDevengamiento({ ...devengamiento, sueldos_por_pagar: val })}
+                      className="w-full pl-10 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500">Pasivo Laboral - Líquido pagable a empleados</p>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Tabla de Asientos */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          {/* /* FILA DE CUADRANTE 2 Y CUADRANTE 3 (CALCULADOS Y EDITABLES) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* CUADRANTE 2: APORTES PATRONALES */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
+              <div>
+                <div className="bg-emerald-800 px-6 py-4 text-white flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/10 rounded-lg">
+                      <HeartPulse className="w-5 h-5 text-emerald-200" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold">Cuadrante 2: Aportes Patronales</h2>
+                      <p className="text-xs text-emerald-200">Cargas sociales automáticas s/ Total Ganado (Editables)</p>
+                    </div>
+                  </div>
+                  <span className="text-xs px-2.5 py-1 bg-white/20 rounded-full font-medium">17.21% Base</span>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  {/* Gestora Pública Patronal (7.21%) */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-bold text-slate-700 uppercase">Aportes Patronales - Gestora Pública (7.21%)</div>
+                        <div className="text-[11px] text-slate-500">Prima AFP 1.71% + Vivienda 2.0% + Solidario 3.0%</div>
+                      </div>
+                      {!isLockedCuadrantes && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const autoVal = Number((totalGanado * 0.0721).toFixed(2));
+                            setDevengamiento({ ...devengamiento, patronal_gestora: autoVal });
+                          }}
+                          className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline"
+                        >
+                          Auto (7.21%)
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">Bs.</span>
+                      <NumericInput
+                        disabled={isLockedCuadrantes}
+                        value={devengamiento.patronal_gestora !== undefined ? devengamiento.patronal_gestora : patronalGestora}
+                        onChange={(val) => setDevengamiento({ ...devengamiento, patronal_gestora: val })}
+                        className="w-full pl-10 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:bg-slate-100"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Selector de Caja de Salud y Monto */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <label className="text-xs font-bold text-slate-700 uppercase">
+                        Ente Gestor de Salud (10%)
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCajaPayment({ ...cajaPayment, caja_tipo: "Caja Petrolera de Salud" });
+                            setDevengamiento({ ...devengamiento, caja_salud_choice: "Caja Petrolera de Salud" });
+                          }}
+                          className={`text-xs px-3 py-1 rounded-lg font-bold transition ${
+                            (cajaPayment.caja_tipo || devengamiento.caja_salud_choice) === "Caja Petrolera de Salud"
+                              ? "bg-emerald-700 text-white shadow-sm"
+                              : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-100"
+                          }`}
+                        >
+                          Caja Petrolera
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCajaPayment({ ...cajaPayment, caja_tipo: "Caja Nacional de Salud" });
+                            setDevengamiento({ ...devengamiento, caja_salud_choice: "Caja Nacional de Salud" });
+                          }}
+                          className={`text-xs px-3 py-1 rounded-lg font-bold transition ${
+                            (cajaPayment.caja_tipo || devengamiento.caja_salud_choice) === "Caja Nacional de Salud"
+                              ? "bg-emerald-700 text-white shadow-sm"
+                              : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-100"
+                          }`}
+                        >
+                          Caja Nacional
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-600 font-semibold">
+                          Monto Aporte de Salud (10% de Total Ganado):
+                        </span>
+                        {!isLockedCuadrantes && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const autoVal = Number((totalGanado * 0.10).toFixed(2));
+                              setDevengamiento({ ...devengamiento, patronal_caja: autoVal });
+                            }}
+                            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline"
+                          >
+                            Auto (10%)
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">Bs.</span>
+                        <NumericInput
+                          disabled={isLockedCuadrantes}
+                          value={devengamiento.patronal_caja !== undefined ? devengamiento.patronal_caja : patronalCaja}
+                          onChange={(val) => setDevengamiento({ ...devengamiento, patronal_caja: val })}
+                          className="w-full pl-10 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:bg-slate-100"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-emerald-50 px-6 py-3 border-t border-emerald-100 flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-900">SUBTOTAL PATRONALES:</span>
+                <span className="text-lg font-black text-emerald-900">
+                  Bs. {subtotalPatronal.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+
+            {/* CUADRANTE 3: BENEFICIOS SOCIALES */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between">
+              <div>
+                <div className="bg-purple-900 px-6 py-4 text-white flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/10 rounded-lg">
+                      <Scale className="w-5 h-5 text-purple-200" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold">Cuadrante 3: Beneficios Sociales</h2>
+                      <p className="text-xs text-purple-200">Provisiones y Previsiones (1/12 cada una, editables)</p>
+                    </div>
+                  </div>
+                  <span className="text-xs px-2.5 py-1 bg-white/20 rounded-full font-medium">16.67% Base</span>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  {/* Aguinaldos */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-bold text-slate-700 uppercase">Aguinaldos de Navidad (8.33%)</div>
+                        <div className="text-[11px] text-slate-500">Un doceavo mensual -&gt; Provisión Aguinaldos</div>
+                      </div>
+                      {!isLockedCuadrantes && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const autoVal = Number((totalGanado * (1 / 12)).toFixed(2));
+                            setDevengamiento({ ...devengamiento, aguinaldo: autoVal });
+                          }}
+                          className="text-[11px] font-bold text-purple-700 hover:text-purple-900 underline"
+                        >
+                          Auto (1/12)
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">Bs.</span>
+                      <NumericInput
+                        disabled={isLockedCuadrantes}
+                        value={devengamiento.aguinaldo !== undefined ? devengamiento.aguinaldo : aguinaldo}
+                        onChange={(val) => setDevengamiento({ ...devengamiento, aguinaldo: val })}
+                        className="w-full pl-10 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-purple-500 focus:outline-none disabled:bg-slate-100"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Indemnizaciones */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-bold text-slate-700 uppercase">Indemnizaciones (8.33%)</div>
+                        <div className="text-[11px] text-slate-500">Un doceavo mensual -&gt; Previsión Beneficios Sociales</div>
+                      </div>
+                      {!isLockedCuadrantes && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const autoVal = Number((totalGanado * (1 / 12)).toFixed(2));
+                            setDevengamiento({ ...devengamiento, indemnizacion: autoVal });
+                          }}
+                          className="text-[11px] font-bold text-purple-700 hover:text-purple-900 underline"
+                        >
+                          Auto (1/12)
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">Bs.</span>
+                      <NumericInput
+                        disabled={isLockedCuadrantes}
+                        value={devengamiento.indemnizacion !== undefined ? devengamiento.indemnizacion : indemnizacion}
+                        onChange={(val) => setDevengamiento({ ...devengamiento, indemnizacion: val })}
+                        className="w-full pl-10 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-purple-500 focus:outline-none disabled:bg-slate-100"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-purple-50 px-6 py-3 border-t border-purple-100 flex items-center justify-between">
+                <span className="text-xs font-bold text-purple-900">SUBTOTAL BENEFICIOS:</span>
+                <span className="text-lg font-black text-purple-900">
+                  Bs. {subtotalBeneficios.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* CUADRANTE 4: MINISTERIO DE TRABAJO */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-amber-50 text-amber-700 rounded-xl border border-amber-200">
+                <Briefcase className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Cuadrante 4: Ministerio de Trabajo (Arancel OVT)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Arancel por depósito mensual en el Oficina Virtual de Trámites
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold text-slate-600">Arancel Mensual:</span>
+              <div className="relative w-36">
+                <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">Bs.</span>
+                <NumericInput
+                  disabled={isLockedCuadrantes}
+                  value={devengamiento.arancel_min_trabajo}
+                  onChange={(val) => setDevengamiento({ ...devengamiento, arancel_min_trabajo: val })}
+                  className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none disabled:bg-slate-100 text-right"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* SEPARADOR VISUAL PARA ASIENTOS DE PAGO */}
+          <div className="pt-4">
+            <div className="flex items-center gap-3 text-slate-400 my-2">
+              <div className="h-px bg-slate-200 flex-1" />
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-600 bg-slate-100 px-4 py-1.5 rounded-full border border-slate-200">
+                <Receipt className="w-4 h-4 text-blue-700" />
+                Asientos de Cancelación Efectiva (Comprobantes de Pago)
+              </div>
+              <div className="h-px bg-slate-200 flex-1" />
+            </div>
+            <p className="text-center text-xs text-slate-500 max-w-2xl mx-auto mb-4">
+              Los montos bases se transfieren automáticamente de los cuadrantes anteriores. Registra la fecha de desembolso, número de transacción y selecciona el tipo de adicional (sin necesidad de escribir descripciones).
+            </p>
+          </div>
+
+          {/* ASIENTO 5: CANCELACIÓN GESTORA PÚBLICA */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-slate-900 to-blue-950 px-6 py-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-lg">
+                  <CreditCard className="w-5 h-5 text-blue-300" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Asiento de Pago: Gestora Pública</h3>
+                  <p className="text-xs text-slate-300">
+                    Cancelación de Retenciones Laborales (12.71%) + Aporte Patronal ({patronalGestora > 0 ? "Bs. " + patronalGestora : "7.21%"}) + Intereses
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-slate-300">Total a Pagar Gestora:</div>
+                <div className="text-lg font-black text-white">
+                  Bs. {totalPagoGestora.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Metadatos de Pago: Fecha y N° Transacción */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pb-4 border-b border-slate-100">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-600">Fecha de Pago:</label>
+                  <input
+                    type="date"
+                    value={gestoraPayment.fecha || ""}
+                    onChange={(e) => setGestoraPayment({ ...gestoraPayment, fecha: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs md:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-600">N° Transacción / Documento:</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. TRANS-49102"
+                    value={gestoraPayment.nro_transaccion || ""}
+                    onChange={(e) => setGestoraPayment({ ...gestoraPayment, nro_transaccion: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs md:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-medium text-slate-500 block">Base Retenciones:</span>
+                  <span className="text-sm font-bold text-slate-800">
+                    Bs. {Number(devengamiento.retenciones_ley || 0).toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-medium text-slate-500 block">Base Patronal Gestora:</span>
+                  <span className="text-sm font-bold text-slate-800">
+                    Bs. {patronalGestora.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Lista Dinámica de Intereses Gestora (Selector tipo + monto) */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Adicionales de Gestora Pública (Intereses / Recargos)
+                    </span>
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
+                      {(gestoraPayment.intereses || []).length} items
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addInteresGestora}
+                    className="flex items-center gap-1 text-xs px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-bold border border-blue-200 transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Agregar Interés / Recargo
+                  </button>
+                </div>
+
+                {(gestoraPayment.intereses || []).length === 0 ? (
+                  <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded-lg border border-dashed border-slate-200">
+                    No se han registrado intereses adicionales para este pago de Gestora.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {gestoraPayment.intereses.map((item, idx) => (
+                      <div
+                        key={item.id || idx}
+                        className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200"
+                      >
+                        <select
+                          value={item.tipo || "interes"}
+                          onChange={(e) => updateInteresGestora(idx, "tipo", e.target.value)}
+                          className="w-full sm:w-44 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="interes">Interés por Mora</option>
+                          <option value="actualizacion">Actualización</option>
+                          <option value="multa">Multa / Recargo</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={item.concepto || ""}
+                          onChange={(e) => updateInteresGestora(idx, "concepto", e.target.value)}
+                          placeholder="Descripción / Concepto (opcional)..."
+                          className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                        />
+                        <div className="relative w-full sm:w-36">
+                          <span className="absolute left-3 top-2 text-xs text-slate-400 font-bold">Bs.</span>
+                          <NumericInput
+                            value={item.monto}
+                            onChange={(val) => updateInteresGestora(idx, "monto", val)}
+                            className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-blue-500"
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeInteresGestora(idx)}
+                          className="self-end sm:self-auto p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+                          title="Eliminar adicional"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ASIENTO 6: CANCELACIÓN CAJA DE SALUD */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-emerald-900 to-teal-950 px-6 py-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-lg">
+                  <HeartPulse className="w-5 h-5 text-emerald-300" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">
+                    Asiento de Pago: {cajaPayment.caja_tipo || devengamiento.caja_salud_choice}
+                  </h3>
+                  <p className="text-xs text-emerald-200">
+                    Cancelación de Aporte Patronal ({patronalCaja > 0 ? "Bs. " + patronalCaja : "10%"}) + Intereses y Actualizaciones UFV
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-emerald-200">Total a Pagar Caja:</div>
+                <div className="text-lg font-black text-white">
+                  Bs. {totalPagoCaja.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Metadatos de Pago: Fecha y N° Transacción */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4 border-b border-slate-100">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-600">Fecha de Pago:</label>
+                  <input
+                    type="date"
+                    value={cajaPayment.fecha || ""}
+                    onChange={(e) => setCajaPayment({ ...cajaPayment, fecha: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs md:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-600">N° Transacción / Depósito:</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. DP-883910"
+                    value={cajaPayment.nro_transaccion || ""}
+                    onChange={(e) => setCajaPayment({ ...cajaPayment, nro_transaccion: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs md:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-medium text-slate-500 block">Base Aporte Salud:</span>
+                  <span className="text-sm font-bold text-slate-800">
+                    Bs. {patronalCaja.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Lista Dinámica de Intereses y Actualizaciones (Selector 2 tipos + monto) */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Intereses y Actualizaciones UFV (Caja de Salud)
+                    </span>
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
+                      {(cajaPayment.ajustes || []).length} items
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addAjusteCaja}
+                    className="flex items-center gap-1 text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-bold border border-emerald-200 transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Agregar Ajuste
+                  </button>
+                </div>
+
+                {(cajaPayment.ajustes || []).length === 0 ? (
+                  <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded-lg border border-dashed border-slate-200">
+                    No se han registrado intereses ni actualizaciones para la Caja de Salud.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {cajaPayment.ajustes.map((item, idx) => (
+                      <div
+                        key={item.id || idx}
+                        className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200"
+                      >
+                        <select
+                          value={item.tipo || "interes"}
+                          onChange={(e) => updateAjusteCaja(idx, "tipo", e.target.value)}
+                          className="w-full sm:w-44 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:border-emerald-500"
+                        >
+                          <option value="interes">Interés por Mora</option>
+                          <option value="actualizacion">Actualización UFV</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={item.concepto || ""}
+                          onChange={(e) => updateAjusteCaja(idx, "concepto", e.target.value)}
+                          placeholder="Descripción / Concepto (opcional)..."
+                          className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
+                        />
+                        <div className="relative w-full sm:w-36">
+                          <span className="absolute left-3 top-2 text-xs text-slate-400 font-bold">Bs.</span>
+                          <NumericInput
+                            value={item.monto}
+                            onChange={(val) => updateAjusteCaja(idx, "monto", val)}
+                            className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-emerald-500"
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeAjusteCaja(idx)}
+                          className="self-end sm:self-auto p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+                          title="Eliminar ajuste"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ASIENTO 7: CANCELACIÓN MINISTERIO DE TRABAJO */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-900 to-orange-950 px-6 py-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-lg">
+                  <Briefcase className="w-5 h-5 text-amber-300" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Asiento de Pago: Ministerio de Trabajo</h3>
+                  <p className="text-xs text-amber-200">
+                    Cancelación de Arancel OVT + Multas e Intereses por presentación
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-amber-200">Total a Pagar Min. Trabajo:</div>
+                <div className="text-lg font-black text-white">
+                  Bs. {totalPagoMinTrabajo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Metadatos de Pago: Fecha y N° Transacción */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4 border-b border-slate-100">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-600">Fecha de Pago:</label>
+                  <input
+                    type="date"
+                    value={minTrabajoPayment.fecha || ""}
+                    onChange={(e) => setMinTrabajoPayment({ ...minTrabajoPayment, fecha: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs md:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-600">N° Transacción / Comprobante:</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. OVT-10928"
+                    value={minTrabajoPayment.nro_transaccion || ""}
+                    onChange={(e) => setMinTrabajoPayment({ ...minTrabajoPayment, nro_transaccion: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs md:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-medium text-slate-500 block">Base Arancel OVT:</span>
+                  <span className="text-sm font-bold text-slate-800">
+                    Bs. {arancelMt.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Lista Dinámica de Multas e Intereses (Selector 2 tipos + monto) */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Multas e Intereses Ministerio de Trabajo
+                    </span>
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
+                      {(minTrabajoPayment.ajustes || []).length} items
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addAjusteMinTrabajo}
+                    className="flex items-center gap-1 text-xs px-3 py-1.5 bg-amber-50 text-amber-800 hover:bg-amber-100 rounded-lg font-bold border border-amber-300 transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Agregar Multa / Interés
+                  </button>
+                </div>
+
+                {(minTrabajoPayment.ajustes || []).length === 0 ? (
+                  <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded-lg border border-dashed border-slate-200">
+                    No se han registrado multas ni intereses adicionales para el Ministerio de Trabajo.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {minTrabajoPayment.ajustes.map((item, idx) => (
+                      <div
+                        key={item.id || idx}
+                        className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200"
+                      >
+                        <select
+                          value={item.tipo || "multa"}
+                          onChange={(e) => updateAjusteMinTrabajo(idx, "tipo", e.target.value)}
+                          className="w-full sm:w-44 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:border-amber-500"
+                        >
+                          <option value="multa">Multa presentación</option>
+                          <option value="interes">Interés por mora</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={item.concepto || ""}
+                          onChange={(e) => updateAjusteMinTrabajo(idx, "concepto", e.target.value)}
+                          placeholder="Descripción / Concepto (opcional)..."
+                          className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
+                        />
+                        <div className="relative w-full sm:w-36">
+                          <span className="absolute left-3 top-2 text-xs text-slate-400 font-bold">Bs.</span>
+                          <NumericInput
+                            value={item.monto}
+                            onChange={(val) => updateAjusteMinTrabajo(idx, "monto", val)}
+                            className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-amber-500"
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeAjusteMinTrabajo(idx)}
+                          className="self-end sm:self-auto p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+                          title="Eliminar ajuste"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : activeTab === "oficial" ? (
+        /* ================= VISTA COMPROBANTE OFICIAL (TABLA COMPLETA) ================= */
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 space-y-6">
+          <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-slate-900 tracking-wide uppercase">
+                {sheetData?.tenant_name} {selectedYear}
+              </h2>
+              <p className="text-sm font-bold text-blue-900 uppercase">
+                COMPROBANTE CONTABLE DE NÓMINA Y APORTES - {sheetData?.month_name}
+              </p>
+            </div>
+            <div className="text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+              Expresado en Bolivianos (Bs.)
+            </div>
+          </div>
+
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-left border-collapse text-xs md:text-sm">
               <thead>
-                <tr className="bg-slate-100 text-slate-700 text-xs font-black uppercase tracking-wider border-b border-slate-200">
-                  <th className="p-3.5 pl-6">DETALLE DE CUENTAS</th>
-                  <th className="p-3.5 w-44 text-right">DEBE</th>
-                  <th className="p-3.5 pr-6 w-44 text-right">HABER</th>
+                <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 font-bold">
+                  <th className="py-3 px-4 w-[60%]">DETALLE DE LA CUENTA</th>
+                  <th className="py-3 px-4 w-[20%] text-right">DEBE (Bs.)</th>
+                  <th className="py-3 px-4 w-[20%] text-right">HABER (Bs.)</th>
                 </tr>
               </thead>
-
-              <tbody className="divide-y divide-slate-100 text-sm">
-                {sheetData.sections.map((section, secIdx) => (
+              <tbody className="divide-y divide-slate-100">
+                {(sheetData?.sections || []).map((section) => (
                   <React.Fragment key={section.id}>
-                    {/* Encabezado especial para Asientos de Pago (Melón / Peach) */}
+                    {/* Encabezado si es asiento de pago */}
                     {section.is_payment && section.payment_label && (
-                      <tr className="bg-amber-100/70 border-t border-b border-amber-200">
-                        <td colSpan={3} className="p-2.5 px-6">
-                          {isEditing ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-[11px] font-bold text-amber-900 uppercase">Etiqueta Asiento:</span>
-                              <input
-                                type="text"
-                                value={section.payment_label}
-                                onChange={(e) => handlePaymentLabelChange(secIdx, e.target.value)}
-                                className="text-xs font-black text-amber-950 bg-white border border-amber-300 rounded-lg px-2.5 py-1 focus:ring-2 focus:ring-teal-500 w-80"
-                              />
-                            </div>
-                          ) : (
-                            <span className="font-black text-amber-950 text-xs tracking-wider uppercase">
-                              {section.payment_label}
-                            </span>
-                          )}
+                      <tr className="bg-amber-50/80 font-bold text-amber-950 border-t-2 border-slate-200">
+                        <td colSpan={3} className="py-2.5 px-4 text-center tracking-wide text-xs uppercase">
+                          {section.payment_label}
                         </td>
                       </tr>
                     )}
 
-                    {/* Filas de Cuentas */}
-                    {section.items.map((item, itemIdx) => (
-                      <tr key={itemIdx} className="hover:bg-slate-50/70 transition">
-                        {/* Columna Detalle */}
-                        <td className="p-2.5 pl-6 font-semibold text-slate-800">
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              value={item.cuenta}
-                              onChange={(e) => handleItemChange(secIdx, itemIdx, "cuenta", e.target.value)}
-                              className="w-full text-xs font-semibold text-slate-900 bg-white border border-slate-300 rounded-lg px-2.5 py-1 focus:ring-2 focus:ring-teal-500"
-                            />
-                          ) : (
-                            <div>
-                              <span>{item.cuenta}</span>
-                              {item.subcuentas && item.subcuentas.length > 0 && (
-                                <div className="mt-1 space-y-0.5">
-                                  {item.subcuentas.map((sub, sIdx) => (
-                                    <p key={sIdx} className="text-[11px] text-slate-400 italic pl-3">
-                                      ↳ {sub}
-                                    </p>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </td>
+                    {/* Filas de cuentas */}
+                    {section.items.map((item, idx) => (
+                      <React.Fragment key={idx}>
+                        <tr className="hover:bg-slate-50/60 transition">
+                          <td className="py-2.5 px-4 font-medium text-slate-800">
+                            {item.cuenta}
+                            {item.tag && (
+                              <span className="ml-2 text-[10px] px-2 py-0.5 rounded font-normal bg-slate-100 text-slate-600">
+                                {item.tag}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-mono text-slate-900">
+                            {item.debe > 0 ? item.debe.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : "-"}
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-mono text-slate-900">
+                            {item.haber > 0 ? item.haber.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : "-"}
+                          </td>
+                        </tr>
 
-                        {/* Columna DEBE */}
-                        <td className="p-2.5 text-right font-mono text-xs font-bold text-slate-900">
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={item.debe || ""}
-                              onChange={(e) => handleItemChange(secIdx, itemIdx, "debe", e.target.value)}
-                              placeholder="0.00"
-                              className="w-full text-right text-xs font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded-lg px-2 py-1 focus:ring-2 focus:ring-teal-500"
-                            />
-                          ) : (
-                            item.debe > 0 ? formatBs(item.debe) : "-"
-                          )}
-                        </td>
-
-                        {/* Columna HABER */}
-                        <td className="p-2.5 pr-6 text-right font-mono text-xs font-bold text-slate-900">
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={item.haber || ""}
-                              onChange={(e) => handleItemChange(secIdx, itemIdx, "haber", e.target.value)}
-                              placeholder="0.00"
-                              className="w-full text-right text-xs font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded-lg px-2 py-1 focus:ring-2 focus:ring-teal-500"
-                            />
-                          ) : (
-                            item.haber > 0 ? formatBs(item.haber) : "-"
-                          )}
-                        </td>
-                      </tr>
+                        {/* Subcuentas */}
+                        {(item.subcuentas || []).map((sub, sIdx) => (
+                          <tr key={`sub-${sIdx}`} className="text-slate-500 text-xs italic bg-slate-50/30">
+                            <td className="py-1 px-8 font-normal">{sub}</td>
+                            <td className="py-1 px-4 text-right font-mono">-</td>
+                            <td className="py-1 px-4 text-right font-mono">-</td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
                     ))}
 
-                    {/* Fila Subtotal de la Sección */}
-                    <tr className="bg-slate-50/80 font-bold border-t border-b border-slate-200">
-                      <td className="p-2 pl-6 text-xs text-slate-500 uppercase tracking-wider">
-                        Subtotal {section.title}
+                    {/* Glosa contable con fecha y número de documento */}
+                    {section.glosa && (
+                      <tr className="bg-slate-50/50">
+                        <td colSpan={3} className="py-2.5 px-5 text-xs italic text-slate-600 border-t border-dashed border-slate-200">
+                          <div className="flex items-center gap-2">
+                            <Receipt className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                            <span>{section.glosa}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+
+                    {/* Fila de Subtotal */}
+                    <tr className="bg-slate-50 font-bold text-slate-900 border-t border-b border-slate-200">
+                      <td className="py-2 px-4 text-right italic text-xs text-slate-500">Subtotal Asiento:</td>
+                      <td className="py-2 px-4 text-right font-mono border-t border-slate-300">
+                        {section.subtotal_debe > 0
+                          ? section.subtotal_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })
+                          : "-"}
                       </td>
-                      <td className="p-2 text-right font-mono text-xs font-black text-slate-900 border-t border-slate-300">
-                        {formatBs(section.subtotal_debe)}
-                      </td>
-                      <td className="p-2 pr-6 text-right font-mono text-xs font-black text-slate-900 border-t border-slate-300">
-                        {formatBs(section.subtotal_haber)}
+                      <td className="py-2 px-4 text-right font-mono border-t border-slate-300">
+                        {section.subtotal_haber > 0
+                          ? section.subtotal_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 })
+                          : "-"}
                       </td>
                     </tr>
                   </React.Fragment>
                 ))}
 
-                {/* FILA FINAL DE TOTALES GENERALES */}
-                <tr className="bg-slate-200 font-black text-slate-900 border-t-2 border-b-4 border-slate-900">
-                  <td className="p-3.5 pl-6 text-sm tracking-wider uppercase">
-                    TOTALES GENERALES
+                {/* FILA DE TOTALES GENERALES */}
+                <tr className="bg-slate-200 text-slate-900 font-black text-sm md:text-base border-t-2 border-slate-400">
+                  <td className="py-3.5 px-4 text-center tracking-wider">TOTALES GENERALES</td>
+                  <td className="py-3.5 px-4 text-right font-mono border-t-2 border-b-4 border-slate-700">
+                    Bs. {sheetData?.total_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
                   </td>
-                  <td className="p-3.5 text-right font-mono text-sm tracking-tight text-slate-950 border-t-2 border-slate-900">
-                    {formatBs(sheetData.total_debe)}
-                  </td>
-                  <td className="p-3.5 pr-6 text-right font-mono text-sm tracking-tight text-slate-950 border-t-2 border-slate-900">
-                    {formatBs(sheetData.total_haber)}
+                  <td className="py-3.5 px-4 text-right font-mono border-t-2 border-b-4 border-slate-700">
+                    Bs. {sheetData?.total_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
-      )}
-
-      {/* Floating dock when editing */}
-      <AnimatePresence>
-        {isAdmin && isEditing && (
-          <motion.div
-            initial={{ opacity: 0, y: 40, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 40, scale: 0.95 }}
-            className="fixed bottom-6 inset-x-0 mx-auto max-w-xl px-4 z-50 pointer-events-none"
-          >
-            <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-md text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center justify-between gap-4">
+      ) : (
+        /* ================= VISTA HISTORIAL ANUAL DE ASIENTOS ================= */
+        <div className="space-y-6">
+          {/* Cabecera y Resumen Anual */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-500"></span>
-                </span>
+                <div className="p-3 bg-blue-900 text-white rounded-2xl shadow-md">
+                  <History className="w-6 h-6" />
+                </div>
                 <div>
-                  <p className="text-xs font-bold text-white">Modo Edición de Asientos</p>
-                  <p className="text-[11px] text-slate-400">
-                    {sheetData?.is_cuadrado ? "DEBE y HABER cuadrados" : `Diferencia: ${formatBs(sheetData?.diferencia)}`}
+                  <h2 className="text-lg font-black text-slate-900">
+                    Historial Anual de Asientos Contables ({selectedYear})
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Resumen mensual consolidado de nómina, cargas patronales, beneficios y pagos en {sheetData?.tenant_name}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              {/* Botón Descargar Libro Maestro Multimes */}
+              <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setIsEditing(false)}
-                  disabled={saving}
-                  className="px-3.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition border border-slate-700"
+                  onClick={handleExportMasterExcel}
+                  disabled={exportingMasterExcel}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs md:text-sm font-bold shadow-md transition disabled:opacity-50"
+                  title="Descargar libro Excel con una hoja por cada mes del año"
                 >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-slate-950 bg-teal-400 hover:bg-teal-300 rounded-xl transition shadow-lg shadow-teal-500/25"
-                >
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  Guardar Cambios
+                  {exportingMasterExcel ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="w-4 h-4" />
+                  )}
+                  <span>Descargar Libro Maestro (Excel Multimes)</span>
                 </button>
               </div>
             </div>
-          </motion.div>
+
+            {/* Tarjetas de Resumen General */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6">
+              <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-100 space-y-1">
+                <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Total Debe Anual</span>
+                <div className="text-xl md:text-2xl font-black text-blue-900">
+                  Bs. {historyData?.total_anual_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 }) || "0.00"}
+                </div>
+                <p className="text-[11px] text-blue-600">Consolidado general de débitos del ejercicio</p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-100 space-y-1">
+                <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Total Haber Anual</span>
+                <div className="text-xl md:text-2xl font-black text-emerald-900">
+                  Bs. {historyData?.total_anual_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 }) || "0.00"}
+                </div>
+                <p className="text-[11px] text-emerald-600">Balance cuadrado al centavo con el Debe</p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Meses Registrados</span>
+                <div className="text-xl md:text-2xl font-black text-slate-800">
+                  {historyData?.meses_registrados || 0} / 12 meses
+                </div>
+                <p className="text-[11px] text-slate-500">Periodos contables con información procesada</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Grid de los 12 Meses del Año */}
+          {loadingHistory ? (
+            <div className="bg-white rounded-2xl p-16 flex flex-col items-center justify-center text-slate-500 border border-slate-200">
+              <Loader2 className="w-10 h-10 animate-spin text-blue-800 mb-3" />
+              <p className="text-sm font-medium">Cargando historial mensual de asientos...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {(historyData?.months || []).map((m) => (
+                <div
+                  key={m.month}
+                  className={`bg-white rounded-2xl border transition shadow-sm overflow-hidden flex flex-col justify-between ${
+                    m.has_data ? "border-slate-200 hover:border-blue-400 hover:shadow-md" : "border-slate-100 bg-slate-50/40 opacity-70"
+                  }`}
+                >
+                  <div>
+                    {/* Cabecera del Mes */}
+                    <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-black text-slate-900 uppercase tracking-wider">
+                          {m.month_name} {m.year}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {m.has_data ? (
+                          <>
+                            {m.is_customized ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                                Guardado
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-800">
+                                Planilla
+                              </span>
+                            )}
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200 text-slate-700">
+                              ✓ Cuadrado
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200 text-slate-600">
+                            Sin registro
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Contenido del Mes */}
+                    {m.has_data ? (
+                      <div className="p-4 space-y-3 text-xs">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                          <span className="text-slate-500 font-medium">Total Balance (Debe/Haber):</span>
+                          <span className="font-bold text-slate-900 font-mono">
+                            Bs. {m.total_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 text-[11px] text-slate-600">
+                          <div className="flex justify-between">
+                            <span>Total Ganado ({m.departamentos_count} deptos):</span>
+                            <span className="font-semibold text-slate-800">Bs. {m.total_ganado.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Aportes Patronales (17.21%):</span>
+                            <span className="font-semibold text-slate-800">Bs. {m.patronal_total.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Beneficios Sociales (16.66%):</span>
+                            <span className="font-semibold text-slate-800">Bs. {m.beneficios_total.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Líquido a Pagar:</span>
+                            <span className="font-semibold text-slate-800">Bs. {m.liquido_pagable.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+
+                        {/* Pagos / Glosas */}
+                        <div className="pt-2 border-t border-slate-100 space-y-1 text-[10px] text-slate-500">
+                          <div className="flex items-center justify-between">
+                            <span>Gestora: {m.pago_gestora?.fecha || "Pendiente"}</span>
+                            <span className="font-mono text-slate-700">{m.pago_gestora?.nro_transaccion ? `N° ${m.pago_gestora.nro_transaccion}` : "S/N"}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Caja: {m.pago_caja?.fecha || "Pendiente"}</span>
+                            <span className="font-mono text-slate-700">{m.pago_caja?.nro_transaccion ? `N° ${m.pago_caja.nro_transaccion}` : "S/N"}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Min. Trabajo: {m.pago_min_trabajo?.fecha || "Pendiente"}</span>
+                            <span className="font-mono text-slate-700">{m.pago_min_trabajo?.nro_transaccion ? `N° ${m.pago_min_trabajo.nro_transaccion}` : "S/N"}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-8 text-center text-slate-400 space-y-2">
+                        <p className="text-xs">No hay asientos procesados para este periodo.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Acciones del Mes */}
+                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-1 text-xs">
+                    <button
+                      onClick={() => {
+                        setSelectedMonth(m.month);
+                        setActiveTab("guiado");
+                      }}
+                      className="flex-1 py-1.5 px-2 bg-blue-800 hover:bg-blue-900 text-white rounded-lg font-bold text-center transition flex items-center justify-center gap-1"
+                      title="Abrir en panel modular para ver o actualizar"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>{m.has_data ? "Editar" : "Crear"}</span>
+                    </button>
+
+                    {m.has_data && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setSelectedMonth(m.month);
+                            setActiveTab("oficial");
+                          }}
+                          className="py-1.5 px-2.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-lg font-semibold transition"
+                          title="Ver comprobante contable oficial"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleExportMonthExcel(m.month)}
+                          className="py-1.5 px-2.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-700 rounded-lg font-semibold transition"
+                          title="Descargar Excel"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleExportMonthPdf(m.month)}
+                          className="py-1.5 px-2.5 bg-red-50 border border-red-200 hover:bg-red-100 text-red-700 rounded-lg font-semibold transition"
+                          title="Descargar PDF"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MODAL PARA AÑADIR NUEVO DEPARTAMENTO DESDE ASIENTOS */}
+      <AnimatePresence>
+        {isDeptModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden"
+            >
+              <div className="bg-blue-900 text-white p-5 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-white/10 rounded-lg">
+                    <Building className="w-5 h-5 text-blue-200" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base">Nuevo Departamento</h3>
+                    <p className="text-xs text-blue-200">Añadir área contable para sueldos y bonos</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDeptModalOpen(false)}
+                  className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateDepartmentFromAsientos} className="p-6 space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1 uppercase tracking-wider">
+                    Nombre del Departamento <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newDeptName}
+                    onChange={(e) => setNewDeptName(e.target.value)}
+                    placeholder="Ej. Marketing, Ventas, Logística, Taller..."
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-600 focus:outline-none transition"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    El nombre define automáticamente la clasificación y cuenta en los asientos de nómina.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1 uppercase tracking-wider">
+                    Descripción (Opcional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newDeptDesc}
+                    onChange={(e) => setNewDeptDesc(e.target.value)}
+                    placeholder="Detalles sobre el personal o funciones de este departamento..."
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-600 focus:outline-none transition resize-none"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsDeptModalOpen(false)}
+                    className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingNewDept || !newDeptName.trim()}
+                    className="flex items-center gap-2 px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl shadow-md transition disabled:opacity-50"
+                  >
+                    {savingNewDept ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Guardando...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4" />
+                        Crear Departamento
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }
 
 export default function AsientosPage() {
   return (
-    <Suspense fallback={<div className="flex justify-center p-12"><div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+    <Suspense
+      fallback={
+        <div className="flex h-96 items-center justify-center">
+          <Loader2 className="w-10 h-10 animate-spin text-blue-800" />
+        </div>
+      }
+    >
       <AsientosPageContent />
     </Suspense>
   );
