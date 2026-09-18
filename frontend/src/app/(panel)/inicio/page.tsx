@@ -60,6 +60,7 @@ interface TenantData {
     schema_name: string;
     nit: string | null;
     numero_patronal: string | null;
+    caja_salud?: string | null;
     min_trabajo_id: string | null;
     empleador_nombres: string | null;
     empleador_apellido_paterno: string | null;
@@ -89,6 +90,11 @@ const MONTH_NAMES = [
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
 ];
 
+const CAJAS_SALUD_BOLIVIA = [
+  "Caja Petrolera de Salud",
+  "Caja Nacional de Salud"
+];
+
 function InicioDashboardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -97,17 +103,18 @@ function InicioDashboardContent() {
   const [data, setData] = useState<TenantData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"empresa" | "representante" | "parametros">("empresa");
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Form State (Preserving 100% of data editing fields)
   const [formData, setFormData] = useState({
     name: "",
     nit: "",
     numero_patronal: "",
+    caja_salud: "Caja Petrolera de Salud",
     min_trabajo_id: "",
     empleador_nombres: "",
     empleador_apellido_paterno: "",
@@ -134,6 +141,7 @@ function InicioDashboardContent() {
           name: json.tenant.name || "",
           nit: json.tenant.nit || "",
           numero_patronal: json.tenant.numero_patronal || "",
+          caja_salud: json.tenant.caja_salud || "Caja Petrolera de Salud",
           min_trabajo_id: json.tenant.min_trabajo_id || "",
           empleador_nombres: json.tenant.empleador_nombres || "",
           empleador_apellido_paterno: json.tenant.empleador_apellido_paterno || "",
@@ -188,6 +196,7 @@ function InicioDashboardContent() {
       name: data.tenant.name || "",
       nit: data.tenant.nit || "",
       numero_patronal: data.tenant.numero_patronal || "",
+      caja_salud: data.tenant.caja_salud || "Caja Petrolera de Salud",
       min_trabajo_id: data.tenant.min_trabajo_id || "",
       empleador_nombres: data.tenant.empleador_nombres || "",
       empleador_apellido_paterno: data.tenant.empleador_apellido_paterno || "",
@@ -225,6 +234,7 @@ function InicioDashboardContent() {
           name: json.tenant.name || "",
           nit: json.tenant.nit || "",
           numero_patronal: json.tenant.numero_patronal || "",
+          caja_salud: json.tenant.caja_salud || "Caja Petrolera de Salud",
           min_trabajo_id: json.tenant.min_trabajo_id || "",
           empleador_nombres: json.tenant.empleador_nombres || "",
           empleador_apellido_paterno: json.tenant.empleador_apellido_paterno || "",
@@ -985,6 +995,30 @@ function InicioDashboardContent() {
                     </div>
                   )}
                   <p className="text-[11px] text-slate-400 mt-1">Número de NIT del Servicio de Impuestos Nacionales.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                    Ente Gestor de Salud (Caja de Seguro)
+                  </label>
+                  {isEditing ? (
+                    <select
+                      value={formData.caja_salud}
+                      onChange={(e) => setFormData({ ...formData, caja_salud: e.target.value })}
+                      className="w-full text-slate-900 font-semibold border border-slate-300 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white cursor-pointer"
+                    >
+                      {CAJAS_SALUD_BOLIVIA.map((caja) => (
+                        <option key={caja} value={caja}>
+                          {caja}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between">
+                      <span className="font-bold text-slate-900">{data.tenant.caja_salud || "Caja Petrolera de Salud"}</span>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-slate-400 mt-1">Entidad de seguridad social a corto plazo para aportes patronales del 10%.</p>
                 </div>
 
                 <div>

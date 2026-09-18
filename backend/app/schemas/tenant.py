@@ -5,6 +5,7 @@ class TenantCreate(BaseModel):
     name: str
     nit: str
     numero_patronal: str
+    caja_salud: Optional[str] = "Caja Petrolera de Salud"
     min_trabajo_id: str
     empleador_nombres: Optional[str] = None
     empleador_apellido_paterno: Optional[str] = None
@@ -20,6 +21,7 @@ class TenantResponse(BaseModel):
     schema_name: str
     nit: Optional[str] = None
     numero_patronal: Optional[str] = None
+    caja_salud: Optional[str] = "Caja Petrolera de Salud"
     min_trabajo_id: Optional[str] = None
     empleador_nombres: Optional[str] = None
     empleador_apellido_paterno: Optional[str] = None
@@ -71,6 +73,7 @@ class TenantUpdateRequest(BaseModel):
     name: Optional[str] = None
     nit: Optional[str] = None
     numero_patronal: Optional[str] = None
+    caja_salud: Optional[str] = None
     min_trabajo_id: Optional[str] = None
     empleador_nombres: Optional[str] = None
     empleador_apellido_paterno: Optional[str] = None

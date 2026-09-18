@@ -54,6 +54,9 @@ def save_accounting_sheet(
     try:
         tenant = db.query(Tenant).filter(Tenant.schema_name == schema_name).first()
         tenant_name = tenant.name if tenant else "EMPRESA"
+        if tenant and payload.caja_salud_name and tenant.caja_salud != payload.caja_salud_name:
+            tenant.caja_salud = payload.caja_salud_name
+            db.commit()
 
         existing_payroll = tenant_session.query(Payroll).filter(
             Payroll.month == payload.month,

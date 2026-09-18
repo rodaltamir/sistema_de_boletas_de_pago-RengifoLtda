@@ -1724,210 +1724,355 @@ class DocumentService:
         ws.page_margins.header = 0.2
         ws.page_margins.footer = 0.2
 
-        # 2. Tipografía y Estilos Visuales (Fieles al comprobante de referencia)
+        # 2. Tipografía y Estilos Visuales (Fieles al comprobante de referencia oficial)
         font_header_title = Font(name="Arial", size=10.5, bold=True, color="000000")
         font_header_month = Font(name="Arial", size=10.5, bold=True, color="1F4E78")
+        font_banner = Font(name="Arial", size=10.0, bold=True, color="000000")
         font_col_header = Font(name="Arial", size=9.5, bold=True, color="000000")
-        font_row = Font(name="Arial", size=8.5)
+        font_row = Font(name="Arial", size=8.5, color="000000")
         font_subcuenta = Font(name="Arial", size=8.0, italic=True, color="595959")
-        font_glosa = Font(name="Arial", size=8.0, italic=True, color="475569")
-        font_subtotal = Font(name="Arial", size=9.0, bold=True)
-        font_total = Font(name="Arial", size=10.0, bold=True)
-        font_payment_header = Font(name="Arial", size=9.0, bold=True, color="833C0C")
+        font_glosa = Font(name="Arial", size=8.0, italic=True, color="333333")
+        font_subtotal = Font(name="Arial", size=9.0, bold=True, color="000000")
+        font_total = Font(name="Arial", size=10.0, bold=True, color="000000")
 
         fill_header_title = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
-        fill_col_header = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
-        fill_payment_header = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")
+        fill_banner = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+        fill_col_header = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
         fill_total = PatternFill(start_color="E9EEF4", end_color="E9EEF4", fill_type="solid")
 
         thin_black = Side(border_style="thin", color="000000")
-        thin_grid = Side(border_style="thin", color="A6A6A6")
+        thin_grid = Side(border_style="thin", color="C0C0C0")
         double_black = Side(border_style="double", color="000000")
 
-        # 3. Dimensiones de columnas proporcionales
-        ws.column_dimensions['A'].width = 32
-        ws.column_dimensions['B'].width = 12
-        ws.column_dimensions['C'].width = 12
-        ws.column_dimensions['D'].width = 15
-        ws.column_dimensions['E'].width = 15
+        # 3. Dimensiones de 4 columnas oficiales: Fecha | Detalle | Debe | Haber
+        ws.column_dimensions['A'].width = 13.0
+        ws.column_dimensions['B'].width = 47.0
+        ws.column_dimensions['C'].width = 15.0
+        ws.column_dimensions['D'].width = 15.0
 
-        # Fila 1: Título Empresa Año (Amarillo pastel) y Mes (Azul)
+        # Fila 1: Título Empresa y Año (Amarillo pastel) y Mes (Azul)
         ws.row_dimensions[1].height = 20
-        ws.merge_cells("A1:C1")
+        ws.merge_cells("A1:B1")
         c_title = ws["A1"]
         c_title.value = f"{sheet_data.tenant_name} {sheet_data.year}"
         c_title.font = font_header_title
-        c_title.fill = fill_header_title
         c_title.alignment = Alignment(horizontal="center", vertical="center")
-        for col in ["A", "B", "C"]:
-            ws[f"{col}1"].border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
+        for col in ["A", "B"]:
             ws[f"{col}1"].fill = fill_header_title
+            ws[f"{col}1"].border = Border(left=thin_black if col == "A" else None, right=thin_black if col == "B" else None, top=thin_black, bottom=thin_black)
 
-        ws.merge_cells("D1:E1")
-        c_month = ws["D1"]
+        ws.merge_cells("C1:D1")
+        c_month = ws["C1"]
         c_month.value = sheet_data.month_name.upper()
         c_month.font = font_header_month
         c_month.alignment = Alignment(horizontal="center", vertical="center")
-        for col in ["D", "E"]:
-            ws[f"{col}1"].border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
+        for col in ["C", "D"]:
+            ws[f"{col}1"].border = Border(left=thin_black if col == "C" else None, right=thin_black if col == "D" else None, top=thin_black, bottom=thin_black)
 
-        # Fila 2: Cabeceras DETALLE, DEBE, HABER con líneas de separación
-        ws.row_dimensions[2].height = 18
-        ws.merge_cells("A2:C2")
-        ws["A2"] = "DETALLE"
-        ws["A2"].font = font_col_header
-        ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
-        for col in ["A", "B", "C"]:
-            ws[f"{col}2"].fill = fill_col_header
-            ws[f"{col}2"].border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
-
-        for col, label in [("D", "DEBE"), ("E", "HABER")]:
-            ws[f"{col}2"] = label
-            ws[f"{col}2"].font = font_col_header
-            ws[f"{col}2"].alignment = Alignment(horizontal="center", vertical="center")
-            ws[f"{col}2"].fill = fill_col_header
-            ws[f"{col}2"].border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
-
-        def apply_data_row_borders(row_idx):
-            ws[f"A{row_idx}"].border = Border(left=thin_black, top=thin_grid, bottom=thin_grid)
-            ws[f"B{row_idx}"].border = Border(top=thin_grid, bottom=thin_grid)
-            ws[f"C{row_idx}"].border = Border(right=thin_black, top=thin_grid, bottom=thin_grid)
-            ws[f"D{row_idx}"].border = Border(left=thin_black, right=thin_black, top=thin_grid, bottom=thin_grid)
-            ws[f"E{row_idx}"].border = Border(left=thin_black, right=thin_black, top=thin_grid, bottom=thin_grid)
-
+        # Fila 2: Separador
+        ws.row_dimensions[2].height = 5
         curr_row = 3
-        for section in sheet_data.sections:
-            # Cabecera de asiento de pago (Franja melocotón)
-            if section.is_payment and section.payment_label:
-                ws.row_dimensions[curr_row].height = 17
-                ws.merge_cells(f"A{curr_row}:E{curr_row}")
-                cell_p = ws[f"A{curr_row}"]
-                cell_p.value = section.payment_label
-                cell_p.font = font_payment_header
-                cell_p.alignment = Alignment(horizontal="center", vertical="center")
-                for col in ["A", "B", "C", "D", "E"]:
-                    ws[f"{col}{curr_row}"].fill = fill_payment_header
-                    ws[f"{col}{curr_row}"].border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
+
+        # Dividir secciones: Cuadrantes 1 a 4 (Nómina, Patronales, Beneficios, Arancel OVT)
+        # y Asientos 5 a 7 (Pagos efectivos en banco / caja)
+        payroll_sections = [s for s in sheet_data.sections if not s.is_payment]
+        payment_sections = [s for s in sheet_data.sections if s.is_payment]
+
+        # 4. CUADRANTES 1 A 4: TABLA CONTINUA TRADICIONAL DE DEVENGAMIENTO Y PROVISIONES (TAL COMO ESTABA ANTES)
+        if payroll_sections:
+            # Fila de Cabeceras: DETALLE DE CUENTAS | DEBE | HABER
+            ws.row_dimensions[curr_row].height = 18
+            ws.merge_cells(f"A{curr_row}:B{curr_row}")
+            ws[f"A{curr_row}"] = "DETALLE DE CUENTAS"
+            ws[f"A{curr_row}"].font = font_col_header
+            ws[f"A{curr_row}"].alignment = Alignment(horizontal="center", vertical="center")
+            for col in ["A", "B"]:
+                ws[f"{col}{curr_row}"].fill = fill_col_header
+                ws[f"{col}{curr_row}"].border = Border(
+                    top=thin_black, bottom=thin_black,
+                    left=thin_black if col == "A" else None,
+                    right=thin_black if col == "B" else None
+                )
+
+            c_deb_hdr = ws[f"C{curr_row}"]
+            c_deb_hdr.value = "DEBE"
+            c_deb_hdr.font = font_col_header
+            c_deb_hdr.alignment = Alignment(horizontal="center", vertical="center")
+            c_deb_hdr.fill = fill_col_header
+            c_deb_hdr.border = Border(top=thin_black, bottom=thin_black, left=thin_black, right=thin_black)
+
+            c_hab_hdr = ws[f"D{curr_row}"]
+            c_hab_hdr.value = "HABER"
+            c_hab_hdr.font = font_col_header
+            c_hab_hdr.alignment = Alignment(horizontal="center", vertical="center")
+            c_hab_hdr.fill = fill_col_header
+            c_hab_hdr.border = Border(top=thin_black, bottom=thin_black, left=thin_black, right=thin_black)
+            curr_row += 1
+
+            for section in payroll_sections:
+                for item in section.items:
+                    if item.debe == 0 and item.haber == 0 and not item.subcuentas:
+                        continue
+
+                    ws.row_dimensions[curr_row].height = 15.0
+                    ws.merge_cells(f"A{curr_row}:B{curr_row}")
+                    c_cuenta = ws[f"A{curr_row}"]
+                    c_cuenta.value = item.cuenta
+                    c_cuenta.font = font_row
+                    c_cuenta.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+                    for col in ["A", "B"]:
+                        ws[f"{col}{curr_row}"].border = Border(
+                            left=thin_black if col == "A" else None,
+                            right=thin_black if col == "B" else None
+                        )
+
+                    c_debe = ws[f"C{curr_row}"]
+                    if item.debe > 0:
+                        c_debe.value = item.debe
+                        c_debe.number_format = "#,##0.00"
+                    c_debe.font = font_row
+                    c_debe.alignment = Alignment(horizontal="right", vertical="center")
+                    c_debe.border = Border(left=thin_black, right=thin_black)
+
+                    c_haber = ws[f"D{curr_row}"]
+                    if item.haber > 0:
+                        c_haber.value = item.haber
+                        c_haber.number_format = "#,##0.00"
+                    c_haber.font = font_row
+                    c_haber.alignment = Alignment(horizontal="right", vertical="center")
+                    c_haber.border = Border(left=thin_black, right=thin_black)
+                    curr_row += 1
+
+                    if item.subcuentas:
+                        for sub in item.subcuentas:
+                            ws.row_dimensions[curr_row].height = 13.5
+                            ws.merge_cells(f"A{curr_row}:B{curr_row}")
+                            c_sub = ws[f"A{curr_row}"]
+                            c_sub.value = f"   ↳ {sub}"
+                            c_sub.font = font_subcuenta
+                            c_sub.alignment = Alignment(horizontal="left", vertical="center", indent=2)
+                            for col in ["A", "B"]:
+                                ws[f"{col}{curr_row}"].border = Border(
+                                    left=thin_black if col == "A" else None,
+                                    right=thin_black if col == "B" else None
+                                )
+                            ws[f"C{curr_row}"].border = Border(left=thin_black, right=thin_black)
+                            ws[f"D{curr_row}"].border = Border(left=thin_black, right=thin_black)
+                            curr_row += 1
+
+                # Fila Subtotal de la sección
+                ws.row_dimensions[curr_row].height = 16.0
+                ws.merge_cells(f"A{curr_row}:B{curr_row}")
+                c_stitle = ws[f"A{curr_row}"]
+                c_stitle.value = f"Subtotal {section.title}"
+                c_stitle.font = font_subtotal
+                c_stitle.alignment = Alignment(horizontal="right", vertical="center")
+                for col in ["A", "B"]:
+                    ws[f"{col}{curr_row}"].border = Border(
+                        top=thin_black, bottom=thin_black,
+                        left=thin_black if col == "A" else None,
+                        right=thin_black if col == "B" else None
+                    )
+
+                c_sdebe = ws[f"C{curr_row}"]
+                c_sdebe.value = section.subtotal_debe
+                c_sdebe.number_format = "#,##0.00"
+                c_sdebe.font = font_subtotal
+                c_sdebe.alignment = Alignment(horizontal="right", vertical="center")
+                c_sdebe.border = Border(top=thin_black, bottom=thin_black, left=thin_black, right=thin_black)
+
+                c_shaber = ws[f"D{curr_row}"]
+                c_shaber.value = section.subtotal_haber
+                c_shaber.number_format = "#,##0.00"
+                c_shaber.font = font_subtotal
+                c_shaber.alignment = Alignment(horizontal="right", vertical="center")
+                c_shaber.border = Border(top=thin_black, bottom=thin_black, left=thin_black, right=thin_black)
                 curr_row += 1
 
+        # Separador antes de los Comprobantes de Pago
+        if payment_sections:
+            ws.row_dimensions[curr_row].height = 8
+            curr_row += 1
+
+        # 5. ASIENTOS CONTABLES DE PAGO: PLANTILLA EXACTA A LA IMAGEN (COMPROBANTE DE EGRESO)
+        for section in payment_sections:
+            # 5.1 Fila de Encabezado de Comprobante: "COMPROBANTE DE EGRESO"
+            voucher_title = getattr(section, "voucher_type", None) or "Comprobante de Egreso"
+            if section.title and "pago" in section.title.lower():
+                header_full = f"{voucher_title.upper()} - {section.title.upper()}"
+            else:
+                header_full = voucher_title.upper()
+
+            ws.row_dimensions[curr_row].height = 18
+            ws.merge_cells(f"A{curr_row}:D{curr_row}")
+            cell_v = ws[f"A{curr_row}"]
+            cell_v.value = header_full
+            cell_v.font = font_banner
+            cell_v.alignment = Alignment(horizontal="center", vertical="center")
+            for col in ["A", "B", "C", "D"]:
+                ws[f"{col}{curr_row}"].fill = fill_banner
+                ws[f"{col}{curr_row}"].border = Border(
+                    top=thin_black,
+                    bottom=thin_black,
+                    left=thin_black if col == "A" else None,
+                    right=thin_black if col == "D" else None
+                )
+            curr_row += 1
+
+            # 5.2 Fila de Cabeceras: Fecha | Detalle | Debe | Haber
+            ws.row_dimensions[curr_row].height = 17
+            headers = [("A", "Fecha", "center"), ("B", "Detalle", "center"), ("C", "Debe", "center"), ("D", "Haber", "center")]
+            for col, label, align in headers:
+                c = ws[f"{col}{curr_row}"]
+                c.value = label
+                c.font = font_col_header
+                c.alignment = Alignment(horizontal=align, vertical="center")
+                c.fill = fill_col_header
+                c.border = Border(
+                    top=thin_black,
+                    bottom=thin_black,
+                    left=thin_black if col == "A" else None,
+                    right=thin_black if col == "D" else None
+                )
+            curr_row += 1
+
+            # 5.3 Cuentas Contables (Débitos a la izquierda, Créditos con sangría a la derecha)
+            date_rendered = False
             for item in section.items:
-                # Omitir cuentas que tengan 0 en debe y haber si no tienen subcuentas (si no hay, no aparece)
                 if item.debe == 0 and item.haber == 0 and not item.subcuentas:
                     continue
 
-                ws.row_dimensions[curr_row].height = 15
-                ws.merge_cells(f"A{curr_row}:C{curr_row}")
-                ws[f"A{curr_row}"] = item.cuenta
-                ws[f"A{curr_row}"].font = font_row
-                ws[f"A{curr_row}"].alignment = Alignment(horizontal="left", vertical="center", indent=1)
+                ws.row_dimensions[curr_row].height = 14.5
 
-                c_debe = ws[f"D{curr_row}"]
+                # Columna A: Fecha (solo en la primera fila de cuenta del comprobante)
+                c_fec = ws[f"A{curr_row}"]
+                if not date_rendered:
+                    c_fec.value = getattr(section, "fecha", None) or ""
+                    c_fec.alignment = Alignment(horizontal="center", vertical="center")
+                    date_rendered = True
+                else:
+                    c_fec.value = ""
+                c_fec.font = font_row
+                c_fec.border = Border(left=thin_black)
+
+                # Columna B: Detalle (cuentas acreedoras con sangría hacia la derecha)
+                is_credit = (item.haber > 0 and item.debe == 0)
+                c_det = ws[f"B{curr_row}"]
+                c_det.value = item.cuenta
+                c_det.font = font_row
+                c_det.alignment = Alignment(horizontal="left", vertical="center", indent=4 if is_credit else 1)
+                c_det.border = Border()
+
+                # Columna C: Debe
+                c_deb = ws[f"C{curr_row}"]
                 if item.debe > 0:
-                    c_debe.value = item.debe
-                    c_debe.number_format = "#,##0.00"
-                c_debe.font = font_row
-                c_debe.alignment = Alignment(horizontal="right", vertical="center")
+                    c_deb.value = item.debe
+                    c_deb.number_format = "#,##0.00"
+                c_deb.font = font_row
+                c_deb.alignment = Alignment(horizontal="right", vertical="center")
+                c_deb.border = Border()
 
-                c_haber = ws[f"E{curr_row}"]
+                # Columna D: Haber
+                c_hab = ws[f"D{curr_row}"]
                 if item.haber > 0:
-                    c_haber.value = item.haber
-                    c_haber.number_format = "#,##0.00"
-                c_haber.font = font_row
-                c_haber.alignment = Alignment(horizontal="right", vertical="center")
-
-                apply_data_row_borders(curr_row)
+                    c_hab.value = item.haber
+                    c_hab.number_format = "#,##0.00"
+                c_hab.font = font_row
+                c_hab.alignment = Alignment(horizontal="right", vertical="center")
+                c_hab.border = Border(right=thin_black)
                 curr_row += 1
 
+                # Subcuentas si existen
                 if item.subcuentas:
                     for sub in item.subcuentas:
-                        ws.row_dimensions[curr_row].height = 13.5
-                        ws.merge_cells(f"A{curr_row}:C{curr_row}")
-                        ws[f"A{curr_row}"] = f"   {sub}"
-                        ws[f"A{curr_row}"].font = font_subcuenta
-                        ws[f"A{curr_row}"].alignment = Alignment(horizontal="left", vertical="center")
-                        apply_data_row_borders(curr_row)
+                        ws.row_dimensions[curr_row].height = 13.0
+                        ws[f"A{curr_row}"].border = Border(left=thin_black)
+                        c_sub = ws[f"B{curr_row}"]
+                        c_sub.value = sub
+                        c_sub.font = font_subcuenta
+                        c_sub.alignment = Alignment(horizontal="left", vertical="center", indent=6)
+                        c_sub.border = Border()
+                        ws[f"C{curr_row}"].border = Border()
+                        ws[f"D{curr_row}"].border = Border(right=thin_black)
                         curr_row += 1
 
-            # Glosa descriptiva bajo el asiento con bordes delimitados (solo si existe glosa)
+            # 5.4 Fila de Glosa bajo las cuentas en columna Detalle (solo si existe)
             if section.glosa:
                 glosa_len = len(section.glosa)
-                if glosa_len > 140:
-                    ws.row_dimensions[curr_row].height = 28
-                elif glosa_len > 70:
-                    ws.row_dimensions[curr_row].height = 20
+                if glosa_len > 120:
+                    ws.row_dimensions[curr_row].height = 30
+                elif glosa_len > 60:
+                    ws.row_dimensions[curr_row].height = 22
                 else:
                     ws.row_dimensions[curr_row].height = 16
 
-                ws.merge_cells(f"A{curr_row}:E{curr_row}")
-                c_glo = ws[f"A{curr_row}"]
+                ws[f"A{curr_row}"].border = Border(left=thin_black)
+                c_glo = ws[f"B{curr_row}"]
                 c_glo.value = section.glosa
                 c_glo.font = font_glosa
-                c_glo.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True, indent=1)
-                for col in ["A", "B", "C", "D", "E"]:
-                    ws[f"{col}{curr_row}"].border = Border(
-                        left=thin_black if col == "A" else None,
-                        right=thin_black if col == "E" else None,
-                        top=thin_grid,
-                        bottom=thin_grid
-                    )
+                c_glo.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True, indent=1)
+                c_glo.border = Border()
+                ws[f"C{curr_row}"].border = Border()
+                ws[f"D{curr_row}"].border = Border(right=thin_black)
                 curr_row += 1
 
-            # Fila de Subtotal del Asiento con líneas contables
-            ws.row_dimensions[curr_row].height = 16.5
-            ws.merge_cells(f"A{curr_row}:C{curr_row}")
-            ws[f"A{curr_row}"] = ""
-            for col in ["A", "B", "C"]:
-                ws[f"{col}{curr_row}"].border = Border(
-                    left=thin_black if col == "A" else None,
-                    right=thin_black if col == "C" else None,
-                    top=thin_black,
-                    bottom=thin_black
-                )
+            # 5.5 Fila "Sumas iguales" con doble subrayado en Debe y Haber
+            ws.row_dimensions[curr_row].height = 18
+            ws[f"A{curr_row}"].border = Border(left=thin_black, bottom=thin_black)
 
-            c_sdebe = ws[f"D{curr_row}"]
-            c_sdebe.value = section.subtotal_debe
-            c_sdebe.number_format = "#,##0.00"
-            c_sdebe.font = font_subtotal
-            c_sdebe.border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
-            c_sdebe.alignment = Alignment(horizontal="right", vertical="center")
+            c_slabel = ws[f"B{curr_row}"]
+            c_slabel.value = "Sumas iguales"
+            c_slabel.font = font_subtotal
+            c_slabel.alignment = Alignment(horizontal="right", vertical="center")
+            c_slabel.border = Border(bottom=thin_black)
 
-            c_shaber = ws[f"E{curr_row}"]
-            c_shaber.value = section.subtotal_haber
-            c_shaber.number_format = "#,##0.00"
-            c_shaber.font = font_subtotal
-            c_shaber.border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=thin_black)
-            c_shaber.alignment = Alignment(horizontal="right", vertical="center")
+            c_sdeb = ws[f"C{curr_row}"]
+            c_sdeb.value = section.subtotal_debe
+            c_sdeb.number_format = "#,##0.00"
+            c_sdeb.font = font_subtotal
+            c_sdeb.alignment = Alignment(horizontal="right", vertical="center")
+            c_sdeb.border = Border(top=thin_black, bottom=double_black)
 
+            c_shab = ws[f"D{curr_row}"]
+            c_shab.value = section.subtotal_haber
+            c_shab.number_format = "#,##0.00"
+            c_shab.font = font_subtotal
+            c_shab.alignment = Alignment(horizontal="right", vertical="center")
+            c_shab.border = Border(top=thin_black, bottom=double_black, right=thin_black)
             curr_row += 1
 
-        # Fila de Totales Generales con doble subrayado contable
+            # Separador entre comprobantes
+            ws.row_dimensions[curr_row].height = 6
+            curr_row += 1
+
+        # 6. Fila de Totales Generales Consolidados del Mes
         ws.row_dimensions[curr_row].height = 19
-        ws.merge_cells(f"A{curr_row}:C{curr_row}")
-        ws[f"A{curr_row}"] = "TOTALES"
-        ws[f"A{curr_row}"].font = font_total
-        ws[f"A{curr_row}"].alignment = Alignment(horizontal="center", vertical="center")
-        for col in ["A", "B", "C"]:
+        ws.merge_cells(f"A{curr_row}:B{curr_row}")
+        c_tot = ws[f"A{curr_row}"]
+        c_tot.value = "TOTALES GENERALES DEL MES"
+        c_tot.font = font_total
+        c_tot.alignment = Alignment(horizontal="center", vertical="center")
+        for col in ["A", "B"]:
             ws[f"{col}{curr_row}"].fill = fill_total
             ws[f"{col}{curr_row}"].border = Border(
                 left=thin_black if col == "A" else None,
-                right=thin_black if col == "C" else None,
                 top=thin_black,
                 bottom=double_black
             )
 
-        c_tot_debe = ws[f"D{curr_row}"]
+        c_tot_debe = ws[f"C{curr_row}"]
         c_tot_debe.value = sheet_data.total_debe
         c_tot_debe.number_format = "#,##0.00"
         c_tot_debe.font = font_total
-        c_tot_debe.border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=double_black)
+        c_tot_debe.border = Border(left=thin_black, right=thin_grid, top=thin_black, bottom=double_black)
         c_tot_debe.fill = fill_total
         c_tot_debe.alignment = Alignment(horizontal="right", vertical="center")
 
-        c_tot_haber = ws[f"E{curr_row}"]
+        c_tot_haber = ws[f"D{curr_row}"]
         c_tot_haber.value = sheet_data.total_haber
         c_tot_haber.number_format = "#,##0.00"
         c_tot_haber.font = font_total
-        c_tot_haber.border = Border(left=thin_black, right=thin_black, top=thin_black, bottom=double_black)
+        c_tot_haber.border = Border(left=thin_grid, right=thin_black, top=thin_black, bottom=double_black)
         c_tot_haber.fill = fill_total
         c_tot_haber.alignment = Alignment(horizontal="right", vertical="center")
 

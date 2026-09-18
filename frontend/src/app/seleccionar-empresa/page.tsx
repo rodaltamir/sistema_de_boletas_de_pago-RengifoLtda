@@ -19,11 +19,19 @@ const ICON_OPTIONS = {
 
 type IconName = keyof typeof ICON_OPTIONS;
 
+export const CAJAS_SALUD_BOLIVIA = [
+  "Caja Petrolera de Salud",
+  "Caja Nacional de Salud"
+];
+
 interface Tenant {
   id: number;
   name: string;
   schema_name: string;
   nit: string | null;
+  numero_patronal?: string | null;
+  caja_salud?: string | null;
+  min_trabajo_id?: string | null;
   icon: string | null;
 }
 
@@ -39,6 +47,7 @@ export default function SeleccionarEmpresa() {
     name: "",
     nit: "",
     numero_patronal: "",
+    caja_salud: "Caja Petrolera de Salud",
     min_trabajo_id: "",
     icon: "Building2" as IconName,
     logo_base64: "",
@@ -101,6 +110,7 @@ export default function SeleccionarEmpresa() {
       name: tenant.name || "",
       nit: tenant.nit || "",
       numero_patronal: tenant.numero_patronal || "",
+      caja_salud: tenant.caja_salud || "Caja Petrolera de Salud",
       min_trabajo_id: tenant.min_trabajo_id || "",
       icon: (tenant.icon as IconName) || "Building2",
       logo_base64: tenant.logo_base64 || "",
@@ -229,7 +239,7 @@ export default function SeleccionarEmpresa() {
       setEditingTenant(null);
       // Resetear formulario
       setFormData({
-        name: "", nit: "", numero_patronal: "", min_trabajo_id: "", icon: "Building2", logo_base64: "",
+        name: "", nit: "", numero_patronal: "", caja_salud: "Caja Petrolera de Salud", min_trabajo_id: "", icon: "Building2", logo_base64: "",
         empleador_nombres: "", empleador_apellido_paterno: "", empleador_apellido_materno: "", empleador_ci: "", empleador_nit: ""
       });
     } catch (err: any) {
@@ -332,7 +342,14 @@ export default function SeleccionarEmpresa() {
                 transition={{ delay: 0.2 }}
               >
                 <button 
-                  onClick={() => setShowModal(true)}
+                  onClick={() => {
+                    setEditingTenant(null);
+                    setFormData({
+                      name: "", nit: "", numero_patronal: "", caja_salud: "Caja Petrolera de Salud", min_trabajo_id: "", icon: "Building2", logo_base64: "",
+                      empleador_nombres: "", empleador_apellido_paterno: "", empleador_apellido_materno: "", empleador_ci: "", empleador_nit: ""
+                    });
+                    setShowModal(true);
+                  }}
                   className="w-full h-full text-left group"
                 >
                   <div className="h-full bg-black/20 backdrop-blur-xl border-2 border-dashed border-white/20 p-8 rounded-3xl hover:bg-white/5 hover:border-teal-400/50 transition-all duration-300 flex flex-col items-center justify-center min-h-[300px]">
@@ -389,7 +406,7 @@ export default function SeleccionarEmpresa() {
                   </div>
 
                   {/* Fila 2: Datos Legales */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-teal-100 mb-1">NIT</label>
                       <input 
@@ -397,6 +414,20 @@ export default function SeleccionarEmpresa() {
                         value={formData.nit} onChange={e => setFormData({...formData, nit: e.target.value})}
                         className="w-full bg-black/20 border border-white/20 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-teal-400"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-teal-100 mb-1">Ente Gestor (Caja)</label>
+                      <select
+                        value={formData.caja_salud}
+                        onChange={e => setFormData({...formData, caja_salud: e.target.value})}
+                        className="w-full bg-slate-900 border border-white/20 text-white rounded-xl px-3 py-3 focus:outline-none focus:ring-2 focus:ring-teal-400 cursor-pointer text-sm"
+                      >
+                        {CAJAS_SALUD_BOLIVIA.map(c => (
+                          <option key={c} value={c} className="bg-slate-900 text-white">
+                            {c}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-teal-100 mb-1">Nº Patronal (Caja)</label>

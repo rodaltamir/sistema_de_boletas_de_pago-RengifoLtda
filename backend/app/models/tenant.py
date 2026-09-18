@@ -17,6 +17,7 @@ class Tenant(Base):
     nit = Column(String(50), nullable=True)
     min_trabajo_id = Column(String(100), nullable=True) # Nº identificador Ministerio de Trabajo
     numero_patronal = Column(String(100), nullable=True) # Nº Caja de Salud
+    caja_salud = Column(String(100), nullable=True, default="Caja Petrolera de Salud") # Ente Gestor de Salud (Caja)
     
     # Datos del Empleador / Representante Legal
     empleador_nombres = Column(String(255), nullable=True)

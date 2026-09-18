@@ -35,6 +35,7 @@ def create_tenant(tenant: TenantCreate, db: Session = Depends(get_db)):
         schema_name=schema_name,
         nit=tenant.nit,
         numero_patronal=tenant.numero_patronal,
+        caja_salud=tenant.caja_salud or "Caja Petrolera de Salud",
         min_trabajo_id=tenant.min_trabajo_id,
         empleador_nombres=tenant.empleador_nombres,
         empleador_apellido_paterno=tenant.empleador_apellido_paterno,
@@ -195,6 +196,7 @@ def update_tenant_dashboard(schema_name: str, data: TenantUpdateRequest, db: Ses
     if data.name is not None: tenant.name = data.name
     if data.nit is not None: tenant.nit = data.nit
     if data.numero_patronal is not None: tenant.numero_patronal = data.numero_patronal
+    if data.caja_salud is not None: tenant.caja_salud = data.caja_salud
     if data.min_trabajo_id is not None: tenant.min_trabajo_id = data.min_trabajo_id
     if data.empleador_nombres is not None: tenant.empleador_nombres = data.empleador_nombres
     if data.empleador_apellido_paterno is not None: tenant.empleador_apellido_paterno = data.empleador_apellido_paterno
@@ -240,6 +242,8 @@ def update_tenant(schema_name: str, data: TenantCreate, db: Session = Depends(ge
     tenant.name = data.name
     tenant.nit = data.nit
     tenant.numero_patronal = data.numero_patronal
+    if data.caja_salud:
+        tenant.caja_salud = data.caja_salud
     tenant.min_trabajo_id = data.min_trabajo_id
     tenant.empleador_nombres = data.empleador_nombres
     tenant.empleador_apellido_paterno = data.empleador_apellido_paterno

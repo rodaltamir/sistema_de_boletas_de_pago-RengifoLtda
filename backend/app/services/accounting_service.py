@@ -44,7 +44,8 @@ class AccountingService:
     ) -> AccountingSheetData:
         tenant = public_session.query(Tenant).filter(Tenant.schema_name == schema_name).first()
         tenant_name = tenant.name if tenant else "EMPRESA"
-        default_caja = "Caja Petrolera de Salud" if "petrolera" in (tenant.numero_patronal or "").lower() else "Caja Nacional de Salud"
+        default_caja = (tenant.caja_salud if (tenant and tenant.caja_salud) else 
+                        ("Caja Petrolera de Salud" if "petrolera" in (tenant.numero_patronal or "").lower() else "Caja Nacional de Salud"))
 
         # Verificar bloqueo por fecha (primer dia del mes siguiente)
         today = datetime.now().date()
@@ -446,6 +447,25 @@ class AccountingService:
         if min_trabajo_payment.nro_transaccion:
             label_mt += f" - N° {min_trabajo_payment.nro_transaccion}"
 
+        last_day = calendar.monthrange(year, month)[1]
+        closing_date_str = f"{last_day:02d}/{month:02d}/{year}"
+
+        def _format_date(d_str: Optional[str], fallback: str = "") -> str:
+            if not d_str:
+                return fallback
+            s = str(d_str).strip()
+            if "/" in s:
+                return s
+            if "-" in s:
+                parts = s.split("-")
+                if len(parts) == 3 and len(parts[0]) == 4:
+                    return f"{parts[2]}/{parts[1]}/{parts[0]}"
+            return s
+
+        fecha_gestora = _format_date(gestora_payment.fecha, closing_date_str)
+        fecha_caja = _format_date(caja_payment.fecha, closing_date_str)
+        fecha_mt = _format_date(min_trabajo_payment.fecha, closing_date_str)
+
         # Glosas descriptivas por asiento (Únicamente para asientos de pago si cuentan con fecha, nro de documento o descripción de intereses)
         month_str = MONTH_NAMES[month - 1].upper()
 
@@ -453,8 +473,8 @@ class AccountingService:
         if has_gestora_data:
             doc_gestora = f", según Documento/Transacción N° {gestora_payment.nro_transaccion}" if gestora_payment.nro_transaccion else ""
             desc_gestora = f", incluyendo {', '.join(extras_g_conceptos)}" if extras_g_conceptos else ""
-            fec_gestora = f", de fecha {gestora_payment.fecha}" if gestora_payment.fecha else ""
-            glosa_gestora = f"Glosa: Cancelación de retenciones laborales y aportes a la Gestora Pública correspondiente al mes de {month_str} de {year}{doc_gestora}{desc_gestora}{fec_gestora}."
+            fec_gestora = f", de fecha {fecha_gestora}" if fecha_gestora else ""
+            glosa_gestora = f"Glosa: Por el pago de retenciones laborales y aportes a la Gestora Pública correspondiente al mes de {month_str} de {year}{doc_gestora}{desc_gestora}{fec_gestora}."
         else:
             glosa_gestora = None
 
@@ -462,8 +482,8 @@ class AccountingService:
         if has_caja_data:
             doc_caja = f", según Documento/Transacción N° {caja_payment.nro_transaccion}" if caja_payment.nro_transaccion else ""
             desc_caja = f", incluyendo {', '.join(extras_c_conceptos)}" if extras_c_conceptos else ""
-            fec_caja = f", de fecha {caja_payment.fecha}" if caja_payment.fecha else ""
-            glosa_caja = f"Glosa: Cancelación de aporte patronal de salud ({caja_activa}) correspondiente al mes de {month_str} de {year}{doc_caja}{desc_caja}{fec_caja}."
+            fec_caja = f", de fecha {fecha_caja}" if fecha_caja else ""
+            glosa_caja = f"Glosa: Por el pago de aporte patronal de salud ({caja_activa}) correspondiente al mes de {month_str} de {year}{doc_caja}{desc_caja}{fec_caja}."
         else:
             glosa_caja = None
 
@@ -471,8 +491,8 @@ class AccountingService:
         if has_mt_data:
             doc_mt = f", según Documento/Transacción N° {min_trabajo_payment.nro_transaccion}" if min_trabajo_payment.nro_transaccion else ""
             desc_mt = f", incluyendo {', '.join(extras_mt_conceptos)}" if extras_mt_conceptos else ""
-            fec_mt = f", de fecha {min_trabajo_payment.fecha}" if min_trabajo_payment.fecha else ""
-            glosa_mt = f"Glosa: Cancelación de obligaciones y arancel OVT ante el Ministerio de Trabajo correspondiente al mes de {month_str} de {year}{doc_mt}{desc_mt}{fec_mt}."
+            fec_mt = f", de fecha {fecha_mt}" if fecha_mt else ""
+            glosa_mt = f"Glosa: Por el pago de obligaciones y arancel OVT ante el Ministerio de Trabajo correspondiente al mes de {month_str} de {year}{doc_mt}{desc_mt}{fec_mt}."
         else:
             glosa_mt = None
 
@@ -481,6 +501,8 @@ class AccountingService:
             AccountingSection(
                 id="seccion_1_planilla",
                 title="Devengamiento de Sueldos y Salarios (Nómina)",
+                voucher_type="Comprobante de Traspaso",
+                fecha=closing_date_str,
                 is_payment=False,
                 glosa=None,
                 items=(
@@ -520,6 +542,8 @@ class AccountingService:
             AccountingSection(
                 id="seccion_2_patronal",
                 title="Aportes Patronales (Cargas Sociales)",
+                voucher_type="Comprobante de Traspaso",
+                fecha=closing_date_str,
                 is_payment=False,
                 glosa=None,
                 items=[
@@ -535,6 +559,8 @@ class AccountingService:
             AccountingSection(
                 id="seccion_3_beneficios",
                 title="Beneficios Sociales (Previsiones y Provisiones)",
+                voucher_type="Comprobante de Traspaso",
+                fecha=closing_date_str,
                 is_payment=False,
                 glosa=None,
                 items=[
@@ -550,6 +576,8 @@ class AccountingService:
             AccountingSection(
                 id="seccion_4_min_trabajo",
                 title="Ministerio de Trabajo (Arancel OVT)",
+                voucher_type="Comprobante de Traspaso",
+                fecha=closing_date_str,
                 is_payment=False,
                 glosa=None,
                 items=[
@@ -563,6 +591,8 @@ class AccountingService:
             AccountingSection(
                 id="seccion_5_pago_gestora",
                 title="Cancelación Aportes Gestora",
+                voucher_type="Comprobante de Egreso",
+                fecha=fecha_gestora,
                 is_payment=True,
                 payment_label=label_gestora,
                 glosa=glosa_gestora,
@@ -574,6 +604,8 @@ class AccountingService:
             AccountingSection(
                 id="seccion_6_pago_caja",
                 title="Cancelación Aporte Caja de Salud",
+                voucher_type="Comprobante de Egreso",
+                fecha=fecha_caja,
                 is_payment=True,
                 payment_label=label_caja,
                 glosa=glosa_caja,
@@ -585,6 +617,8 @@ class AccountingService:
             AccountingSection(
                 id="seccion_7_pago_min_trabajo",
                 title="Cancelación Ministerio de Trabajo",
+                voucher_type="Comprobante de Egreso",
+                fecha=fecha_mt,
                 is_payment=True,
                 payment_label=label_mt,
                 glosa=glosa_mt,

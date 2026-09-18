@@ -17,6 +17,8 @@ class AccountingSection(BaseModel):
     items: List[AccountingEntryItem]
     subtotal_debe: float = 0.0
     subtotal_haber: float = 0.0
+    voucher_type: str = "Comprobante de Traspaso"
+    fecha: Optional[str] = None
 
 class PaymentExtraItem(BaseModel):
     id: Optional[str] = None

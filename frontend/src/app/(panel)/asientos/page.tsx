@@ -57,6 +57,11 @@ const MONTHS = [
   { id: 12, name: "Diciembre" }
 ];
 
+const CAJAS_SALUD_BOLIVIA = [
+  "Caja Petrolera de Salud",
+  "Caja Nacional de Salud"
+];
+
 interface NumericInputProps {
   value: number | undefined | null;
   onChange: (val: number) => void;
@@ -237,6 +242,8 @@ interface AccountingSection {
   items: AccountingEntryItem[];
   subtotal_debe: number;
   subtotal_haber: number;
+  voucher_type?: string;
+  fecha?: string | null;
 }
 
 interface AccountingSheetData {
@@ -370,10 +377,13 @@ function AsientosPageContent() {
         console.error("Error cargando departamentos complementarios:", e);
       }
 
+      const defaultCajaName = data.caja_salud_name || "Caja Petrolera de Salud";
+
       if (data.devengamiento) {
         setDevengamiento({
           ...data.devengamiento,
-          departamentos: currentDeptList
+          departamentos: currentDeptList,
+          caja_salud_choice: data.devengamiento.caja_salud_choice || defaultCajaName
         });
       } else {
         setDevengamiento({
@@ -385,7 +395,7 @@ function AsientosPageContent() {
           retenciones_ley: 0,
           sueldos_por_pagar: 0,
           arancel_min_trabajo: 27.0,
-          caja_salud_choice: "Caja Petrolera de Salud",
+          caja_salud_choice: defaultCajaName,
           patronal_gestora: undefined,
           patronal_caja: undefined,
           aguinaldo: undefined,
@@ -397,7 +407,17 @@ function AsientosPageContent() {
         setGestoraPayment(data.gestora_payment);
       }
       if (data.caja_payment) {
-        setCajaPayment(data.caja_payment);
+        setCajaPayment({
+          ...data.caja_payment,
+          caja_tipo: data.caja_payment.caja_tipo || defaultCajaName
+        });
+      } else {
+        setCajaPayment({
+          caja_tipo: defaultCajaName,
+          fecha: new Date().toISOString().split("T")[0],
+          nro_transaccion: "",
+          ajustes: []
+        });
       }
       if (data.min_trabajo_payment) {
         setMinTrabajoPayment(data.min_trabajo_payment);
@@ -1224,10 +1244,10 @@ function AsientosPageContent() {
                 </div>
                 <div>
                   <h2 className="text-base md:text-lg font-bold">
-                    Cuadrante 1: Devengamiento de Nómina (Por Departamento)
+                    Cuadrante 1: Devengamiento de Nómina
                   </h2>
                   <p className="text-xs text-blue-200">
-                    Distribución de Sueldos y Bonos de Antigüedad para cada departamento ({devengamiento.departamentos?.length || 0} activos)
+                    Distribución por departamento ({devengamiento.departamentos?.length || 0} activos)
                   </p>
                 </div>
               </div>
@@ -1339,12 +1359,7 @@ function AsientosPageContent() {
               <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-blue-900">
                   <Sparkles className="w-5 h-5 text-blue-700" />
-                  <div>
-                    <span className="text-sm font-bold">TOTAL GANADO DEVENGADO (DEBE):</span>
-                    <p className="text-xs text-blue-700">
-                      Base imponible consolidada para Aportes Patronales y Beneficios Sociales.
-                    </p>
-                  </div>
+                  <span className="text-sm font-bold">TOTAL GANADO DEVENGADO (DEBE):</span>
                 </div>
                 <div className="text-xl md:text-2xl font-black text-blue-900">
                   Bs. {totalGanado.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
@@ -1387,7 +1402,6 @@ function AsientosPageContent() {
                       className="w-full pl-10 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100"
                     />
                   </div>
-                  <p className="text-[11px] text-slate-500">Pasivo Laboral - Aporte Gestora Pública (12.71%)</p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
@@ -1417,7 +1431,6 @@ function AsientosPageContent() {
                       className="w-full pl-10 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100"
                     />
                   </div>
-                  <p className="text-[11px] text-slate-500">Pasivo Laboral - Líquido pagable a empleados</p>
                 </div>
               </div>
             </div>
@@ -1435,7 +1448,6 @@ function AsientosPageContent() {
                     </div>
                     <div>
                       <h2 className="text-base font-bold">Cuadrante 2: Aportes Patronales</h2>
-                      <p className="text-xs text-emerald-200">Cargas sociales automáticas s/ Total Ganado (Editables)</p>
                     </div>
                   </div>
                   <span className="text-xs px-2.5 py-1 bg-white/20 rounded-full font-medium">17.21% Base</span>
@@ -1445,10 +1457,7 @@ function AsientosPageContent() {
                   {/* Gestora Pública Patronal (7.21%) */}
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-bold text-slate-700 uppercase">Aportes Patronales - Gestora Pública (7.21%)</div>
-                        <div className="text-[11px] text-slate-500">Prima AFP 1.71% + Vivienda 2.0% + Solidario 3.0%</div>
-                      </div>
+                      <div className="text-xs font-bold text-slate-700 uppercase">Aportes Patronales - Gestora Pública (7.21%)</div>
                       {!isLockedCuadrantes && (
                         <button
                           type="button"
@@ -1479,42 +1488,20 @@ function AsientosPageContent() {
                       <label className="text-xs font-bold text-slate-700 uppercase">
                         Ente Gestor de Salud (10%)
                       </label>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCajaPayment({ ...cajaPayment, caja_tipo: "Caja Petrolera de Salud" });
-                            setDevengamiento({ ...devengamiento, caja_salud_choice: "Caja Petrolera de Salud" });
-                          }}
-                          className={`text-xs px-3 py-1 rounded-lg font-bold transition ${
-                            (cajaPayment.caja_tipo || devengamiento.caja_salud_choice) === "Caja Petrolera de Salud"
-                              ? "bg-emerald-700 text-white shadow-sm"
-                              : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-100"
-                          }`}
-                        >
-                          Caja Petrolera
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCajaPayment({ ...cajaPayment, caja_tipo: "Caja Nacional de Salud" });
-                            setDevengamiento({ ...devengamiento, caja_salud_choice: "Caja Nacional de Salud" });
-                          }}
-                          className={`text-xs px-3 py-1 rounded-lg font-bold transition ${
-                            (cajaPayment.caja_tipo || devengamiento.caja_salud_choice) === "Caja Nacional de Salud"
-                              ? "bg-emerald-700 text-white shadow-sm"
-                              : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-100"
-                          }`}
-                        >
-                          Caja Nacional
-                        </button>
+                      <div className="flex items-center gap-2">
+                        <span className="px-3 py-1.5 bg-emerald-50 text-emerald-900 font-bold text-xs rounded-lg border border-emerald-200 shadow-xs">
+                          {cajaPayment.caja_tipo || devengamiento.caja_salud_choice || "Caja Petrolera de Salud"}
+                        </span>
+                        <span className="text-[11px] text-slate-400 italic">
+                          (Configurado en Empresa)
+                        </span>
                       </div>
                     </div>
 
                     <div className="space-y-2 pt-1">
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-slate-600 font-semibold">
-                          Monto Aporte de Salud (10% de Total Ganado):
+                          Aporte de Salud (10%):
                         </span>
                         {!isLockedCuadrantes && (
                           <button
@@ -1561,7 +1548,6 @@ function AsientosPageContent() {
                     </div>
                     <div>
                       <h2 className="text-base font-bold">Cuadrante 3: Beneficios Sociales</h2>
-                      <p className="text-xs text-purple-200">Provisiones y Previsiones (1/12 cada una, editables)</p>
                     </div>
                   </div>
                   <span className="text-xs px-2.5 py-1 bg-white/20 rounded-full font-medium">16.67% Base</span>
@@ -1571,10 +1557,7 @@ function AsientosPageContent() {
                   {/* Aguinaldos */}
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-bold text-slate-700 uppercase">Aguinaldos de Navidad (8.33%)</div>
-                        <div className="text-[11px] text-slate-500">Un doceavo mensual -&gt; Provisión Aguinaldos</div>
-                      </div>
+                      <div className="text-xs font-bold text-slate-700 uppercase">Aguinaldos de Navidad (8.33%)</div>
                       {!isLockedCuadrantes && (
                         <button
                           type="button"
@@ -1602,10 +1585,7 @@ function AsientosPageContent() {
                   {/* Indemnizaciones */}
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-bold text-slate-700 uppercase">Indemnizaciones (8.33%)</div>
-                        <div className="text-[11px] text-slate-500">Un doceavo mensual -&gt; Previsión Beneficios Sociales</div>
-                      </div>
+                      <div className="text-xs font-bold text-slate-700 uppercase">Indemnizaciones (8.33%)</div>
                       {!isLockedCuadrantes && (
                         <button
                           type="button"
@@ -1651,9 +1631,6 @@ function AsientosPageContent() {
                 <h3 className="text-base font-bold text-slate-900">
                   Cuadrante 4: Ministerio de Trabajo (Arancel OVT)
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Arancel por depósito mensual en el Oficina Virtual de Trámites
-                </p>
               </div>
             </div>
 
@@ -1672,7 +1649,7 @@ function AsientosPageContent() {
           </div>
 
           {/* SEPARADOR VISUAL PARA ASIENTOS DE PAGO */}
-          <div className="pt-4">
+          <div className="pt-2">
             <div className="flex items-center gap-3 text-slate-400 my-2">
               <div className="h-px bg-slate-200 flex-1" />
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-600 bg-slate-100 px-4 py-1.5 rounded-full border border-slate-200">
@@ -1681,9 +1658,6 @@ function AsientosPageContent() {
               </div>
               <div className="h-px bg-slate-200 flex-1" />
             </div>
-            <p className="text-center text-xs text-slate-500 max-w-2xl mx-auto mb-4">
-              Los montos bases se transfieren automáticamente de los cuadrantes anteriores. Registra la fecha de desembolso, número de transacción y selecciona el tipo de adicional (sin necesidad de escribir descripciones).
-            </p>
           </div>
 
           {/* ASIENTO 5: CANCELACIÓN GESTORA PÚBLICA */}
@@ -1696,7 +1670,7 @@ function AsientosPageContent() {
                 <div>
                   <h3 className="text-base font-bold">Asiento de Pago: Gestora Pública</h3>
                   <p className="text-xs text-slate-300">
-                    Cancelación de Retenciones Laborales (12.71%) + Aporte Patronal ({patronalGestora > 0 ? "Bs. " + patronalGestora : "7.21%"}) + Intereses
+                    Cancelación de Retenciones Laborales y Aporte Patronal Gestora
                   </p>
                 </div>
               </div>
@@ -1832,7 +1806,7 @@ function AsientosPageContent() {
                     Asiento de Pago: {cajaPayment.caja_tipo || devengamiento.caja_salud_choice}
                   </h3>
                   <p className="text-xs text-emerald-200">
-                    Cancelación de Aporte Patronal ({patronalCaja > 0 ? "Bs. " + patronalCaja : "10%"}) + Intereses y Actualizaciones UFV
+                    Cancelación de Aporte Patronal al Ente Gestor de Salud
                   </p>
                 </div>
               </div>
@@ -1958,7 +1932,7 @@ function AsientosPageContent() {
                 <div>
                   <h3 className="text-base font-bold">Asiento de Pago: Ministerio de Trabajo</h3>
                   <p className="text-xs text-amber-200">
-                    Cancelación de Arancel OVT + Multas e Intereses por presentación
+                    Cancelación de Arancel Oficina Virtual de Trámites (OVT)
                   </p>
                 </div>
               </div>
@@ -2075,115 +2049,266 @@ function AsientosPageContent() {
           </div>
         </div>
       ) : activeTab === "oficial" ? (
-        /* ================= VISTA COMPROBANTE OFICIAL (TABLA COMPLETA) ================= */
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 space-y-6">
-          <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 tracking-wide uppercase">
-                {sheetData?.tenant_name} {selectedYear}
-              </h2>
-              <p className="text-sm font-bold text-blue-900 uppercase">
-                COMPROBANTE CONTABLE DE NÓMINA Y APORTES - {sheetData?.month_name}
-              </p>
-            </div>
-            <div className="text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-              Expresado en Bolivianos (Bs.)
+        /* ================= VISTA COMPROBANTE OFICIAL (FORMATO OFICIAL CANÓNICO) ================= */
+        <div className="space-y-6">
+          {/* Cabecera del Panel Oficial */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-lg font-black text-slate-900 tracking-wide uppercase">
+                  {sheetData?.tenant_name} {selectedYear}
+                </h2>
+                <p className="text-sm font-bold text-blue-900 uppercase">
+                  COMPROBANTES CONTABLES DE NÓMINA Y APORTES - {sheetData?.month_name}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                  Expresado en Bolivianos (Bs.)
+                </div>
+                <button
+                  onClick={handleExportExcel}
+                  disabled={exportingExcel || loading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50"
+                  title="Descargar mes en Excel"
+                >
+                  {exportingExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                  <span>Excel</span>
+                </button>
+                <button
+                  onClick={handleExportPdf}
+                  disabled={exportingPdf || loading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-50"
+                  title="Descargar mes en PDF"
+                >
+                  {exportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                  <span>PDF</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-left border-collapse text-xs md:text-sm">
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 font-bold">
-                  <th className="py-3 px-4 w-[60%]">DETALLE DE LA CUENTA</th>
-                  <th className="py-3 px-4 w-[20%] text-right">DEBE (Bs.)</th>
-                  <th className="py-3 px-4 w-[20%] text-right">HABER (Bs.)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {(sheetData?.sections || []).map((section) => (
-                  <React.Fragment key={section.id}>
-                    {/* Encabezado si es asiento de pago */}
-                    {section.is_payment && section.payment_label && (
-                      <tr className="bg-amber-50/80 font-bold text-amber-950 border-t-2 border-slate-200">
-                        <td colSpan={3} className="py-2.5 px-4 text-center tracking-wide text-xs uppercase">
-                          {section.payment_label}
+          {/* 1. CUADRANTES 1 A 4: TABLA UNIFICADA TRADICIONAL DE DEVENGAMIENTO Y PROVISIONES (TAL COMO ESTABA ANTES) */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-md overflow-hidden">
+            {/* Header Superior idéntico a la hoja contable física */}
+            <div className="border-b border-slate-200 flex flex-col sm:flex-row items-stretch">
+              <div className="bg-yellow-300 px-6 py-3.5 flex-1 flex items-center justify-center border-b sm:border-b-0 sm:border-r border-slate-300">
+                <span className="font-black text-slate-900 text-sm sm:text-base tracking-wider uppercase">
+                  {sheetData?.tenant_name} {selectedYear}
+                </span>
+              </div>
+              <div className="bg-slate-50 sm:w-64 px-6 py-3.5 flex items-center justify-center">
+                <span className="font-black text-blue-900 text-sm sm:text-base tracking-widest uppercase">
+                  {sheetData?.month_name}
+                </span>
+              </div>
+            </div>
+
+            {/* Tabla Continua de los Cuadrantes 1 a 4 */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs md:text-sm">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-700 text-xs font-black uppercase tracking-wider border-b border-slate-200">
+                    <th className="p-3.5 pl-6">DETALLE DE CUENTAS</th>
+                    <th className="p-3.5 w-44 text-right">DEBE</th>
+                    <th className="p-3.5 pr-6 w-44 text-right">HABER</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(sheetData?.sections || []).filter(s => !s.is_payment).map((section) => (
+                    <React.Fragment key={section.id}>
+                      {/* Cuentas de la sección */}
+                      {section.items.map((item, itemIdx) => {
+                        if (item.debe === 0 && item.haber === 0 && !item.subcuentas) return null;
+                        return (
+                          <React.Fragment key={itemIdx}>
+                            <tr className="hover:bg-slate-50/70 transition">
+                              <td className="p-2.5 pl-6 font-semibold text-slate-800">
+                                <span>{item.cuenta}</span>
+                                {item.tag && (
+                                  <span className="ml-2 text-[10px] px-2 py-0.5 rounded font-normal bg-slate-100 text-slate-600">
+                                    {item.tag}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2.5 text-right font-mono text-xs font-bold text-slate-900">
+                                {item.debe > 0 ? item.debe.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : ""}
+                              </td>
+                              <td className="p-2.5 pr-6 text-right font-mono text-xs font-bold text-slate-900">
+                                {item.haber > 0 ? item.haber.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : ""}
+                              </td>
+                            </tr>
+                            {/* Subcuentas si existen */}
+                            {(item.subcuentas || []).map((sub, sIdx) => (
+                              <tr key={`sub-${sIdx}`} className="text-slate-500 text-xs italic bg-slate-50/40">
+                                <td className="py-1 px-6 pl-10 font-normal">↳ {sub}</td>
+                                <td className="py-1 px-4 text-right"></td>
+                                <td className="py-1 pr-6 text-right"></td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        );
+                      })}
+
+                      {/* Subtotal de la sección */}
+                      <tr className="bg-slate-50/90 font-bold border-t border-b border-slate-200">
+                        <td className="p-2.5 pl-6 text-xs text-slate-600 uppercase tracking-wider font-bold">
+                          Subtotal {section.title}
+                        </td>
+                        <td className="p-2.5 text-right font-mono text-xs font-black text-slate-900 border-t border-slate-300">
+                          {section.subtotal_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="p-2.5 pr-6 text-right font-mono text-xs font-black text-slate-900 border-t border-slate-300">
+                          {section.subtotal_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
                         </td>
                       </tr>
-                    )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-                    {/* Filas de cuentas */}
-                    {section.items.map((item, idx) => (
-                      <React.Fragment key={idx}>
-                        <tr className="hover:bg-slate-50/60 transition">
-                          <td className="py-2.5 px-4 font-medium text-slate-800">
-                            {item.cuenta}
-                            {item.tag && (
-                              <span className="ml-2 text-[10px] px-2 py-0.5 rounded font-normal bg-slate-100 text-slate-600">
-                                {item.tag}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-4 text-right font-mono text-slate-900">
-                            {item.debe > 0 ? item.debe.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : "-"}
-                          </td>
-                          <td className="py-2.5 px-4 text-right font-mono text-slate-900">
-                            {item.haber > 0 ? item.haber.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : "-"}
+          {/* 2. ASIENTOS CONTABLES DE PAGO: COMPROBANTES INDIVIDUALES CON LA PLANTILLA OFICIAL (COMPROBANTE DE EGRESO) */}
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 pt-2">
+              <div className="h-px bg-slate-200 flex-1" />
+              <span className="text-xs font-black text-slate-500 uppercase tracking-widest px-3 py-1 bg-slate-100 rounded-full border border-slate-200">
+                Comprobantes de Pago Efectivo (Egresos)
+              </span>
+              <div className="h-px bg-slate-200 flex-1" />
+            </div>
+
+            {(sheetData?.sections || []).filter(s => s.is_payment).map((section) => (
+              <div
+                key={section.id}
+                className="bg-white rounded-xl border-2 border-slate-700 shadow-sm overflow-hidden"
+              >
+                {/* Encabezado Superior del Comprobante */}
+                <div className="bg-slate-100 border-b-2 border-slate-700 py-2.5 px-4 flex items-center justify-between">
+                  <span className="text-xs text-slate-500 font-bold uppercase">{section.title}</span>
+                  <span className="text-sm font-black text-slate-900 tracking-wider uppercase">
+                    {section.voucher_type || "Comprobante de Egreso"}
+                  </span>
+                  <span className="text-xs text-slate-600 font-mono font-bold">
+                    {section.fecha || ""}
+                  </span>
+                </div>
+
+                {/* Tabla de 4 Columnas Oficiales: Fecha | Detalle | Debe | Haber */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs md:text-sm">
+                    <thead>
+                      <tr className="border-b-2 border-slate-700 bg-slate-50 font-bold text-slate-800 text-xs uppercase tracking-wider">
+                        <th className="py-2.5 px-4 w-[16%]">Fecha</th>
+                        <th className="py-2.5 px-4 w-[50%]">Detalle</th>
+                        <th className="py-2.5 px-4 w-[17%] text-right">Debe</th>
+                        <th className="py-2.5 px-4 w-[17%] text-right">Haber</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {section.items.map((item, idx) => {
+                        if (item.debe === 0 && item.haber === 0 && !item.subcuentas) return null;
+                        const isCredit = item.haber > 0 && item.debe === 0;
+                        return (
+                          <React.Fragment key={idx}>
+                            <tr className="hover:bg-slate-50/50 transition">
+                              <td className="py-1.5 px-4 font-mono text-slate-700 text-xs">
+                                {idx === 0 ? (section.fecha || "") : ""}
+                              </td>
+                              <td className={`py-1.5 px-4 text-slate-900 ${isCredit ? "pl-10 font-medium" : "font-normal"}`}>
+                                {item.cuenta}
+                                {item.tag && (
+                                  <span className="ml-2 text-[10px] px-2 py-0.5 rounded font-normal bg-slate-100 text-slate-600">
+                                    {item.tag}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-1.5 px-4 text-right font-mono text-slate-900">
+                                {item.debe > 0 ? item.debe.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : ""}
+                              </td>
+                              <td className="py-1.5 px-4 text-right font-mono text-slate-900">
+                                {item.haber > 0 ? item.haber.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : ""}
+                              </td>
+                            </tr>
+
+                            {/* Subcuentas si existen */}
+                            {(item.subcuentas || []).map((sub, sIdx) => (
+                              <tr key={`sub-${sIdx}`} className="text-slate-500 text-xs italic">
+                                <td className="py-0.5 px-4"></td>
+                                <td className="py-0.5 px-14 font-normal">{sub}</td>
+                                <td className="py-0.5 px-4 text-right"></td>
+                                <td className="py-0.5 px-4 text-right"></td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        );
+                      })}
+
+                      {/* Glosa bajo las cuentas en columna Detalle */}
+                      {section.glosa && (
+                        <tr>
+                          <td className="py-2 px-4"></td>
+                          <td className="py-2 px-4 text-xs italic text-slate-700 leading-relaxed" colSpan={3}>
+                            {section.glosa}
                           </td>
                         </tr>
+                      )}
 
-                        {/* Subcuentas */}
-                        {(item.subcuentas || []).map((sub, sIdx) => (
-                          <tr key={`sub-${sIdx}`} className="text-slate-500 text-xs italic bg-slate-50/30">
-                            <td className="py-1 px-8 font-normal">{sub}</td>
-                            <td className="py-1 px-4 text-right font-mono">-</td>
-                            <td className="py-1 px-4 text-right font-mono">-</td>
-                          </tr>
-                        ))}
-                      </React.Fragment>
-                    ))}
-
-                    {/* Glosa contable con fecha y número de documento */}
-                    {section.glosa && (
-                      <tr className="bg-slate-50/50">
-                        <td colSpan={3} className="py-2.5 px-5 text-xs italic text-slate-600 border-t border-dashed border-slate-200">
-                          <div className="flex items-center gap-2">
-                            <Receipt className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                            <span>{section.glosa}</span>
-                          </div>
+                      {/* Fila Sumas iguales con doble subrayado */}
+                      <tr className="font-bold text-slate-900">
+                        <td className="py-2.5 px-4"></td>
+                        <td className="py-2.5 px-4 text-right font-bold text-slate-900">
+                          Sumas iguales
+                        </td>
+                        <td
+                          className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 border-t border-slate-700"
+                          style={{ borderBottom: "3px double #0f172a" }}
+                        >
+                          {section.subtotal_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                        </td>
+                        <td
+                          className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 border-t border-slate-700"
+                          style={{ borderBottom: "3px double #0f172a" }}
+                        >
+                          {section.subtotal_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
                         </td>
                       </tr>
-                    )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
 
-                    {/* Fila de Subtotal */}
-                    <tr className="bg-slate-50 font-bold text-slate-900 border-t border-b border-slate-200">
-                      <td className="py-2 px-4 text-right italic text-xs text-slate-500">Subtotal Asiento:</td>
-                      <td className="py-2 px-4 text-right font-mono border-t border-slate-300">
-                        {section.subtotal_debe > 0
-                          ? section.subtotal_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })
-                          : "-"}
-                      </td>
-                      <td className="py-2 px-4 text-right font-mono border-t border-slate-300">
-                        {section.subtotal_haber > 0
-                          ? section.subtotal_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 })
-                          : "-"}
-                      </td>
-                    </tr>
-                  </React.Fragment>
-                ))}
-
-                {/* FILA DE TOTALES GENERALES */}
-                <tr className="bg-slate-200 text-slate-900 font-black text-sm md:text-base border-t-2 border-slate-400">
-                  <td className="py-3.5 px-4 text-center tracking-wider">TOTALES GENERALES</td>
-                  <td className="py-3.5 px-4 text-right font-mono border-t-2 border-b-4 border-slate-700">
-                    Bs. {sheetData?.total_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="py-3.5 px-4 text-right font-mono border-t-2 border-b-4 border-slate-700">
-                    Bs. {sheetData?.total_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          {/* TOTALES GENERALES CONSOLIDADOS */}
+          <div className="bg-slate-100 rounded-2xl border-2 border-slate-400 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">
+                Totales Generales Consolidados del Mes
+              </h3>
+              <p className="text-xs text-slate-600">
+                Suma acumulada de débitos y créditos del periodo contable {sheetData?.month_name} {selectedYear}
+              </p>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="text-right">
+                <span className="text-[11px] font-bold text-slate-500 uppercase block">Total Debe</span>
+                <span className="text-base md:text-lg font-black font-mono text-slate-900 border-b-2 border-slate-800">
+                  Bs. {sheetData?.total_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-[11px] font-bold text-slate-500 uppercase block">Total Haber</span>
+                <span className="text-base md:text-lg font-black font-mono text-slate-900 border-b-2 border-slate-800">
+                  Bs. {sheetData?.total_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="pl-4 border-l border-slate-300 flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                <span className="text-xs font-black text-emerald-800 uppercase">Balance Cuadrado</span>
+              </div>
+            </div>
           </div>
         </div>
       ) : (
@@ -2490,6 +2615,56 @@ function AsientosPageContent() {
               </form>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Barra de Acciones Flotante Fija para Guardar Cambios (Modo Guiado) */}
+      <AnimatePresence>
+        {activeTab === "guiado" && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 30 }}
+            className="fixed bottom-6 right-6 z-40"
+          >
+            <div className="bg-slate-900/95 backdrop-blur-md text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${isCuadrado ? "bg-emerald-400" : "bg-rose-500 animate-ping"}`} />
+                <span className="text-xs font-bold text-slate-200">
+                  {isCuadrado ? (
+                    <span className="text-emerald-400">Balance Cuadrado: Bs. {liveTotalDebe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                  ) : (
+                    <span className="text-rose-400">Descuadre: Bs. {liveDiferencia.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                  )}
+                </span>
+              </div>
+
+              <div className="h-4 w-px bg-slate-700" />
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={loading || saving}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-semibold transition border border-slate-700 disabled:opacity-50"
+                  title="Restablecer cuadrantes a valores de la planilla"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 inline mr-1" />
+                  Restablecer
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={loading || saving}
+                  className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-blue-600/30 disabled:opacity-50 cursor-pointer"
+                  title="Guardar todos los cambios"
+                >
+                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>Guardar Cambios</span>
+                </button>
+              </div>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

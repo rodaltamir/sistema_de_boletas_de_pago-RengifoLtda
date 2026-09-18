@@ -11,6 +11,9 @@ def migrate_tenants():
     """
     try:
         with engine.begin() as conn:
+            # Asegurar columna caja_salud en public.tenants
+            conn.execute(text("ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS caja_salud VARCHAR(100) DEFAULT 'Caja Petrolera de Salud'"))
+
             result = conn.execute(text("SELECT schema_name FROM public.tenants WHERE is_active = true"))
             tenants = [row[0] for row in result.fetchall()]
             
