@@ -85,17 +85,25 @@ function PlanillasPageContent() {
 
   const sortedPayslips = React.useMemo(() => {
     if (!payroll?.payslips) return [];
-    return [...payroll.payslips].sort((a, b) => {
-      const codeA = a.employee_code || a.employee_id;
-      const codeB = b.employee_code || b.employee_id;
-      const numA = parseInt(String(codeA).replace(/\D/g, ''), 10);
-      const numB = parseInt(String(codeB).replace(/\D/g, ''), 10);
-      if (!isNaN(numA) && !isNaN(numB)) {
-        return numA - numB;
-      }
-      return String(codeA).localeCompare(String(codeB));
-    });
-  }, [payroll]);
+    const lastDay = new Date(year, month, 0).getDate();
+    const endOfMonthStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    return [...payroll.payslips]
+      .filter((p) => {
+        if (!p.employee_fecha_ingreso) return true;
+        return p.employee_fecha_ingreso <= endOfMonthStr;
+      })
+      .sort((a, b) => {
+        const codeA = a.employee_code || a.employee_id;
+        const codeB = b.employee_code || b.employee_id;
+        const numA = parseInt(String(codeA).replace(/\D/g, ''), 10);
+        const numB = parseInt(String(codeB).replace(/\D/g, ''), 10);
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return numA - numB;
+        }
+        return String(codeA).localeCompare(String(codeB));
+      });
+  }, [payroll, month, year]);
 
   // Edit State
   const [editForm, setEditForm] = useState<any>({});

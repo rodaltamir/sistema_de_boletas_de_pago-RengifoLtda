@@ -2126,11 +2126,519 @@ class DocumentService:
         return single_path
 
     @staticmethod
+    def render_asientos_comparativo_worksheet(ws, tenant_name: str, year: int, sheets_by_month: dict, active_months_set: set):
+        MONTH_NAMES = [
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        ]
+
+        # 1. Configuración de página: Orientación horizontal (Landscape) y cuadrícula activa
+        ws.views.sheetView[0].showGridLines = True
+        ws.print_options.gridLines = True
+        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+        ws.page_setup.paperSize = ws.PAPERSIZE_A3
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.page_margins.left = 0.3
+        ws.page_margins.right = 0.3
+        ws.page_margins.top = 0.4
+        ws.page_margins.bottom = 0.4
+
+        # 2. Tipografía y Estilos Visuales
+        font_header_title = Font(name="Arial", size=10.5, bold=True, color="000000")
+        font_header_month = Font(name="Arial", size=9.5, bold=True, color="1F4E78")
+        font_banner = Font(name="Arial", size=9.5, bold=True, color="000000")
+        font_col_header = Font(name="Arial", size=8.5, bold=True, color="000000")
+        font_row = Font(name="Arial", size=8.5, color="000000")
+        font_subcuenta = Font(name="Arial", size=8.0, italic=True, color="595959")
+        font_subtotal = Font(name="Arial", size=9.0, bold=True, color="000000")
+        font_total = Font(name="Arial", size=9.5, bold=True, color="000000")
+        font_date_hdr = Font(name="Arial", size=8.5, bold=True, color="1F4E78")
+        font_date_val = Font(name="Arial", size=8.5, bold=True, color="1F4E78")
+
+        fill_header_title = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        fill_header_month = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
+        fill_banner = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+        fill_col_header = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
+        fill_date_row = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
+        fill_total = PatternFill(start_color="E9EEF4", end_color="E9EEF4", fill_type="solid")
+
+        def _format_dmy(d_val) -> str:
+            if not d_val:
+                return ""
+            s = str(d_val).strip()
+            if "/" in s:
+                return s
+            if "-" in s:
+                parts = s.split("-")
+                if len(parts) == 3 and len(parts[0]) == 4:
+                    return f"{parts[2]}/{parts[1]}/{parts[0]}"
+            return s
+
+        thin_black = Side(border_style="thin", color="000000")
+        thin_grid = Side(border_style="thin", color="D9D9D9")
+        double_black = Side(border_style="double", color="000000")
+
+        # 3. Ancho de Columnas: Col A (Fecha), Col B (Detalle), Cols C..Z (12 Meses * 2), Cols AA..AB (Total Anual * 2)
+        ws.column_dimensions['A'].width = 11.0
+        ws.column_dimensions['B'].width = 46.0
+
+        for m in range(1, 13):
+            c_deb = get_column_letter(3 + (m - 1) * 2)
+            c_hab = get_column_letter(4 + (m - 1) * 2)
+            ws.column_dimensions[c_deb].width = 13.5
+            ws.column_dimensions[c_hab].width = 13.5
+
+        ws.column_dimensions['AA'].width = 15.0
+        ws.column_dimensions['AB'].width = 15.0
+
+        # Fila 1: Encabezado Empresa y Meses (Enero a Diciembre) + Total Anual
+        ws.row_dimensions[1].height = 22
+        ws.merge_cells("A1:B1")
+        c_main = ws["A1"]
+        c_main.value = f"{tenant_name} - ASIENTOS CONTABLES COMPARATIVOS {year}"
+        c_main.font = font_header_title
+        c_main.alignment = Alignment(horizontal="center", vertical="center")
+        for col in ["A", "B"]:
+            ws[f"{col}1"].fill = fill_header_title
+            ws[f"{col}1"].border = Border(top=thin_black, bottom=thin_black, left=thin_black if col == "A" else None, right=thin_black if col == "B" else None)
+
+        for m in range(1, 13):
+            col_deb_idx = 3 + (m - 1) * 2
+            col_hab_idx = col_deb_idx + 1
+            l_deb = get_column_letter(col_deb_idx)
+            l_hab = get_column_letter(col_hab_idx)
+            ws.merge_cells(f"{l_deb}1:{l_hab}1")
+            cell_m = ws[f"{l_deb}1"]
+            cell_m.value = MONTH_NAMES[m - 1].upper()
+            cell_m.font = font_header_month
+            cell_m.alignment = Alignment(horizontal="center", vertical="center")
+            for col_l in [l_deb, l_hab]:
+                ws[f"{col_l}1"].fill = fill_header_month
+                ws[f"{col_l}1"].border = Border(top=thin_black, bottom=thin_black, left=thin_black if col_l == l_deb else None, right=thin_black if col_l == l_hab else None)
+
+        ws.merge_cells("AA1:AB1")
+        cell_tot = ws["AA1"]
+        cell_tot.value = "TOTAL ANUAL"
+        cell_tot.font = font_header_title
+        cell_tot.alignment = Alignment(horizontal="center", vertical="center")
+        for col_l in ["AA", "AB"]:
+            ws[f"{col_l}1"].fill = fill_total
+            ws[f"{col_l}1"].border = Border(top=thin_black, bottom=thin_black, left=thin_black if col_l == "AA" else None, right=thin_black if col_l == "AB" else None)
+
+        # Fila 2: Cabeceras de columnas (FECHA | DETALLE DE CUENTAS | DEBE | HABER ...)
+        ws.row_dimensions[2].height = 18
+        ws["A2"] = "FECHA"
+        ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
+        ws["A2"].font = font_col_header
+        ws["A2"].fill = fill_col_header
+        ws["A2"].border = Border(top=thin_black, bottom=thin_black, left=thin_black, right=thin_black)
+
+        ws["B2"] = "DETALLE DE CUENTAS"
+        ws["B2"].alignment = Alignment(horizontal="center", vertical="center")
+        ws["B2"].font = font_col_header
+        ws["B2"].fill = fill_col_header
+        ws["B2"].border = Border(top=thin_black, bottom=thin_black, left=thin_black, right=thin_black)
+
+        for m in range(1, 13):
+            col_deb_idx = 3 + (m - 1) * 2
+            col_hab_idx = col_deb_idx + 1
+            l_deb = get_column_letter(col_deb_idx)
+            l_hab = get_column_letter(col_hab_idx)
+
+            for l, label in [(l_deb, "DEBE"), (l_hab, "HABER")]:
+                cell = ws[f"{l}2"]
+                cell.value = label
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                cell.font = font_col_header
+                cell.fill = fill_col_header
+                cell.border = Border(top=thin_black, bottom=thin_black, left=thin_black, right=thin_black)
+
+        for l, label in [("AA", "DEBE"), ("AB", "HABER")]:
+            cell = ws[f"{l}2"]
+            cell.value = label
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.font = font_col_header
+            cell.fill = fill_total
+            cell.border = Border(top=thin_black, bottom=thin_black, left=thin_black, right=thin_black)
+
+        curr_row = 3
+
+        # Obtener secciones de referencia ordenadas (secciones 1 a 7)
+        section_ids = [
+            "seccion_1_planilla",
+            "seccion_2_patronal",
+            "seccion_3_beneficios",
+            "seccion_4_min_trabajo",
+            "seccion_5_pago_gestora",
+            "seccion_6_pago_caja",
+            "seccion_7_pago_min_trabajo"
+        ]
+
+        for sec_id in section_ids:
+            sec_def = None
+            for m in range(1, 13):
+                found = next((s for s in sheets_by_month[m].sections if s.id == sec_id), None)
+                if found:
+                    sec_def = found
+                    break
+            if not sec_def:
+                continue
+
+            voucher_title = getattr(sec_def, "voucher_type", None) or "Comprobante de Traspaso"
+            header_full = f"{voucher_title.upper()} - {sec_def.title.upper()}"
+
+            # Banner de sección extendido por las 28 columnas
+            ws.row_dimensions[curr_row].height = 18
+            ws.merge_cells(f"A{curr_row}:AB{curr_row}")
+            b_cell = ws[f"A{curr_row}"]
+            b_cell.value = header_full
+            b_cell.font = font_banner
+            b_cell.alignment = Alignment(horizontal="center", vertical="center")
+            for c_idx in range(1, 29):
+                l = get_column_letter(c_idx)
+                ws[f"{l}{curr_row}"].fill = fill_banner
+                ws[f"{l}{curr_row}"].border = Border(
+                    top=thin_black,
+                    bottom=thin_black,
+                    left=thin_black if c_idx == 1 else None,
+                    right=thin_black if c_idx == 28 else None
+                )
+            curr_row += 1
+
+            # Fila de Fecha personalizada por mes bajo el banner de sección
+            ws.row_dimensions[curr_row].height = 16.5
+            is_payment_sec = ("pago" in sec_id)
+
+            # Columna A: FECHA
+            c_fec_hdr = ws[f"A{curr_row}"]
+            c_fec_hdr.value = "FECHA"
+            c_fec_hdr.font = font_date_hdr
+            c_fec_hdr.alignment = Alignment(horizontal="center", vertical="center")
+            c_fec_hdr.fill = fill_date_row
+            c_fec_hdr.border = Border(top=thin_black, bottom=thin_black, left=thin_black, right=thin_black)
+
+            # Columna B: Tipo de registro / concepto de fecha
+            c_det_hdr = ws[f"B{curr_row}"]
+            c_det_hdr.value = "Fecha de Cancelación Efectiva / N° Doc:" if is_payment_sec else "Fecha de Registro / Cierre Contable:"
+            c_det_hdr.font = font_date_hdr
+            c_det_hdr.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+            c_det_hdr.fill = fill_date_row
+            c_det_hdr.border = Border(top=thin_black, bottom=thin_black, left=thin_black, right=thin_black)
+
+            for m in range(1, 13):
+                col_deb_idx = 3 + (m - 1) * 2
+                col_hab_idx = col_deb_idx + 1
+                l_deb = get_column_letter(col_deb_idx)
+                l_hab = get_column_letter(col_hab_idx)
+
+                ws.merge_cells(f"{l_deb}{curr_row}:{l_hab}{curr_row}")
+                cell_date = ws[f"{l_deb}{curr_row}"]
+
+                has_m_data = (m in active_months_set)
+                m_sec = next((s for s in sheets_by_month[m].sections if s.id == sec_id), None)
+
+                date_text = ""
+                if has_m_data and m_sec:
+                    sheet_m = sheets_by_month[m]
+                    if is_payment_sec:
+                        p_fec = ""
+                        p_nro = ""
+                        if sec_id == "seccion_5_pago_gestora":
+                            p_fec = sheet_m.gestora_payment.fecha if sheet_m.gestora_payment else ""
+                            p_nro = sheet_m.gestora_payment.nro_transaccion if sheet_m.gestora_payment else ""
+                        elif sec_id == "seccion_6_pago_caja":
+                            p_fec = sheet_m.caja_payment.fecha if sheet_m.caja_payment else ""
+                            p_nro = sheet_m.caja_payment.nro_transaccion if sheet_m.caja_payment else ""
+                        elif sec_id == "seccion_7_pago_min_trabajo":
+                            p_fec = sheet_m.min_trabajo_payment.fecha if sheet_m.min_trabajo_payment else ""
+                            p_nro = sheet_m.min_trabajo_payment.nro_transaccion if sheet_m.min_trabajo_payment else ""
+
+                        raw_date = p_fec or m_sec.fecha or ""
+                        fec_formatted = _format_dmy(raw_date)
+                        if p_nro and str(p_nro).strip():
+                            date_text = f"{fec_formatted} (N° {str(p_nro).strip()})"
+                        else:
+                            date_text = fec_formatted
+                    else:
+                        raw_date = m_sec.fecha or f"{calendar.monthrange(year, m)[1]:02d}/{m:02d}/{year}"
+                        date_text = _format_dmy(raw_date)
+
+                cell_date.value = date_text
+                cell_date.font = font_date_val
+                cell_date.alignment = Alignment(horizontal="center", vertical="center")
+
+                for l in [l_deb, l_hab]:
+                    ws[f"{l}{curr_row}"].fill = fill_date_row
+                    ws[f"{l}{curr_row}"].border = Border(
+                        top=thin_black,
+                        bottom=thin_black,
+                        left=thin_black if l == l_deb else None,
+                        right=thin_black if l == l_hab else None
+                    )
+
+            ws.merge_cells(f"AA{curr_row}:AB{curr_row}")
+            cell_tot_lbl = ws[f"AA{curr_row}"]
+            cell_tot_lbl.value = f"EJERCICIO {year}"
+            cell_tot_lbl.font = font_date_val
+            cell_tot_lbl.alignment = Alignment(horizontal="center", vertical="center")
+            for l in ["AA", "AB"]:
+                ws[f"{l}{curr_row}"].fill = fill_total
+                ws[f"{l}{curr_row}"].border = Border(
+                    top=thin_black,
+                    bottom=thin_black,
+                    left=thin_black if l == "AA" else None,
+                    right=thin_black if l == "AB" else None
+                )
+
+            curr_row += 1
+
+            # Mapear filas únicas de cuentas para esta sección
+            ordered_keys = []
+            seen_keys = set()
+            for m in range(1, 13):
+                m_sec = next((s for s in sheets_by_month[m].sections if s.id == sec_id), None)
+                if not m_sec:
+                    continue
+                for it in m_sec.items:
+                    if it.debe == 0 and it.haber == 0 and not it.subcuentas:
+                        continue
+                    is_cred = bool(it.haber > 0 and it.debe == 0)
+                    k = (it.cuenta, is_cred)
+                    if k not in seen_keys:
+                        seen_keys.add(k)
+                        ordered_keys.append((k, it.subcuentas))
+
+            # Renderizar cada cuenta contable en la sección
+            for (cuenta, is_cred), subcuentas in ordered_keys:
+                ws.row_dimensions[curr_row].height = 14.5
+
+                # Columna A: Fecha (en blanco en filas de cuentas, con borde izquierdo)
+                c_fec = ws[f"A{curr_row}"]
+                c_fec.value = ""
+                c_fec.font = font_row
+                c_fec.border = Border(left=thin_black)
+
+                # Columna B: Detalle
+                c_det = ws[f"B{curr_row}"]
+                c_det.value = cuenta
+                c_det.font = font_row
+                c_det.alignment = Alignment(horizontal="left", vertical="center", indent=4 if is_cred else 1)
+                c_det.border = Border(right=thin_black)
+
+                row_tot_deb = 0.0
+                row_tot_hab = 0.0
+
+                for m in range(1, 13):
+                    col_deb_idx = 3 + (m - 1) * 2
+                    col_hab_idx = col_deb_idx + 1
+                    l_deb = get_column_letter(col_deb_idx)
+                    l_hab = get_column_letter(col_hab_idx)
+
+                    has_m_data = (m in active_months_set)
+                    m_sec = next((s for s in sheets_by_month[m].sections if s.id == sec_id), None)
+
+                    c_deb_cell = ws[f"{l_deb}{curr_row}"]
+                    c_hab_cell = ws[f"{l_hab}{curr_row}"]
+
+                    c_deb_cell.border = Border(right=thin_grid)
+                    c_hab_cell.border = Border(right=thin_black)
+
+                    if has_m_data and m_sec:
+                        it_m = next((it for it in m_sec.items if it.cuenta == cuenta and bool(it.haber > 0 and it.debe == 0) == is_cred), None)
+                        if it_m:
+                            if it_m.debe > 0:
+                                c_deb_cell.value = it_m.debe
+                                c_deb_cell.number_format = "#,##0.00"
+                                row_tot_deb += it_m.debe
+                            if it_m.haber > 0:
+                                c_hab_cell.value = it_m.haber
+                                c_hab_cell.number_format = "#,##0.00"
+                                row_tot_hab += it_m.haber
+
+                    c_deb_cell.font = font_row
+                    c_deb_cell.alignment = Alignment(horizontal="right", vertical="center")
+                    c_hab_cell.font = font_row
+                    c_hab_cell.alignment = Alignment(horizontal="right", vertical="center")
+
+                # Columnas Total Anual (AA y AB)
+                c_tot_deb = ws[f"AA{curr_row}"]
+                c_tot_hab = ws[f"AB{curr_row}"]
+                if row_tot_deb > 0:
+                    c_tot_deb.value = round(row_tot_deb, 2)
+                    c_tot_deb.number_format = "#,##0.00"
+                if row_tot_hab > 0:
+                    c_tot_hab.value = round(row_tot_hab, 2)
+                    c_tot_hab.number_format = "#,##0.00"
+                c_tot_deb.font = font_row
+                c_tot_deb.fill = fill_total
+                c_tot_deb.alignment = Alignment(horizontal="right", vertical="center")
+                c_tot_deb.border = Border(left=thin_black, right=thin_grid)
+
+                c_tot_hab.font = font_row
+                c_tot_hab.fill = fill_total
+                c_tot_hab.alignment = Alignment(horizontal="right", vertical="center")
+                c_tot_hab.border = Border(right=thin_black)
+
+                curr_row += 1
+
+                # Subcuentas si existen
+                if subcuentas:
+                    for sub in subcuentas:
+                        ws.row_dimensions[curr_row].height = 13.0
+                        ws[f"A{curr_row}"].border = Border(left=thin_black)
+                        c_sub = ws[f"B{curr_row}"]
+                        c_sub.value = f"   ↳ {sub}"
+                        c_sub.font = font_subcuenta
+                        c_sub.alignment = Alignment(horizontal="left", vertical="center", indent=4)
+                        c_sub.border = Border(right=thin_black)
+
+                        for c_idx in range(3, 29):
+                            let = get_column_letter(c_idx)
+                            ws[f"{let}{curr_row}"].border = Border(right=thin_black if (c_idx % 2 == 0 or c_idx == 28) else thin_grid)
+                        curr_row += 1
+
+            # Fila de Subtotales o Sumas Iguales de la Sección
+            ws.row_dimensions[curr_row].height = 17.0
+            ws[f"A{curr_row}"].border = Border(left=thin_black, bottom=thin_black)
+
+            c_sub_label = ws[f"B{curr_row}"]
+            c_sub_label.value = "Sumas iguales" if ("pago" in sec_def.title.lower()) else f"Subtotal {sec_def.title}"
+            c_sub_label.font = font_subtotal
+            c_sub_label.alignment = Alignment(horizontal="right", vertical="center")
+            c_sub_label.border = Border(bottom=thin_black, right=thin_black)
+
+            sec_tot_deb = 0.0
+            sec_tot_hab = 0.0
+            bot_border = double_black if ("pago" in sec_def.title.lower()) else thin_black
+
+            for m in range(1, 13):
+                col_deb_idx = 3 + (m - 1) * 2
+                col_hab_idx = col_deb_idx + 1
+                l_deb = get_column_letter(col_deb_idx)
+                l_hab = get_column_letter(col_hab_idx)
+
+                has_m_data = (m in active_months_set)
+                m_sec = next((s for s in sheets_by_month[m].sections if s.id == sec_id), None)
+
+                c_deb_sub = ws[f"{l_deb}{curr_row}"]
+                c_hab_sub = ws[f"{l_hab}{curr_row}"]
+
+                c_deb_sub.border = Border(top=thin_black, bottom=bot_border, right=thin_grid)
+                c_hab_sub.border = Border(top=thin_black, bottom=bot_border, right=thin_black)
+
+                if has_m_data and m_sec:
+                    c_deb_sub.value = m_sec.subtotal_debe
+                    c_deb_sub.number_format = "#,##0.00"
+                    c_hab_sub.value = m_sec.subtotal_haber
+                    c_hab_sub.number_format = "#,##0.00"
+                    sec_tot_deb += m_sec.subtotal_debe
+                    sec_tot_hab += m_sec.subtotal_haber
+
+                c_deb_sub.font = font_subtotal
+                c_deb_sub.alignment = Alignment(horizontal="right", vertical="center")
+                c_hab_sub.font = font_subtotal
+                c_hab_sub.alignment = Alignment(horizontal="right", vertical="center")
+
+            # Subtotal Total Anual
+            c_tot_sdeb = ws[f"AA{curr_row}"]
+            c_tot_shab = ws[f"AB{curr_row}"]
+            c_tot_sdeb.value = round(sec_tot_deb, 2)
+            c_tot_sdeb.number_format = "#,##0.00"
+            c_tot_sdeb.font = font_subtotal
+            c_tot_sdeb.fill = fill_total
+            c_tot_sdeb.alignment = Alignment(horizontal="right", vertical="center")
+            c_tot_sdeb.border = Border(top=thin_black, bottom=bot_border, left=thin_black, right=thin_grid)
+
+            c_tot_shab.value = round(sec_tot_hab, 2)
+            c_tot_shab.number_format = "#,##0.00"
+            c_tot_shab.font = font_subtotal
+            c_tot_shab.fill = fill_total
+            c_tot_shab.alignment = Alignment(horizontal="right", vertical="center")
+            c_tot_shab.border = Border(top=thin_black, bottom=bot_border, right=thin_black)
+
+            curr_row += 1
+
+            # Separador entre comprobantes
+            ws.row_dimensions[curr_row].height = 6
+            curr_row += 1
+
+        # Fila Final: TOTALES GENERALES DEL EJERCICIO
+        ws.row_dimensions[curr_row].height = 20.0
+        ws.merge_cells(f"A{curr_row}:B{curr_row}")
+        c_fin = ws[f"A{curr_row}"]
+        c_fin.value = "TOTALES GENERALES CONSOLIDADOS"
+        c_fin.font = font_total
+        c_fin.alignment = Alignment(horizontal="center", vertical="center")
+        for col_l in ["A", "B"]:
+            ws[f"{col_l}{curr_row}"].fill = fill_total
+            ws[f"{col_l}{curr_row}"].border = Border(
+                top=thin_black, bottom=double_black,
+                left=thin_black if col_l == "A" else None,
+                right=thin_black if col_l == "B" else None
+            )
+
+        grand_tot_deb = 0.0
+        grand_tot_hab = 0.0
+
+        for m in range(1, 13):
+            col_deb_idx = 3 + (m - 1) * 2
+            col_hab_idx = col_deb_idx + 1
+            l_deb = get_column_letter(col_deb_idx)
+            l_hab = get_column_letter(col_hab_idx)
+
+            has_m_data = (m in active_months_set)
+
+            c_deb_fin = ws[f"{l_deb}{curr_row}"]
+            c_hab_fin = ws[f"{l_hab}{curr_row}"]
+
+            c_deb_fin.border = Border(top=thin_black, bottom=double_black, right=thin_grid)
+            c_hab_fin.border = Border(top=thin_black, bottom=double_black, right=thin_black)
+            c_deb_fin.fill = fill_total
+            c_hab_fin.fill = fill_total
+
+            if has_m_data:
+                td = sheets_by_month[m].total_debe
+                th = sheets_by_month[m].total_haber
+                c_deb_fin.value = td
+                c_deb_fin.number_format = "#,##0.00"
+                c_hab_fin.value = th
+                c_hab_fin.number_format = "#,##0.00"
+                grand_tot_deb += td
+                grand_tot_hab += th
+
+            c_deb_fin.font = font_total
+            c_deb_fin.alignment = Alignment(horizontal="right", vertical="center")
+            c_hab_fin.font = font_total
+            c_hab_fin.alignment = Alignment(horizontal="right", vertical="center")
+
+        c_gdeb = ws[f"AA{curr_row}"]
+        c_ghab = ws[f"AB{curr_row}"]
+        c_gdeb.value = round(grand_tot_deb, 2)
+        c_gdeb.number_format = "#,##0.00"
+        c_gdeb.font = font_total
+        c_gdeb.fill = fill_total
+        c_gdeb.alignment = Alignment(horizontal="right", vertical="center")
+        c_gdeb.border = Border(top=thin_black, bottom=double_black, left=thin_black, right=thin_grid)
+
+        c_ghab.value = round(grand_tot_hab, 2)
+        c_ghab.number_format = "#,##0.00"
+        c_ghab.font = font_total
+        c_ghab.fill = fill_total
+        c_ghab.alignment = Alignment(horizontal="right", vertical="center")
+        c_ghab.border = Border(top=thin_black, bottom=double_black, right=thin_black)
+
+    @staticmethod
     def generate_asientos_master_excel(tenant_session, public_session, schema_name: str, year: int) -> str:
         from app.services.accounting_service import AccountingService
         from app.models.tenant import Tenant
+        from app.models.accounting import AccountingRecord
+        from app.models.payroll import Payroll
+
         tenant = public_session.query(Tenant).filter(Tenant.schema_name == schema_name).first()
         empresa_slug = DocumentService._slugify(tenant.name if tenant else schema_name)
+        tenant_name = tenant.name if tenant else "EMPRESA"
         master_path = DocumentService.get_asientos_master_path(empresa_slug, year)
 
         wb = openpyxl.Workbook()
@@ -2142,9 +2650,10 @@ class DocumentService:
             "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
         ]
 
-        # Generar pestañas para todos los meses del año
+        # 1. Cargar las hojas de cálculo de cada uno de los 12 meses
+        sheets_by_month = {}
         for m in range(1, 13):
-            sheet = AccountingService.get_or_calculate_sheet(
+            sheets_by_month[m] = AccountingService.get_or_calculate_sheet(
                 tenant_session=tenant_session,
                 public_session=public_session,
                 schema_name=schema_name,
@@ -2152,9 +2661,27 @@ class DocumentService:
                 year=year,
                 force_recalculate=False
             )
+
+        # 2. Determinar qué meses tienen datos reales (guardados o con planilla)
+        saved_months = {
+            r.month for r in tenant_session.query(AccountingRecord).filter(AccountingRecord.year == year).all()
+        }
+        payroll_months = {
+            p.month for p in tenant_session.query(Payroll).filter(Payroll.year == year).all() if p.payslips
+        }
+        active_months_set = saved_months | payroll_months
+
+        # 3. Hoja 1: Comparativo Anual (Enero a Diciembre con columnas Debe y Haber por cada mes)
+        ws_comp = wb.create_sheet(title=f"Comparativo {year}")
+        DocumentService.render_asientos_comparativo_worksheet(
+            ws_comp, tenant_name, year, sheets_by_month, active_months_set
+        )
+
+        # 4. Hojas 2 a 13: Comprobante mensual completo de cada mes
+        for m in range(1, 13):
             title = DocumentService._safe_sheet_title(MONTH_NAMES[m - 1])
-            ws = wb.create_sheet(title=title)
-            DocumentService.render_asientos_worksheet(ws, sheet)
+            ws_m = wb.create_sheet(title=title)
+            DocumentService.render_asientos_worksheet(ws_m, sheets_by_month[m])
 
         wb.save(master_path)
         return master_path

@@ -161,6 +161,26 @@ def reset_accounting_sheet(
     finally:
         tenant_session.close()
 
+@router.post("/reflect-previous", response_model=AccountingSheetData)
+def reflect_previous_month(
+    schema_name: str,
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2000, le=2100),
+    db: Session = Depends(get_db)
+):
+    tenant_session = get_tenant_session(schema_name)
+    try:
+        sheet = AccountingService.reflect_previous_month(
+            tenant_session=tenant_session,
+            public_session=db,
+            schema_name=schema_name,
+            month=month,
+            year=year
+        )
+        return sheet
+    finally:
+        tenant_session.close()
+
 @router.get("/history", response_model=AnnualHistoryResponse)
 @router.get("/history/", response_model=AnnualHistoryResponse, include_in_schema=False)
 def get_annual_history(
@@ -197,7 +217,7 @@ def export_master_excel(
         )
         tenant = db.query(Tenant).filter(Tenant.schema_name == schema_name).first()
         empresa_slug = DocumentService._slugify(tenant.name if tenant else schema_name)
-        filename = f"asientos_contables_{empresa_slug}_{year}.xlsx"
+        filename = f"asientos_comparativo_anual_{empresa_slug}_{year}.xlsx"
         return FileResponse(
             path=master_file,
             filename=filename,

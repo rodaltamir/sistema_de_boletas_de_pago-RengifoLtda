@@ -9,6 +9,7 @@ from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeRespons
 from app.services.payroll_service import calcular_boleta_empleado
 from decimal import Decimal
 from datetime import date
+import calendar
 from app.models.global_params import SalarioMinimoNacional
 
 router = APIRouter()
@@ -52,6 +53,20 @@ def get_employees(schema_name: str, db: Session = Depends(get_tenant_db)):
 @router.post('', response_model=EmployeeResponse)
 @router.post('/', response_model=EmployeeResponse, include_in_schema=False)
 def create_employee(schema_name: str, employee: EmployeeCreate, db: Session = Depends(get_tenant_db)):
+    # Validación legal de fechas
+    if employee.fecha_ingreso and employee.fecha_nacimiento:
+        if employee.fecha_ingreso <= employee.fecha_nacimiento:
+            raise HTTPException(
+                status_code=400,
+                detail="La fecha de ingreso no puede ser anterior o igual a la fecha de nacimiento del empleado."
+            )
+        edad_ingreso = calculate_years_diff(employee.fecha_nacimiento, employee.fecha_ingreso)
+        if edad_ingreso < 14:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Fecha de ingreso inválida: el empleado tendría {edad_ingreso} años al ingresar (edad mínima legal de trabajo en Bolivia: 14 años)."
+            )
+
     db_employee = db.query(Employee).filter(Employee.documento_identidad == employee.documento_identidad).first()
     if db_employee:
         if not db_employee.is_active:
@@ -85,6 +100,21 @@ def update_employee(schema_name: str, emp_id: int, employee: EmployeeUpdate, db:
         raise HTTPException(status_code=404, detail='Empleado no encontrado')
     
     update_data = employee.dict(exclude_unset=True)
+    f_nac = update_data.get("fecha_nacimiento") or db_emp.fecha_nacimiento
+    f_ing = update_data.get("fecha_ingreso") or db_emp.fecha_ingreso
+    if f_nac and f_ing:
+        if f_ing <= f_nac:
+            raise HTTPException(
+                status_code=400,
+                detail="La fecha de ingreso no puede ser anterior o igual a la fecha de nacimiento del empleado."
+            )
+        edad_ingreso = calculate_years_diff(f_nac, f_ing)
+        if edad_ingreso < 14:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Fecha de ingreso inválida: el empleado tendría {edad_ingreso} años al ingresar (edad mínima legal de trabajo en Bolivia: 14 años)."
+            )
+
     if "department_id" in update_data:
         if update_data["department_id"]:
             dept = db.query(Department).filter(Department.id == update_data["department_id"]).first()
@@ -108,6 +138,11 @@ def update_employee(schema_name: str, emp_id: int, employee: EmployeeUpdate, db:
         payslips = db.query(Payslip).filter(Payslip.employee_id == emp_id, Payslip.payroll_id.in_(open_payroll_ids)).all()
         for p in payslips:
             payroll = next(pr for pr in open_payrolls if pr.id == p.payroll_id)
+            _, last_day = calendar.monthrange(payroll.year, payroll.month)
+            period_end = date(payroll.year, payroll.month, last_day)
+            if db_emp.fecha_ingreso > period_end:
+                db.delete(p)
+                continue
             smn_actual = get_smn(db, payroll.year)
             anios_ant = calculate_years_diff(db_emp.fecha_ingreso, date(payroll.year, payroll.month, 1))
             

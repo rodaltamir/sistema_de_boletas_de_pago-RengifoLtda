@@ -678,7 +678,7 @@ function AsientosPageContent() {
     }
   };
 
-  // Descargar libro maestro con todas las hojas por mes
+  // Exportar asientos comparativos del año en Excel
   const handleExportMasterExcel = async () => {
     if (!tenantSchema) return;
     try {
@@ -686,12 +686,12 @@ function AsientosPageContent() {
       const res = await fetch(
         `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/export/master-excel?year=${selectedYear}`
       );
-      if (!res.ok) throw new Error("Error al exportar libro maestro");
+      if (!res.ok) throw new Error("Error al exportar asientos del año");
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `asientos_contables_${tenantSchema}_${selectedYear}.xlsx`;
+      a.download = `asientos_comparativo_anual_${tenantSchema}_${selectedYear}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -700,7 +700,7 @@ function AsientosPageContent() {
       Swal.fire({
         icon: "error",
         title: "Error al exportar Excel",
-        text: err.message || "No se pudo descargar el libro maestro."
+        text: err.message || "No se pudo descargar los asientos del año."
       });
     } finally {
       setExportingMasterExcel(false);
@@ -851,6 +851,61 @@ function AsientosPageContent() {
         icon: "error",
         title: "Error",
         text: err.message || "Error al restablecer.",
+        confirmButtonColor: "#1E3A8A"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reflejar datos del mes anterior
+  const handleReflejarMesAnterior = async () => {
+    const prevM = selectedMonth === 1 ? 12 : selectedMonth - 1;
+    const prevY = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
+    const prevMName = MONTHS.find(m => m.id === prevM)?.name || prevM;
+    const currMName = MONTHS.find(m => m.id === selectedMonth)?.name || selectedMonth;
+
+    const result = await Swal.fire({
+      title: "¿Reflejar datos del mes anterior?",
+      html: `Se copiarán las entidades de pago, números de transacción, glosas, ajustes y configuración de <b>${prevMName} ${prevY}</b> hacia <b>${currMName} ${selectedYear}</b>.<br/><br/><span class="text-xs text-slate-500">Podrás revisar y editar cualquier dato antes de presionar "Guardar Cambios".</span>`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#D97706",
+      cancelButtonColor: "#64748B",
+      confirmButtonText: "Sí, reflejar datos",
+      cancelButtonText: "Cancelar"
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      setLoading(true);
+      const res = await fetch(
+        `${getApiUrl()}/api/tenants/${tenantSchema}/asientos/reflect-previous?month=${selectedMonth}&year=${selectedYear}`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "No se pudo reflejar los datos del mes anterior");
+      }
+      const data: AccountingSheetData = await res.json();
+      setSheetData(data);
+      if (data.devengamiento) setDevengamiento(data.devengamiento);
+      if (data.gestora_payment) setGestoraPayment(data.gestora_payment);
+      if (data.caja_payment) setCajaPayment(data.caja_payment);
+      if (data.min_trabajo_payment) setMinTrabajoPayment(data.min_trabajo_payment);
+
+      Swal.fire({
+        icon: "success",
+        title: "¡Datos Reflejados!",
+        text: `Se reflejaron los datos de ${prevMName} ${prevY}. Puede editar lo que necesite y presionar "Guardar Cambios".`,
+        confirmButtonColor: "#1E3A8A"
+      });
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "No se pudo reflejar",
+        text: err.message || "Error al reflejar los datos del mes anterior.",
         confirmButtonColor: "#1E3A8A"
       });
     } finally {
@@ -1080,6 +1135,17 @@ function AsientosPageContent() {
             >
               {exportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
               PDF
+            </button>
+
+            {/* Reflejar Mes Anterior */}
+            <button
+              onClick={handleReflejarMesAnterior}
+              disabled={loading || saving}
+              className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300 rounded-xl text-xs md:text-sm font-semibold transition shadow-sm disabled:opacity-50"
+              title="Copiar datos, entidades de pago, transacciones y glosas del mes anterior"
+            >
+              <History className="w-4 h-4 text-amber-700" />
+              <span className="hidden sm:inline">Reflejar Mes Anterior</span>
             </button>
 
             {/* Restablecer */}
@@ -2331,20 +2397,20 @@ function AsientosPageContent() {
                 </div>
               </div>
 
-              {/* Botón Descargar Libro Maestro Multimes */}
+              {/* Botón Exportar Asientos del Año */}
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleExportMasterExcel}
                   disabled={exportingMasterExcel}
                   className="flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs md:text-sm font-bold shadow-md transition disabled:opacity-50"
-                  title="Descargar libro Excel con una hoja por cada mes del año"
+                  title="Exportar comparativo anual de asientos contables con Debe y Haber por cada mes (Enero a Diciembre)"
                 >
                   {exportingMasterExcel ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <FileSpreadsheet className="w-4 h-4" />
                   )}
-                  <span>Descargar Libro Maestro (Excel Multimes)</span>
+                  <span>Exportar Asientos del Año</span>
                 </button>
               </div>
             </div>

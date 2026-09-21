@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from decimal import Decimal
 from datetime import date
+import calendar
 import os
 import re
 
@@ -11,6 +12,7 @@ from app.db.session import engine
 from sqlalchemy.orm import sessionmaker
 from app.models.payroll import Payroll, Payslip
 from app.models.employee import Employee
+from app.models.prefiniquito import Prefiniquito
 from app.models.global_params import SalarioMinimoNacional
 from app.schemas.payroll import PayrollResponse, PayslipResponse, PayslipUpdate
 from app.services.payroll_service import calcular_boleta_empleado
@@ -64,6 +66,10 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
         t_emp_materno = result[5] if result and result[5] else ""
         t_emp_ci = result[6] if result and result[6] else ""
     
+    _, last_day = calendar.monthrange(year, month)
+    period_start = date(year, month, 1)
+    period_end = date(year, month, last_day)
+
     if not payroll:
         payroll = Payroll(month=month, year=year, is_closed=False)
         db.add(payroll)
@@ -71,10 +77,48 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
         db.refresh(payroll)
         
     if not payroll.is_closed:
-        # Sincronizar empleados: asegurar que todos los activos tengan boleta
+        # Sincronizar empleados con validaciones estrictas de fecha de ingreso y retiro:
+        # 1. Purgar de planillas abiertas cualquier boleta de empleados que ingresaron en meses posteriores
+        # o que ya se encontraban retirados antes del inicio de este mes.
+        slips_to_remove = []
+        for p in list(payroll.payslips):
+            emp = db.query(Employee).filter(Employee.id == p.employee_id).first()
+            if not emp:
+                slips_to_remove.append(p)
+                continue
+            # Si su fecha de ingreso es posterior al fin de este mes, no debe figurar en esta planilla
+            if emp.fecha_ingreso > period_end:
+                slips_to_remove.append(p)
+                continue
+            # Si el empleado no está activo, verificar si su retiro fue antes de este mes
+            if not emp.is_active:
+                pref = db.query(Prefiniquito).filter(Prefiniquito.employee_id == emp.id).order_by(Prefiniquito.id.desc()).first()
+                if pref and pref.fecha_retiro < period_start:
+                    slips_to_remove.append(p)
+                    continue
+
+        if slips_to_remove:
+            for p in slips_to_remove:
+                db.delete(p)
+            db.commit()
+            db.refresh(payroll)
+
+        # 2. Sincronizar empleados faltantes que sí corresponden a este periodo:
         existing_emp_ids = {p.employee_id for p in payroll.payslips}
-        empleados = db.query(Employee).filter(Employee.is_active == True).all()
-        missing_employees = [emp for emp in empleados if emp.id not in existing_emp_ids]
+        all_employees = db.query(Employee).all()
+        missing_employees = []
+        for emp in all_employees:
+            if emp.id in existing_emp_ids:
+                continue
+            # El empleado debe haber ingresado a más tardar en este mes
+            if emp.fecha_ingreso > period_end:
+                continue
+            # Si no está activo, solo incluir si su retiro ocurrió durante o después de este mes
+            if not emp.is_active:
+                pref = db.query(Prefiniquito).filter(Prefiniquito.employee_id == emp.id).order_by(Prefiniquito.id.desc()).first()
+                if not pref or pref.fecha_retiro < period_start:
+                    continue
+            missing_employees.append(emp)
         
         if missing_employees:
             target_date = date(year, month, 1)
@@ -86,10 +130,16 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
                     smn=smn_actual
                 )
                 
+                # Calcular días pagados si ingresó en el transcurso del mes
+                dias_pagados = 30
+                if emp.fecha_ingreso.year == year and emp.fecha_ingreso.month == month:
+                    if emp.fecha_ingreso.day > 1:
+                        dias_pagados = max(1, 30 - emp.fecha_ingreso.day + 1)
+
                 payslip = Payslip(
                     payroll_id=payroll.id,
                     employee_id=emp.id,
-                    dias_pagados=30,
+                    dias_pagados=dias_pagados,
                     horas_pagadas=8,
                     **calc
                 )
@@ -106,9 +156,12 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
     response_data.tenant_empleador_apellido_materno = t_emp_materno
     response_data.tenant_empleador_ci = t_emp_ci
     
+    valid_slips = []
     for slip in response_data.payslips:
         emp = db.query(Employee).filter(Employee.id == slip.employee_id).first()
         if emp:
+            if emp.fecha_ingreso > period_end:
+                continue
             slip.employee_code = emp.internal_code or str(emp.id)
             slip.employee_name = f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().replace("  ", " ").upper()
             ext = f" {emp.ext_ci.strip()}" if emp.ext_ci else ""
@@ -119,7 +172,10 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
             slip.employee_fecha_nacimiento = str(emp.fecha_nacimiento)
             slip.employee_sexo = getattr(emp, 'sexo', None) or getattr(emp, 'genero', None) or 'M'
             slip.employee_is_active = emp.is_active
+            valid_slips.append(slip)
             
+    response_data.payslips = valid_slips
+
     # Ordenar por número de código de menor a mayor (el menor número primero y el más alto al final)
     response_data.payslips.sort(
         key=lambda s: sort_code_key(s.employee_code, s.employee_id)

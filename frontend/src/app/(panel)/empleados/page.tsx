@@ -175,6 +175,24 @@ function EmpleadosPageContent() {
     e.preventDefault();
     setSubmitting(true);
     setError("");
+
+    if (formData.fecha_nacimiento && formData.fecha_ingreso) {
+      const birth = new Date(formData.fecha_nacimiento);
+      const hire = new Date(formData.fecha_ingreso);
+      if (hire <= birth) {
+        setError("La fecha de ingreso no puede ser anterior o igual a la fecha de nacimiento.");
+        setSubmitting(false);
+        return;
+      }
+      const ageAtHire = hire.getFullYear() - birth.getFullYear() - (
+        (hire.getMonth() < birth.getMonth() || (hire.getMonth() === birth.getMonth() && hire.getDate() < birth.getDate())) ? 1 : 0
+      );
+      if (ageAtHire < 14) {
+        setError(`Fecha de ingreso inválida: el empleado tendría ${ageAtHire} años al ingresar (la edad mínima legal de trabajo en Bolivia es de 14 años).`);
+        setSubmitting(false);
+        return;
+      }
+    }
     
     try {
       const url = isEditing 

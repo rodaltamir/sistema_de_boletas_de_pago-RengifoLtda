@@ -144,13 +144,18 @@ class AccountingService:
             Payroll.year == year
         ).first()
 
-        today_str = today.strftime("%Y-%m-%d")
+        if year == today.year and month == today.month:
+            payment_default_date_str = today.strftime("%Y-%m-%d")
+        else:
+            max_days = calendar.monthrange(year, month)[1]
+            default_day = min(21, max_days)
+            payment_default_date_str = f"{year:04d}-{month:02d}-{default_day:02d}"
 
         if not payroll or not payroll.payslips:
-            return AccountingService._build_empty_sheet(tenant_session, month, year, tenant_name, default_caja, is_locked_by_date, today_str)
+            return AccountingService._build_empty_sheet(tenant_session, month, year, tenant_name, default_caja, is_locked_by_date, payment_default_date_str)
 
         return AccountingService._calculate_from_payroll(
-            tenant_session, payroll, month, year, tenant_name, default_caja, is_locked_by_date, today_str
+            tenant_session, payroll, month, year, tenant_name, default_caja, is_locked_by_date, payment_default_date_str
         )
 
     @staticmethod
@@ -754,6 +759,154 @@ class AccountingService:
         session.commit()
         session.refresh(record)
         return record
+
+    @staticmethod
+    def reflect_previous_month(
+        tenant_session: Session,
+        public_session: Session,
+        schema_name: str,
+        month: int,
+        year: int
+    ) -> AccountingSheetData:
+        from fastapi import HTTPException
+
+        if month == 1:
+            prev_month = 12
+            prev_year = year - 1
+        else:
+            prev_month = month - 1
+            prev_year = year
+
+        # Verificar si hay registro o planilla en el mes anterior
+        prev_record = tenant_session.query(AccountingRecord).filter(
+            AccountingRecord.month == prev_month,
+            AccountingRecord.year == prev_year
+        ).first()
+        prev_payroll = tenant_session.query(Payroll).filter(
+            Payroll.month == prev_month,
+            Payroll.year == prev_year
+        ).first()
+
+        if not prev_record and (not prev_payroll or not prev_payroll.payslips):
+            prev_month_name = MONTH_NAMES[prev_month - 1]
+            raise HTTPException(
+                status_code=404,
+                detail=f"No se encontraron datos registrados ni planillas en el mes anterior ({prev_month_name} {prev_year}) para reflejar."
+            )
+
+        # Obtener el sheet del mes anterior
+        prev_sheet = AccountingService.get_or_calculate_sheet(
+            tenant_session=tenant_session,
+            public_session=public_session,
+            schema_name=schema_name,
+            month=prev_month,
+            year=prev_year,
+            force_recalculate=False
+        )
+
+        tenant = public_session.query(Tenant).filter(Tenant.schema_name == schema_name).first()
+        tenant_name = tenant.name if tenant else "EMPRESA"
+        default_caja = (tenant.caja_salud if (tenant and tenant.caja_salud) else 
+                        ("Caja Petrolera de Salud" if "petrolera" in (tenant.numero_patronal or "").lower() else "Caja Nacional de Salud"))
+
+        today = datetime.now().date()
+        last_day = calendar.monthrange(year, month)[1]
+        end_of_month = date(year, month, last_day)
+        is_locked_by_date = today > end_of_month
+        today_str = today.strftime("%Y-%m-%d")
+
+        # Verificar si el mes actual tiene planilla
+        current_payroll = tenant_session.query(Payroll).filter(
+            Payroll.month == month,
+            Payroll.year == year
+        ).first()
+
+        caja_banco_name = prev_sheet.caja_banco_name or "Caja Moneda Nacional"
+        caja_salud_choice = (
+            (prev_sheet.caja_payment.caja_tipo if prev_sheet.caja_payment else None) or
+            (prev_sheet.devengamiento.caja_salud_choice if prev_sheet.devengamiento else None) or
+            default_caja
+        )
+
+        if current_payroll and current_payroll.payslips:
+            # Si el mes actual tiene planilla generada, usar sus valores reales de haberes y sueldos
+            base_sheet = AccountingService._calculate_from_payroll(
+                tenant_session, current_payroll, month, year, tenant_name, caja_salud_choice, is_locked_by_date, today_str
+            )
+            devengamiento = base_sheet.devengamiento
+            devengamiento.caja_salud_choice = caja_salud_choice
+            if prev_sheet.devengamiento and prev_sheet.devengamiento.arancel_min_trabajo is not None:
+                devengamiento.arancel_min_trabajo = prev_sheet.devengamiento.arancel_min_trabajo
+            payroll_id = current_payroll.id
+        else:
+            # Si el mes actual no tiene planilla todavía, reflejar la estructura y montos del mes anterior
+            payroll_id = None
+            if prev_sheet.devengamiento:
+                devengamiento = DevengamientoData(**prev_sheet.devengamiento.model_dump())
+                devengamiento.caja_salud_choice = caja_salud_choice
+            else:
+                devengamiento = DevengamientoData(
+                    caja_salud_choice=caja_salud_choice,
+                    arancel_min_trabajo=27.00
+                )
+
+        # Adaptar fechas al mes objetivo (o día del mes objetivo equivalente)
+        def _adapt_date(old_date: Optional[str]) -> str:
+            default_fallback = f"{year:04d}-{month:02d}-{min(21, last_day):02d}"
+            if not old_date:
+                return default_fallback
+            try:
+                parts = old_date.split("-")
+                if len(parts) == 3:
+                    d_int = int(parts[2])
+                    d_clamped = min(d_int, last_day)
+                    return f"{year:04d}-{month:02d}-{d_clamped:02d}"
+            except Exception:
+                pass
+            return default_fallback
+
+        # Reflejar pago Gestora
+        prev_gest = prev_sheet.gestora_payment or GestoraPaymentData()
+        gestora_payment = GestoraPaymentData(
+            fecha=_adapt_date(prev_gest.fecha),
+            nro_transaccion=prev_gest.nro_transaccion or "",
+            intereses=[PaymentExtraItem(**it.model_dump()) for it in (prev_gest.intereses or [])]
+        )
+
+        # Reflejar pago Caja de Salud
+        prev_caj = prev_sheet.caja_payment or CajaPaymentData()
+        caja_payment = CajaPaymentData(
+            caja_tipo=caja_salud_choice,
+            fecha=_adapt_date(prev_caj.fecha),
+            nro_transaccion=prev_caj.nro_transaccion or "",
+            ajustes=[PaymentExtraItem(**it.model_dump()) for it in (prev_caj.ajustes or [])]
+        )
+
+        # Reflejar pago Ministerio de Trabajo
+        prev_mt = prev_sheet.min_trabajo_payment or MinTrabajoPaymentData()
+        min_trabajo_payment = MinTrabajoPaymentData(
+            fecha=_adapt_date(prev_mt.fecha),
+            nro_transaccion=prev_mt.nro_transaccion or "",
+            ajustes=[PaymentExtraItem(**it.model_dump()) for it in (prev_mt.ajustes or [])]
+        )
+
+        # Construir y balancear el asiento completo para el mes actual
+        reflected_sheet = AccountingService.build_full_sheet(
+            month=month,
+            year=year,
+            tenant_name=tenant_name,
+            caja_banco_name=caja_banco_name,
+            devengamiento=devengamiento,
+            gestora_payment=gestora_payment,
+            caja_payment=caja_payment,
+            min_trabajo_payment=min_trabajo_payment,
+            payroll_id=payroll_id,
+            is_locked_by_date=is_locked_by_date,
+            is_manually_unlocked=False,
+            is_customized=True
+        )
+
+        return reflected_sheet
 
     @staticmethod
     def get_annual_history(

@@ -20,7 +20,10 @@ import {
   AlertCircle,
   History,
   Plus,
-  TrendingDown
+  TrendingDown,
+  Briefcase,
+  Sparkles,
+  Info
 } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
 
@@ -89,6 +92,168 @@ const MOTIVOS = [
   "Acuerdo Mutuo"
 ];
 
+interface NumericInputProps {
+  value: number | string | undefined | null;
+  onChange: (val: number | "") => void;
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+  allowDecimals?: boolean;
+  prefix?: string;
+  suffix?: string;
+  min?: number;
+  max?: number;
+}
+
+function sanitizeNumberString(raw: string, allowDecimals: boolean): { clean: string; isValid: boolean } {
+  if (!raw || raw.trim() === "") return { clean: "", isValid: true };
+
+  let str = raw.trim();
+  const hasComma = str.includes(",");
+  const hasDot = str.includes(".");
+
+  if (hasComma && hasDot) {
+    if (str.indexOf(",") < str.indexOf(".")) {
+      str = str.replace(/,/g, "");
+    } else {
+      str = str.replace(/\./g, "").replace(/,/g, ".");
+    }
+  } else if (hasComma) {
+    str = str.replace(/,/g, ".");
+  }
+
+  if (!allowDecimals) {
+    const isDigitsOnly = /^[0-9]*$/.test(str);
+    return { clean: str, isValid: isDigitsOnly };
+  }
+
+  const isValidFloat = /^[0-9]*\.?[0-9]*$/.test(str);
+  return { clean: str, isValid: isValidFloat };
+}
+
+/**
+ * Componente de entrada numérica optimizado que permite borrar ceros y dejar el campo en blanco
+ * sin forzar un "0" pegajoso mientras el usuario escribe o edita. Acepta puntos y comas decimales.
+ */
+function NumericInput({
+  value,
+  onChange,
+  disabled = false,
+  className = "",
+  placeholder = "0.00",
+  allowDecimals = true,
+  prefix,
+  suffix,
+  min,
+  max
+}: NumericInputProps) {
+  const [text, setText] = useState<string>(() => {
+    if (value === undefined || value === null || value === "" || value === 0) return "";
+    return String(value);
+  });
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      if (value === undefined || value === null || value === "" || value === 0) {
+        setText("");
+      } else {
+        setText(String(value));
+      }
+    }
+  }, [value, isFocused]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+
+    if (raw === "") {
+      setText("");
+      onChange("");
+      return;
+    }
+
+    const { clean, isValid } = sanitizeNumberString(raw, allowDecimals);
+    if (!isValid) return;
+
+    setText(raw);
+
+    if (clean === "" || clean === ".") {
+      onChange("");
+    } else {
+      const parsed = parseFloat(clean);
+      if (!isNaN(parsed)) {
+        if (min !== undefined && parsed < min) return;
+        if (max !== undefined && parsed > max) return;
+        onChange(allowDecimals ? parsed : Math.round(parsed));
+      }
+    }
+  };
+
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    setIsFocused(true);
+    if (text === "0" || text === "0.00") {
+      setText("");
+    }
+    e.target.select();
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    if (text === "" || text === ".") {
+      setText("");
+      onChange("");
+    } else {
+      const { clean, isValid } = sanitizeNumberString(text, allowDecimals);
+      if (!isValid) {
+        setText("");
+        onChange("");
+        return;
+      }
+      const parsed = parseFloat(clean);
+      if (isNaN(parsed) || parsed === 0) {
+        setText("");
+        onChange(0);
+      } else {
+        const finalVal = allowDecimals ? parsed : Math.round(parsed);
+        setText(String(finalVal));
+        onChange(finalVal);
+      }
+    }
+  };
+
+  return (
+    <div className={`relative flex items-center w-full rounded-xl border transition-all duration-200 ${
+      disabled 
+        ? "bg-slate-100 border-slate-200 cursor-not-allowed opacity-75" 
+        : "bg-white border-slate-300 hover:border-slate-400 focus-within:ring-2 focus-within:ring-teal-500/20 focus-within:border-teal-600 focus-within:shadow-xs"
+    }`}>
+      {prefix && (
+        <span className="pl-3.5 pr-1 text-xs font-bold text-slate-400 select-none shrink-0">
+          {prefix}
+        </span>
+      )}
+      <input
+        type="text"
+        inputMode={allowDecimals ? "decimal" : "numeric"}
+        disabled={disabled}
+        placeholder={placeholder}
+        value={text}
+        onFocus={handleFocus}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className={`w-full py-2.5 text-sm font-semibold text-slate-800 placeholder-slate-400 bg-transparent outline-none ${
+          prefix ? "pl-1.5" : "pl-3.5"
+        } ${suffix ? "pr-1.5" : "pr-3.5"} ${className}`}
+      />
+      {suffix && (
+        <span className="pr-3.5 pl-1 text-xs font-semibold text-slate-400 select-none shrink-0">
+          {suffix}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function PrefiniquitosPageContent() {
   const searchParams = useSearchParams();
   const tenantSchema = searchParams.get("tenant");
@@ -104,18 +269,18 @@ function PrefiniquitosPageContent() {
   const [fechaRetiro, setFechaRetiro] = useState(new Date().toISOString().split('T')[0]);
   const [motivo, setMotivo] = useState("Renuncia Voluntaria");
   const [sueldoPromedio, setSueldoPromedio] = useState<number | "">("");
-  const [diasVacacion, setDiasVacacion] = useState<number>(0);
+  const [diasVacacion, setDiasVacacion] = useState<number | "">("");
   
   // Otros Pagos: Directo vs Cuotas
   const [tipoOtrosPagos, setTipoOtrosPagos] = useState<"directo" | "cuotas">("directo");
-  const [otrosPagos, setOtrosPagos] = useState<number>(0);
+  const [otrosPagos, setOtrosPagos] = useState<number | "">("");
   const [cuotasTotal, setCuotasTotal] = useState<number>(2);
   const [abonoInicial, setAbonoInicial] = useState<number | "">("");
   const [comprobanteAbonoInicial, setComprobanteAbonoInicial] = useState<string>("");
   const [metodoAbonoInicial, setMetodoAbonoInicial] = useState<string>("Efectivo");
   const [otrosPagosDetalle, setOtrosPagosDetalle] = useState<string>("");
 
-  const [descuentos, setDescuentos] = useState<number>(0);
+  const [descuentos, setDescuentos] = useState<number | "">("");
   const [aplicarMulta, setAplicarMulta] = useState(false);
   
   // Calculation State
@@ -212,16 +377,16 @@ function PrefiniquitosPageContent() {
           employee_id: Number(selectedEmpId),
           fecha_retiro: fechaRetiro,
           motivo,
-          sueldo_promedio: Number(sueldoPromedio),
-          dias_vacacion_pendientes: diasVacacion,
-          otros_pagos: otrosPagos,
+          sueldo_promedio: Number(sueldoPromedio) || 0,
+          dias_vacacion_pendientes: Number(diasVacacion) || 0,
+          otros_pagos: Number(otrosPagos) || 0,
           tipo_otros_pagos: tipoOtrosPagos,
           otros_pagos_detalle: otrosPagosDetalle,
           cuotas_total: tipoOtrosPagos === "cuotas" ? cuotasTotal : 1,
           abono_inicial: tipoOtrosPagos === "cuotas" ? (Number(abonoInicial) || 0) : 0,
           comprobante_abono_inicial: comprobanteAbonoInicial,
           metodo_abono_inicial: metodoAbonoInicial,
-          descuentos,
+          descuentos: Number(descuentos) || 0,
           aplicar_multa: aplicarMulta
         })
       });
@@ -252,16 +417,16 @@ function PrefiniquitosPageContent() {
           employee_id: Number(selectedEmpId),
           fecha_retiro: fechaRetiro,
           motivo,
-          sueldo_promedio: Number(sueldoPromedio),
-          dias_vacacion_pendientes: diasVacacion,
-          otros_pagos: otrosPagos,
+          sueldo_promedio: Number(sueldoPromedio) || 0,
+          dias_vacacion_pendientes: Number(diasVacacion) || 0,
+          otros_pagos: Number(otrosPagos) || 0,
           tipo_otros_pagos: tipoOtrosPagos,
           otros_pagos_detalle: otrosPagosDetalle,
           cuotas_total: tipoOtrosPagos === "cuotas" ? cuotasTotal : 1,
           abono_inicial: tipoOtrosPagos === "cuotas" ? (Number(abonoInicial) || 0) : 0,
           comprobante_abono_inicial: comprobanteAbonoInicial,
           metodo_abono_inicial: metodoAbonoInicial,
-          descuentos,
+          descuentos: Number(descuentos) || 0,
           aplicar_multa: aplicarMulta
         })
     })
@@ -337,16 +502,16 @@ function PrefiniquitosPageContent() {
           employee_id: Number(selectedEmpId),
           fecha_retiro: fechaRetiro,
           motivo,
-          sueldo_promedio: Number(sueldoPromedio),
-          dias_vacacion_pendientes: diasVacacion,
-          otros_pagos: otrosPagos,
+          sueldo_promedio: Number(sueldoPromedio) || 0,
+          dias_vacacion_pendientes: Number(diasVacacion) || 0,
+          otros_pagos: Number(otrosPagos) || 0,
           tipo_otros_pagos: tipoOtrosPagos,
           otros_pagos_detalle: otrosPagosDetalle,
           cuotas_total: tipoOtrosPagos === "cuotas" ? cuotasTotal : 1,
           abono_inicial: tipoOtrosPagos === "cuotas" ? (Number(abonoInicial) || 0) : 0,
           comprobante_abono_inicial: comprobanteAbonoInicial,
           metodo_abono_inicial: metodoAbonoInicial,
-          descuentos,
+          descuentos: Number(descuentos) || 0,
           aplicar_multa: aplicarMulta
         })
       });
@@ -494,19 +659,29 @@ function PrefiniquitosPageContent() {
           {/* PANEL IZQUIERDO - FORMULARIO */}
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <Calculator className="w-5 h-5 text-teal-600" /> Parámetros de Cálculo
-              </h3>
+              {/* Header con icono y subtítulo */}
+              <div className="flex items-center gap-3 pb-4 mb-5 border-b border-slate-100">
+                <div className="w-10 h-10 rounded-xl bg-teal-500/10 text-teal-700 flex items-center justify-center font-bold">
+                  <Calculator className="w-5 h-5 text-teal-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base leading-tight">Parámetros de Cálculo</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Variables laborales y liquidación legal</p>
+                </div>
+              </div>
               
               <div className="space-y-4">
+                {/* Selector de empleado */}
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Seleccionar Empleado Activo</label>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                    Empleado Activo <span className="text-rose-500">*</span>
+                  </label>
                   <select 
                     value={selectedEmpId} 
                     onChange={(e) => setSelectedEmpId(e.target.value ? Number(e.target.value) : "")}
-                    className="w-full text-slate-900 border border-slate-300 rounded-xl px-4 py-2.5 bg-slate-50 focus:bg-white"
+                    className="w-full text-slate-900 border border-slate-300 rounded-xl px-3.5 py-2.5 bg-slate-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none transition text-sm font-medium"
                   >
-                    <option value="">-- Seleccione --</option>
+                    <option value="">-- Seleccione un trabajador --</option>
                     {employees.map(emp => (
                       <option key={emp.id} value={emp.id}>
                         {`${emp.apellido_paterno} ${emp.apellido_materno || ""} ${emp.nombres}`.trim().replace(/  +/g, " ")} (CI: {emp.documento_identidad})
@@ -517,73 +692,122 @@ function PrefiniquitosPageContent() {
 
                 {selectedEmp && (
                   <>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm text-slate-900">
-                      <div><span className="font-semibold">Cargo:</span> {selectedEmp.ocupacion}</div>
-                      <div><span className="font-semibold">Ingreso:</span> {selectedEmp.fecha_ingreso}</div>
+                    {/* Tarjeta de información del empleado seleccionado */}
+                    <div className="p-3.5 bg-gradient-to-br from-slate-50 to-teal-50/30 rounded-xl border border-teal-100 shadow-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs">
+                            {selectedEmp.nombres.charAt(0)}{selectedEmp.apellido_paterno.charAt(0)}
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900 leading-tight">
+                              {`${selectedEmp.nombres} ${selectedEmp.apellido_paterno} ${selectedEmp.apellido_materno || ""}`.trim()}
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-mono">
+                              CI: {selectedEmp.documento_identidad}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          Activo
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/70 text-xs">
+                        <div className="flex items-center gap-1.5 text-slate-600">
+                          <Briefcase className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                          <span className="truncate font-medium" title={selectedEmp.ocupacion}>{selectedEmp.ocupacion || "Sin cargo"}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-600">
+                          <Calendar className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                          <span className="font-medium">{selectedEmp.fecha_ingreso}</span>
+                        </div>
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">Fecha de Retiro</label>
-                      <input 
-                        type="date" 
-                        value={fechaRetiro}
-                        onChange={e => setFechaRetiro(e.target.value)}
-                        className="w-full text-slate-900 border border-slate-300 rounded-xl px-4 py-2.5"
-                      />
+                    {/* Fecha y motivo de retiro */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                          Fecha de Retiro <span className="text-rose-500">*</span>
+                        </label>
+                        <input 
+                          type="date" 
+                          value={fechaRetiro}
+                          onChange={e => setFechaRetiro(e.target.value)}
+                          className="w-full text-slate-900 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-semibold bg-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none transition"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                          Motivo de Retiro <span className="text-rose-500">*</span>
+                        </label>
+                        <select 
+                          value={motivo}
+                          onChange={e => setMotivo(e.target.value)}
+                          className="w-full text-slate-900 border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-semibold bg-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none transition"
+                        >
+                          {MOTIVOS.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
                     </div>
 
+                    {/* Sueldo Promedio */}
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">Motivo de Retiro</label>
-                      <select 
-                        value={motivo}
-                        onChange={e => setMotivo(e.target.value)}
-                        className="w-full text-slate-900 border border-slate-300 rounded-xl px-4 py-2.5"
-                      >
-                        {MOTIVOS.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">Sueldo Promedio (Indemnizable)</label>
-                      <input 
-                        type="number" 
+                      <div className="flex justify-between items-baseline mb-1.5">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Sueldo Promedio (Indemnizable) <span className="text-rose-500">*</span>
+                        </label>
+                        <span className="text-[11px] text-slate-400">Últimos 3 meses</span>
+                      </div>
+                      <NumericInput 
+                        prefix="Bs." 
+                        placeholder="0.00"
                         value={sueldoPromedio}
-                        onChange={e => setSueldoPromedio(e.target.value ? Number(e.target.value) : "")}
-                        className="w-full text-slate-900 border border-slate-300 rounded-xl px-4 py-2.5"
+                        onChange={setSueldoPromedio}
+                        allowDecimals={true}
                       />
                     </div>
                     
+                    {/* Días Vacación Pendientes */}
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">Días Vacación Pendientes</label>
-                      <input 
-                        type="number" 
+                      <div className="flex justify-between items-baseline mb-1.5">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Días Vacación Pendientes
+                        </label>
+                        <span className="text-[11px] text-slate-400">Sin goce de descanso</span>
+                      </div>
+                      <NumericInput 
+                        suffix="días" 
+                        placeholder="0"
                         value={diasVacacion}
-                        onChange={e => setDiasVacacion(Number(e.target.value))}
-                        className="w-full text-slate-900 border border-slate-300 rounded-xl px-4 py-2.5"
+                        onChange={setDiasVacacion}
+                        allowDecimals={false}
                       />
                     </div>
 
                     {/* SECCIÓN OTROS PAGOS: PAGO ÚNICO VS CUOTAS */}
-                    <div className="border border-slate-200 bg-slate-50/50 p-4 rounded-xl space-y-3">
+                    <div className="border border-slate-200 bg-slate-50/70 p-4 rounded-xl space-y-3 shadow-2xs">
                       <div className="flex justify-between items-center">
-                        <label className="block text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                           <CreditCard className="w-4 h-4 text-indigo-600" />
                           Otros Pagos
                         </label>
                         
-                        {/* Selector Pago Único / Cuotas */}
-                        <div className="flex bg-slate-200 p-0.5 rounded-lg text-xs font-semibold">
+                        {/* Segmented Switcher */}
+                        <div className="flex bg-slate-200/80 p-0.5 rounded-lg text-xs font-semibold">
                           <button
                             type="button"
                             onClick={() => setTipoOtrosPagos("directo")}
-                            className={`px-3 py-1 rounded-md transition ${tipoOtrosPagos === "directo" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}
+                            className={`px-3 py-1 rounded-md transition duration-150 ${tipoOtrosPagos === "directo" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"}`}
                           >
                             Pago Único
                           </button>
                           <button
                             type="button"
                             onClick={() => setTipoOtrosPagos("cuotas")}
-                            className={`px-3 py-1 rounded-md transition ${tipoOtrosPagos === "cuotas" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600"}`}
+                            className={`px-3 py-1 rounded-md transition duration-150 ${tipoOtrosPagos === "cuotas" ? "bg-indigo-600 text-white shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"}`}
                           >
                             En Cuotas
                           </button>
@@ -591,78 +815,104 @@ function PrefiniquitosPageContent() {
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-slate-600 mb-1">
-                          {tipoOtrosPagos === "cuotas" ? "Monto Total de Otros Pagos (Bs.)" : "Monto de Pago Directo (Bs.)"}
+                        <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                          {tipoOtrosPagos === "cuotas" ? "Monto Total de Otros Pagos" : "Monto de Pago Directo"}
                         </label>
-                        <input 
-                          type="number" 
+                        <NumericInput 
+                          prefix="Bs."
+                          placeholder="0.00"
                           value={otrosPagos}
-                          onChange={e => setOtrosPagos(Number(e.target.value))}
-                          className="w-full text-slate-900 border border-slate-300 rounded-xl px-3 py-2 bg-white"
+                          onChange={setOtrosPagos}
+                          allowDecimals={true}
                         />
                       </div>
 
-                      {tipoOtrosPagos === "cuotas" && otrosPagos > 0 && (
-                        <div className="space-y-3 pt-2 border-t border-slate-200">
+                      {tipoOtrosPagos === "cuotas" && Number(otrosPagos) > 0 && (
+                        <div className="space-y-3 pt-2.5 border-t border-slate-200">
                           <div>
-                            <label className="block text-xs font-semibold text-slate-600 mb-1">
-                              Abono Inicial (Bs.)
+                            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                              Abono Inicial (al emitir finiquito)
                             </label>
-                            <input 
-                              type="number" 
-                              step="0.01"
+                            <NumericInput 
+                              prefix="Bs."
+                              placeholder="0.00"
                               value={abonoInicial}
-                              onChange={e => setAbonoInicial(e.target.value ? Number(e.target.value) : "")}
-                              placeholder="0"
-                              className="w-full text-slate-900 font-bold border border-slate-300 rounded-xl px-3 py-2 bg-white focus:ring-2 focus:ring-teal-500"
+                              onChange={setAbonoInicial}
+                              allowDecimals={true}
                             />
                           </div>
 
                           {/* Resumen simple */}
-                          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5">
+                          <div className="p-3 bg-white rounded-xl border border-slate-200/80 text-xs space-y-1.5 shadow-2xs">
                             <div className="flex justify-between text-slate-600">
                               <span>Total Acordado:</span>
-                              <span className="font-bold">{formatBs(otrosPagos)}</span>
+                              <span className="font-bold text-slate-800">{formatBs(Number(otrosPagos) || 0)}</span>
                             </div>
                             <div className="flex justify-between text-emerald-700 font-semibold">
                               <span>Abono Inicial:</span>
                               <span>{formatBs(Number(abonoInicial) || 0)}</span>
                             </div>
-                            <div className="flex justify-between text-rose-700 font-bold border-t border-slate-200 pt-1">
-                              <span>Saldo que Debe:</span>
-                              <span>{formatBs(Math.max(0, otrosPagos - (Number(abonoInicial) || 0)))}</span>
+                            <div className="flex justify-between text-rose-700 font-bold border-t border-slate-100 pt-1.5">
+                              <span>Saldo a pagar en Cuotas:</span>
+                              <span>{formatBs(Math.max(0, (Number(otrosPagos) || 0) - (Number(abonoInicial) || 0)))}</span>
                             </div>
                           </div>
                         </div>
                       )}
                     </div>
 
+                    {/* Descuentos */}
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">Descuentos</label>
-                      <input 
-                        type="number" 
+                      <div className="flex justify-between items-baseline mb-1.5">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Descuentos / Deducciones
+                        </label>
+                        <span className="text-[11px] text-slate-400">Anticipos o préstamos</span>
+                      </div>
+                      <NumericInput 
+                        prefix="Bs."
+                        placeholder="0.00"
                         value={descuentos}
-                        onChange={e => setDescuentos(Number(e.target.value))}
-                        className="w-full text-slate-900 border border-slate-300 rounded-xl px-4 py-2.5"
+                        onChange={setDescuentos}
+                        allowDecimals={true}
                       />
                     </div>
 
-                    <label className="flex items-center gap-2 cursor-pointer mt-2">
+                    {/* Checkbox Multa 30% */}
+                    <label className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer ${
+                      aplicarMulta ? "bg-amber-50/80 border-amber-300 ring-1 ring-amber-300 shadow-2xs" : "bg-slate-50 border-slate-200 hover:bg-slate-100/70"
+                    }`}>
                       <input 
                         type="checkbox" 
                         checked={aplicarMulta}
                         onChange={e => setAplicarMulta(e.target.checked)}
-                        className="w-4 h-4 text-teal-600 rounded"
+                        className="w-4 h-4 mt-0.5 text-teal-600 rounded border-slate-300 focus:ring-teal-500"
                       />
-                      <span className="text-sm font-semibold text-slate-700">Aplicar Multa 30% (Retraso)</span>
+                      <div className="text-xs">
+                        <span className="font-bold text-slate-800 block">Aplicar Multa del 30% (Retraso)</span>
+                        <span className="text-slate-500 block leading-normal mt-0.5">
+                          Art. 9 D.S. 28699 por pago posterior a los 15 días calendario de retiro.
+                        </span>
+                      </div>
                     </label>
 
+                    {/* Botón de acción */}
                     <button 
                       onClick={handleCalculate}
-                      disabled={calcLoading}
-                      className="w-full mt-4 bg-slate-900 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-800 transition shadow-md"
+                      disabled={calcLoading || !selectedEmpId || !fechaRetiro || sueldoPromedio === ""}
+                      className="w-full mt-3 bg-gradient-to-r from-slate-900 via-slate-800 to-teal-900 hover:from-teal-700 hover:to-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm cursor-pointer"
                     >
-                      {calcLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Generar Vista Previa"}
+                      {calcLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Calculando finiquito...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Calculator className="w-4 h-4 text-teal-400" />
+                          <span>Generar Vista Previa</span>
+                        </>
+                      )}
                     </button>
                   </>
                 )}
@@ -1191,13 +1441,12 @@ function PrefiniquitosPageContent() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                             <div>
                               <label className="block font-semibold text-slate-700 mb-1">Monto a Abonar (Bs.) *</label>
-                              <input 
-                                type="number" 
-                                step="0.01"
-                                placeholder="ej. 5000.00"
+                              <NumericInput 
+                                prefix="Bs."
+                                placeholder="0.00"
                                 value={pagoMonto}
-                                onChange={e => setPagoMonto(e.target.value ? Number(e.target.value) : "")}
-                                className="w-full text-slate-900 font-bold border border-slate-300 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-emerald-500"
+                                onChange={setPagoMonto}
+                                allowDecimals={true}
                               />
                             </div>
 
