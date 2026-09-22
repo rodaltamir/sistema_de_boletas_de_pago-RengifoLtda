@@ -1,4 +1,7 @@
+import calendar
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
+from dateutil.relativedelta import relativedelta
 
 # Constantes de Ley (Podrían venir de base de datos en el futuro)
 SMN_ACTUAL = Decimal("3300.00")  # Salario Mínimo Nacional referencial 2026
@@ -9,6 +12,31 @@ PORCENTAJE_GESTORA = Decimal("0.1271")
 # RC-IVA (13%)
 PORCENTAJE_RC_IVA = Decimal("0.13")
 CANTIDAD_SMN_NO_IMPONIBLE = 2
+
+def calculate_seniority_years(start_date: date, year: int, month: int) -> int:
+    """
+    Calcula con precisión legal los años de antigüedad cumplidos para el período mensual (mes/año).
+    En la liquidación de planillas y boletas de pago:
+    - El período abarca hasta el último día del mes evaluado inclusive. Al cerrar el mes calendario,
+      se computa el año completado (ej. ingreso 01/06/2015 evaluado al 31/05/2026 cumple 11 años).
+    - Si el mes evaluado es igual o posterior al mes aniversario de ingreso en dicho año,
+      se computa el nuevo año de antigüedad alcanzado (ej. ingreso 25/05/2015 en mayo 2026 cumple 11 años).
+    """
+    if not start_date:
+        return 0
+    _, last_day = calendar.monthrange(year, month)
+    period_end = date(year, month, last_day)
+    if period_end < start_date:
+        return 0
+    eff_end = period_end + timedelta(days=1)
+    diff = relativedelta(eff_end, start_date)
+    years = diff.years
+
+    anniversary_years = year - start_date.year
+    if month >= start_date.month and anniversary_years > years:
+        years = anniversary_years
+
+    return max(0, years)
 
 def calcular_bono_antiguedad(anios_antiguedad: int, smn: Decimal = SMN_ACTUAL) -> Decimal:
     """

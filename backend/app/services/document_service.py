@@ -1,6 +1,7 @@
 import os
 import shutil
 import uuid
+import calendar
 import openpyxl
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
@@ -339,9 +340,12 @@ class DocumentService:
         nit = str(boleta_data.get('nit', '') or '')
         internal_code = str(boleta_data.get('internal_code', '') or '').replace('"', '').replace("'", "")
         
-        # Fecha fin de mes en formato DD-MM-YYYY
-        dias_mes = 28 if mes_int == 2 else (30 if mes_int in [4, 6, 9, 11] else 31)
-        fecha_fin = f"{dias_mes:02d}-{mes_int:02d}-{anio}"
+        # Fecha fin de mes en formato DD/MM/YYYY (último día del mes evaluado)
+        try:
+            _, dias_mes = calendar.monthrange(int(anio), mes_int)
+        except Exception:
+            dias_mes = 31
+        fecha_fin = f"{dias_mes:02d}/{mes_int:02d}/{anio}"
 
         emp_nombres = boleta_data.get('nombres') or ''
         emp_pat = boleta_data.get('apellido_paterno') or ''
@@ -1811,7 +1815,7 @@ class DocumentService:
 
             for section in payroll_sections:
                 for item in section.items:
-                    if item.debe == 0 and item.haber == 0 and not item.subcuentas:
+                    if item.debe == 0 and item.haber == 0:
                         continue
 
                     ws.row_dimensions[curr_row].height = 15.0
@@ -1896,6 +1900,10 @@ class DocumentService:
 
         # 5. ASIENTOS CONTABLES DE PAGO: PLANTILLA EXACTA A LA IMAGEN (COMPROBANTE DE EGRESO)
         for section in payment_sections:
+            has_mov = any(it.debe > 0 or it.haber > 0 for it in section.items)
+            if not has_mov and section.subtotal_debe == 0 and section.subtotal_haber == 0:
+                continue
+
             # 5.1 Fila de Encabezado de Comprobante: "COMPROBANTE DE EGRESO"
             voucher_title = getattr(section, "voucher_type", None) or "Comprobante de Egreso"
             if section.title and "pago" in section.title.lower():
@@ -1939,7 +1947,7 @@ class DocumentService:
             # 5.3 Cuentas Contables (Débitos a la izquierda, Créditos con sangría a la derecha)
             date_rendered = False
             for item in section.items:
-                if item.debe == 0 and item.haber == 0 and not item.subcuentas:
+                if item.debe == 0 and item.haber == 0:
                     continue
 
                 ws.row_dimensions[curr_row].height = 14.5
@@ -2394,24 +2402,45 @@ class DocumentService:
 
             curr_row += 1
 
-            # Mapear filas únicas de cuentas para esta sección
+            # Mapear filas únicas de cuentas para esta sección evitando duplicados
             ordered_keys = []
-            seen_keys = set()
-            for m in range(1, 13):
+            seen_cuentas = {}  # cuenta -> (is_cred, subcuentas)
+
+            # Recorrer primero los meses activos con datos reales
+            active_m_list = [m for m in range(1, 13) if m in active_months_set]
+            for m in active_m_list:
                 m_sec = next((s for s in sheets_by_month[m].sections if s.id == sec_id), None)
                 if not m_sec:
                     continue
                 for it in m_sec.items:
-                    if it.debe == 0 and it.haber == 0 and not it.subcuentas:
+                    if it.debe == 0 and it.haber == 0:
                         continue
-                    is_cred = bool(it.haber > 0 and it.debe == 0)
-                    k = (it.cuenta, is_cred)
-                    if k not in seen_keys:
-                        seen_keys.add(k)
-                        ordered_keys.append((k, it.subcuentas))
+                    if it.cuenta not in seen_cuentas:
+                        is_cred = bool(it.haber > 0 and it.debe == 0)
+                        seen_cuentas[it.cuenta] = (is_cred, it.subcuentas or [])
+                        ordered_keys.append(it.cuenta)
+                    elif it.subcuentas and not seen_cuentas[it.cuenta][1]:
+                        is_cred = seen_cuentas[it.cuenta][0]
+                        seen_cuentas[it.cuenta] = (is_cred, it.subcuentas)
+
+            # Si ningún mes activo tenía cuentas para esta sección (o no hay meses activos), usar mes 1 como plantilla
+            if not ordered_keys:
+                sec_ref = next((s for s in sheets_by_month[1].sections if s.id == sec_id), None)
+                if sec_ref:
+                    for it in sec_ref.items:
+                        if it.cuenta not in seen_cuentas:
+                            is_cred = bool(
+                                it.haber > 0 or
+                                "por pagar" in it.cuenta.lower() or
+                                "provision" in it.cuenta.lower() or
+                                getattr(it, "tag", "") == "Pasivo Laboral"
+                            )
+                            seen_cuentas[it.cuenta] = (is_cred, it.subcuentas or [])
+                            ordered_keys.append(it.cuenta)
 
             # Renderizar cada cuenta contable en la sección
-            for (cuenta, is_cred), subcuentas in ordered_keys:
+            for cuenta in ordered_keys:
+                is_cred, subcuentas = seen_cuentas[cuenta]
                 ws.row_dimensions[curr_row].height = 14.5
 
                 # Columna A: Fecha (en blanco en filas de cuentas, con borde izquierdo)
@@ -2446,7 +2475,7 @@ class DocumentService:
                     c_hab_cell.border = Border(right=thin_black)
 
                     if has_m_data and m_sec:
-                        it_m = next((it for it in m_sec.items if it.cuenta == cuenta and bool(it.haber > 0 and it.debe == 0) == is_cred), None)
+                        it_m = next((it for it in m_sec.items if it.cuenta == cuenta), None)
                         if it_m:
                             if it_m.debe > 0:
                                 c_deb_cell.value = it_m.debe

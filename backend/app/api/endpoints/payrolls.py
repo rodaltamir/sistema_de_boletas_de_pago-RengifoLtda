@@ -15,7 +15,11 @@ from app.models.employee import Employee
 from app.models.prefiniquito import Prefiniquito
 from app.models.global_params import SalarioMinimoNacional
 from app.schemas.payroll import PayrollResponse, PayslipResponse, PayslipUpdate
-from app.services.payroll_service import calcular_boleta_empleado
+from app.services.payroll_service import (
+    calcular_boleta_empleado,
+    calcular_bono_antiguedad,
+    calculate_seniority_years
+)
 from app.services.document_service import DocumentService
 
 router = APIRouter()
@@ -121,9 +125,8 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
             missing_employees.append(emp)
         
         if missing_employees:
-            target_date = date(year, month, 1)
             for emp in missing_employees:
-                anios_ant = calculate_years_diff(emp.fecha_ingreso, target_date)
+                anios_ant = calculate_seniority_years(emp.fecha_ingreso, year, month)
                 calc = calcular_boleta_empleado(
                     haber_basico=Decimal(str(emp.haber_basico)),
                     anios_antiguedad=max(0, anios_ant),
@@ -146,7 +149,41 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
                 db.add(payslip)
             db.commit()
             db.refresh(payroll)
-            
+
+        # 3. Sincronizar automáticamente el bono de antigüedad en boletas existentes si la planilla está abierta
+        needs_update = False
+        for p in payroll.payslips:
+            emp = db.query(Employee).filter(Employee.id == p.employee_id).first()
+            if not emp:
+                continue
+            anios_ant = calculate_seniority_years(emp.fecha_ingreso, year, month)
+            expected_bono = calcular_bono_antiguedad(anios_ant, smn_actual)
+            if Decimal(str(p.bono_antiguedad or 0)) != expected_bono:
+                h_basico = Decimal(str(p.haber_basico or emp.haber_basico))
+                calc = calcular_boleta_empleado(
+                    haber_basico=h_basico,
+                    anios_antiguedad=anios_ant,
+                    bono_produccion=Decimal(str(p.bono_produccion or 0)),
+                    subsidio_frontera=Decimal(str(p.subsidio_frontera or 0)),
+                    trabajo_extraordinario=Decimal(str(p.trabajo_extraordinario or 0)),
+                    pago_dominical=Decimal(str(p.pago_dominical or 0)),
+                    otros_bonos=Decimal(str(p.otros_bonos or 0)),
+                    subsidio_natalidad=Decimal(str(p.subsidio_natalidad or 0)),
+                    anticipos=Decimal(str(p.anticipos or 0)),
+                    otros_descuentos=Decimal(str(p.otros_descuentos or 0)),
+                    smn=smn_actual
+                )
+                for k, v in calc.items():
+                    setattr(p, k, v)
+                needs_update = True
+
+        if needs_update:
+            db.commit()
+            db.refresh(payroll)
+            try:
+                sync_payroll_documents_on_disk(schema_name=schema_name, month=month, year=year, db=db)
+            except Exception as e:
+                print(f"[SenioritySync] Error sincronizando documentos: {e}")
     response_data = PayrollResponse.model_validate(payroll)
     response_data.tenant_name = t_name
     response_data.tenant_nro_patronal = t_patronal
@@ -192,7 +229,7 @@ def update_payslip_direct(schema_name: str, payslip_id: int, updates: PayslipUpd
     payroll = payslip.payroll
     return update_payslip(schema_name=schema_name, month=payroll.month, year=payroll.year, payslip_id=payslip_id, updates=updates, db=db)
 
-def sync_payroll_documents_on_disk(schema_name: str, month: int, year: int, payslip_id: int, db: Session):
+def sync_payroll_documents_on_disk(schema_name: str, month: int, year: int, db: Session, payslip_id: int = None):
     payroll = db.query(Payroll).filter(Payroll.month == month, Payroll.year == year).first()
     if not payroll:
         return
@@ -222,12 +259,12 @@ def sync_payroll_documents_on_disk(schema_name: str, month: int, year: int, pays
 
     for slip in payroll.payslips:
         emp = db.query(Employee).filter(Employee.id == slip.employee_id).first()
-        ap_paterno = emp.apellido_paterno if emp else (slip.employee_name.split(' ')[0] if ' ' in slip.employee_name else slip.employee_name)
-        ap_materno = (emp.apellido_materno or '') if emp else (slip.employee_name.split(' ')[1] if len(slip.employee_name.split(' ')) > 1 else '')
-        nombres = emp.nombres if emp else (' '.join(slip.employee_name.split(' ')[2:]) if len(slip.employee_name.split(' ')) > 2 else '')
-        emp_code = (emp.internal_code if emp and emp.internal_code else slip.employee_code) or str(slip.employee_id)
+        ap_paterno = emp.apellido_paterno if emp else getattr(slip, 'employee_name', '')
+        ap_materno = (emp.apellido_materno or '') if emp else ''
+        nombres = emp.nombres if emp else ''
+        emp_code = (emp.internal_code if emp and emp.internal_code else getattr(slip, 'employee_code', None)) or str(slip.employee_id)
         
-        doc_slip = re.sub(r'\s*-\s*', ' ', str(slip.employee_ci or (emp.documento_identidad if emp else ''))).strip()
+        doc_slip = re.sub(r'\s*-\s*', ' ', str(getattr(slip, 'employee_ci', None) or (emp.documento_identidad if emp else ''))).strip()
         h_slip = (round(float(slip.horas_pagadas) / (float(slip.dias_pagados) or 30)) if slip.horas_pagadas and float(slip.horas_pagadas) > 24 else (float(slip.horas_pagadas) if slip.horas_pagadas is not None else 8))
 
         p_dict = {
@@ -331,7 +368,7 @@ def update_payslip(schema_name: str, month: int, year: int, payslip_id: int, upd
     # Recalcular todo
     emp = db.query(Employee).filter(Employee.id == payslip.employee_id).first()
     smn_actual = get_smn(db, year)
-    anios_ant = calculate_years_diff(emp.fecha_ingreso, date(year, month, 1))
+    anios_ant = calculate_seniority_years(emp.fecha_ingreso, year, month)
     
     calc = calcular_boleta_empleado(
         haber_basico=Decimal(str(payslip.haber_basico)),
@@ -354,7 +391,7 @@ def update_payslip(schema_name: str, month: int, year: int, payslip_id: int, upd
     db.refresh(payslip)
     
     try:
-        sync_payroll_documents_on_disk(schema_name=schema_name, month=month, year=year, payslip_id=payslip_id, db=db)
+        sync_payroll_documents_on_disk(schema_name=schema_name, month=month, year=year, db=db, payslip_id=payslip_id)
     except Exception as e:
         print(f"[DocumentSync] Error actualizando planillas en disco: {e}")
     
@@ -620,11 +657,11 @@ def export_payslip(schema_name: str, month: int, year: int, payslip_id: int, for
     
     emp_slug = DocumentService._slugify(f"{ap_paterno} {ap_materno} {nombres}".strip()) if (ap_paterno or nombres) else DocumentService._slugify(target_slip.employee_ci)
     empresa_slug = DocumentService._slugify(schema_name if schema_name else boleta_data.get('empresa_nombre', ''))
-    master_path = DocumentService.get_payslip_master_path(emp_slug, empresa_slug, year)
-    fecha_act = DocumentService.get_file_last_update_date(master_path)
+    _, last_day = calendar.monthrange(year, month)
+    fecha_cierre = f"{last_day:02d}-{month:02d}-{year}"
     MESES = {1:"enero", 2:"febrero", 3:"marzo", 4:"abril", 5:"mayo", 6:"junio", 7:"julio", 8:"agosto", 9:"septiembre", 10:"octubre", 11:"noviembre", 12:"diciembre"}
     mes_nombre = MESES.get(month, str(month))
 
     media_type = 'application/pdf' if format == "pdf" else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    filename = f"boleta_pago_{emp_slug}_{empresa_slug}_{mes_nombre}_{year}_{fecha_act}.pdf" if format == "pdf" else f"boleta_pago_{emp_slug}_{empresa_slug}_{year}_{fecha_act}.xlsx"
+    filename = f"boleta_pago_{emp_slug}_{empresa_slug}_{mes_nombre}_{year}_{fecha_cierre}.pdf" if format == "pdf" else f"boleta_pago_{emp_slug}_{empresa_slug}_{year}_{fecha_cierre}.xlsx"
     return FileResponse(path=file_path, filename=filename, media_type=media_type)

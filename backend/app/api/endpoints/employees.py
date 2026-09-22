@@ -6,7 +6,7 @@ from app.models.department import Department
 from app.models.payroll import Payslip, Payroll
 from app.models.prefiniquito import Prefiniquito
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
-from app.services.payroll_service import calcular_boleta_empleado
+from app.services.payroll_service import calcular_boleta_empleado, calculate_seniority_years
 from decimal import Decimal
 from datetime import date
 import calendar
@@ -144,7 +144,7 @@ def update_employee(schema_name: str, emp_id: int, employee: EmployeeUpdate, db:
                 db.delete(p)
                 continue
             smn_actual = get_smn(db, payroll.year)
-            anios_ant = calculate_years_diff(db_emp.fecha_ingreso, date(payroll.year, payroll.month, 1))
+            anios_ant = calculate_seniority_years(db_emp.fecha_ingreso, payroll.year, payroll.month)
             
             calc = calcular_boleta_empleado(
                 haber_basico=Decimal(str(db_emp.haber_basico)),

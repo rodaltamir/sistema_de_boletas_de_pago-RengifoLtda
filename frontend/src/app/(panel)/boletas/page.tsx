@@ -519,7 +519,10 @@ function BoletasPageContent() {
                   <div className="flex justify-between mb-4 border-b border-black pb-2 font-bold">
                     <span>MES {MONTHS[payroll.month-1]}</span>
                     <span>AÑO {payroll.year}</span>
-                    <span>FECHA {new Date().toLocaleDateString('es-BO')}</span>
+                    <span>FECHA {(() => {
+                      const lastDay = new Date(payroll.year, payroll.month, 0).getDate();
+                      return `${String(lastDay).padStart(2, '0')}/${String(payroll.month).padStart(2, '0')}/${payroll.year}`;
+                    })()}</span>
                   </div>
 
                   {/* Datos Empleado */}
