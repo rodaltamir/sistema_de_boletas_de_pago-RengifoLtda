@@ -365,8 +365,8 @@ function InicioDashboardContent() {
       borderHover: "hover:border-teal-400"
     },
     {
-      title: "Boletas de Pago",
-      subtitle: "Exportación a 2 copias (Empresa y Empleado)",
+      title: "Boletas",
+      subtitle: "Papeletas de pago mensual y de aguinaldo",
       href: `/boletas?tenant=${tenantSchema}`,
       icon: FileText,
       badge: "Formato Oficial",

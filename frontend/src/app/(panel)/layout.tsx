@@ -95,7 +95,7 @@ function DashboardLayoutContent({
                   <div className="flex items-baseline space-x-1">
                     <Link href={getHref("/inicio")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Panel de Control</Link>
                     <Link href={getHref("/empleados")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Empleados</Link>
-                    <Link href={getHref("/boletas")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Boletas de Pago</Link>
+                    <Link href={getHref("/boletas")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Boletas</Link>
                     <Link href={getHref("/planillas")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Planillas</Link>
                     <Link href={getHref("/asientos")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Asientos Contables</Link>
                     <Link href={getHref("/prefiniquitos")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Prefiniquitos</Link>

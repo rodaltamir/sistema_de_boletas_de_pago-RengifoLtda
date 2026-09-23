@@ -2735,3 +2735,691 @@ class DocumentService:
         except Exception:
             pass
         return pdf_result
+
+    @staticmethod
+    def generate_patronal_excel(patronal_data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
+        """
+        Genera la Planilla Patronal en Excel y opcionalmente la exporta a PDF.
+        Formato exacto correspondiente al mes (CNS 10%, AFP 1.71%, FONVI 2%, APS 3.5%, Provisiones, Totales).
+        """
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "patronal"))
+        os.makedirs(exports_dir, exist_ok=True)
+
+        empresa = str(patronal_data.get('empresa_nombre', '') or '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
+        mes_int = int(patronal_data.get('mes', 1))
+        MESES = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+        mes_nombre = MESES.get(mes_int, f"Mes_{mes_int}")
+        anio = str(patronal_data.get('anio', datetime.now().year))
+        ciudad = str(patronal_data.get('ciudad') or "La Paz - Bolivia")
+        nro_patronal = str(patronal_data.get('numero_patronal') or "")
+        nit = str(patronal_data.get('nit') or "")
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = DocumentService._safe_sheet_title(f"Patronal {mes_nombre}")
+
+        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.25, right=0.25, top=0.3, bottom=0.3)
+
+        # Configurar anchos de columna
+        col_widths = {
+            'A': 2.0,   # Margen
+            'B': 5.0,   # No
+            'C': 34.0,  # NOMBRES Y APELLIDOS / CARGO
+            'D': 15.0,  # TOTAL GANADO
+            'E': 13.0,  # CNS 10%
+            'F': 13.0,  # AFP's 1,71%
+            'G': 12.0,  # FONVI 2%
+            'H': 13.0,  # APS 3.5%
+            'I': 15.0,  # TOTAL APORTES
+            'J': 15.0,  # PROVISON AGUINALDO
+            'K': 15.0,  # PROVISON INDEMNIZ
+            'L': 15.0,  # TOTAL PROVISIONES
+            'M': 17.0,  # TOTAL CARGA PATRONAL
+            'N': 2.0    # Margen
+        }
+        for col_let, width in col_widths.items():
+            ws.column_dimensions[col_let].width = width
+
+        # Estilos
+        font_empresa = Font(name="Arial", size=11, bold=True, italic=True)
+        font_ciudad = Font(name="Arial", size=9, bold=True)
+        font_patronal = Font(name="Arial", size=9, bold=True)
+        font_title = Font(name="Arial", size=13, bold=True)
+        font_th = Font(name="Arial", size=8.5, bold=True, color="FFFFFF")
+        font_td = Font(name="Arial", size=8.5)
+        font_td_bold = Font(name="Arial", size=8.5, bold=True)
+        font_totales = Font(name="Arial", size=9, bold=True, color="FFFFFF")
+
+        fill_header = PatternFill(start_color="7E4842", end_color="7E4842", fill_type="solid")
+        fill_totales = PatternFill(start_color="2C3E50", end_color="2C3E50", fill_type="solid")
+
+        thin_side = Side(style='thin', color='B0B0B0')
+        border_cell = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+        double_bottom = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style='double', color='2C3E50'))
+
+        # Encabezado superior
+        ws['B2'] = empresa
+        ws['B2'].font = font_empresa
+        ws['B3'] = ciudad
+        ws['B3'].font = font_ciudad
+
+        ws['J2'] = "N° Patronal"
+        ws['J2'].font = font_patronal
+        ws['K2'] = nro_patronal
+        ws['K2'].font = font_patronal
+
+        ws['J3'] = "N° N.I.T.  :"
+        ws['J3'].font = font_patronal
+        ws['K3'] = nit
+        ws['K3'].font = font_patronal
+
+        # Título
+        ws.merge_cells('B5:M5')
+        ws['B5'] = f"Planilla Patronal Correspondiente al mes de {mes_nombre} {anio}"
+        ws['B5'].font = font_title
+        ws['B5'].alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[5].height = 25
+
+        # Encabezados de tabla
+        headers = [
+            ("B", "No"),
+            ("C", "NOMBRES Y APELLIDOS\nCARGO"),
+            ("D", "TOTAL\nGANADO"),
+            ("E", "CNS\n10%"),
+            ("F", "AFP's\n1,71%"),
+            ("G", "FONVI\n2%"),
+            ("H", "APS\n3.5%"),
+            ("I", "TOTAL\nAPORTES"),
+            ("J", "PROVISON\nAGUINALDO"),
+            ("K", "PROVISON\nINDEMNIZ"),
+            ("L", "TOTAL\nPROVISIONES"),
+            ("M", "TOTAL CARGA\nPATRONAL")
+        ]
+        ws.row_dimensions[7].height = 32
+        for col_let, text in headers:
+            cell = ws[f"{col_let}7"]
+            cell.value = text
+            cell.font = font_th
+            cell.fill = fill_header
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = border_cell
+
+        # Filas de datos
+        current_row = 8
+        details = patronal_data.get('details', [])
+        
+        for idx, item in enumerate(details, start=1):
+            ws.row_dimensions[current_row].height = 24
+            
+            emp_name = str(item.get('employee_name') or '').upper()
+            emp_cargo = str(item.get('employee_cargo') or '').upper()
+            combined_name_cargo = f"{emp_name}\n{emp_cargo}" if emp_cargo else emp_name
+
+            ws[f"B{current_row}"] = idx
+            ws[f"B{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+            ws[f"B{current_row}"].font = font_td_bold
+
+            ws[f"C{current_row}"] = combined_name_cargo
+            ws[f"C{current_row}"].alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            ws[f"C{current_row}"].font = font_td
+
+            num_cols = [
+                ("D", float(item.get('total_ganado', 0))),
+                ("E", float(item.get('cns', 0))),
+                ("F", float(item.get('afp', 0))),
+                ("G", float(item.get('fonvi', 0))),
+                ("H", float(item.get('aps', 0))),
+                ("I", float(item.get('total_aportes', 0))),
+                ("J", float(item.get('provision_aguinaldo', 0))),
+                ("K", float(item.get('provision_indemnizacion', 0))),
+                ("L", float(item.get('total_provisiones', 0))),
+                ("M", float(item.get('total_carga_patronal', 0))),
+            ]
+            for col_l, val in num_cols:
+                c = ws[f"{col_l}{current_row}"]
+                c.value = val
+                c.number_format = '#,##0.00'
+                c.font = font_td
+                c.alignment = Alignment(horizontal="right", vertical="center")
+
+            for col_c in ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']:
+                ws[f"{col_c}{current_row}"].border = border_cell
+
+            current_row += 1
+
+        # Fila TOTALES
+        ws.row_dimensions[current_row].height = 25
+        ws.merge_cells(f"B{current_row}:C{current_row}")
+        ws[f"B{current_row}"] = "T O T A L E S"
+        ws[f"B{current_row}"].font = font_totales
+        ws[f"B{current_row}"].fill = fill_totales
+        ws[f"B{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"C{current_row}"].fill = fill_totales
+
+        totals_cols = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']
+        for col_l in totals_cols:
+            c = ws[f"{col_l}{current_row}"]
+            if details:
+                c.value = f"=SUM({col_l}8:{col_l}{current_row-1})"
+            else:
+                c.value = 0.0
+            c.number_format = '#,##0.00'
+            c.font = font_totales
+            c.fill = fill_totales
+            c.alignment = Alignment(horizontal="right", vertical="center")
+
+        for col_c in ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']:
+            ws[f"{col_c}{current_row}"].border = double_bottom
+
+        xlsx_path = os.path.join(exports_dir, f"planilla_patronal_{empresa_slug}_{mes_nombre.lower()}_{anio}.xlsx")
+        effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
+
+        if output_format.lower() == "pdf":
+            pdf_path = os.path.join(exports_dir, f"planilla_patronal_{empresa_slug}_{mes_nombre.lower()}_{anio}.pdf")
+            return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
+
+        return effective_xlsx
+
+    @staticmethod
+    def generate_aguinaldo_payroll_excel(aguinaldo_data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
+        """
+        Genera la Planilla Oficial de Pago de Aguinaldo de Navidad en Excel (según Imagen 3) y opcionalmente a PDF.
+        Incluye las 19 columnas oficiales requeridas por el Ministerio de Trabajo de Bolivia.
+        """
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "aguinaldos"))
+        os.makedirs(exports_dir, exist_ok=True)
+
+        empresa = str(aguinaldo_data.get('empresa_nombre', '') or '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
+        anio = str(aguinaldo_data.get('year', datetime.now().year))
+        nit = str(aguinaldo_data.get('nit') or "")
+        nro_patronal = str(aguinaldo_data.get('numero_patronal') or "")
+        rep_legal = str(aguinaldo_data.get('representante_legal') or empresa).upper()
+        rep_ci = str(aguinaldo_data.get('ci_representante') or nit)
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = DocumentService._safe_sheet_title(f"Aguinaldo {anio}")
+
+        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.2, right=0.2, top=0.3, bottom=0.3)
+
+        # Configurar anchos de columna (B hasta T = 19 cols)
+        col_widths = {
+            'A': 1.5,
+            'B': 4.0,   # N°
+            'C': 13.0,  # CARNET DE IDENTIDAD
+            'D': 28.0,  # APELLIDOS Y NOMBRES
+            'E': 12.0,  # NACIONALIDAD
+            'F': 11.0,  # FECHA DE NACIMIENTO
+            'G': 6.0,   # SEXO (F/M)
+            'H': 18.0,  # OCUPACIÓN
+            'I': 11.0,  # FECHA DE INGRESO
+            'J': 12.0,  # Promedio haber básico (A)
+            'K': 12.0,  # Promedio bono antiguedad (B)
+            'L': 11.0,  # Promedio producción (C)
+            'M': 11.0,  # Promedio frontera (D)
+            'N': 11.0,  # Promedio extraordinario (E)
+            'O': 11.0,  # Promedio dominical (F)
+            'P': 11.0,  # Promedio otros bonos (G)
+            'Q': 13.0,  # Promedio total ganado (H)
+            'R': 8.0,   # Meses trabajados (I)
+            'S': 14.0,  # Total ganado duodécimas (J)
+            'T': 16.0   # FIRMA DEL EMPLEADO
+        }
+        for col_let, width in col_widths.items():
+            ws.column_dimensions[col_let].width = width
+
+        # Estilos
+        font_h_bold = Font(name="Arial", size=8.5, bold=True)
+        font_h_val = Font(name="Arial", size=8.5)
+        font_title_main = Font(name="Arial", size=11, bold=True)
+        font_th = Font(name="Arial", size=7.5, bold=True)
+        font_td = Font(name="Arial", size=7.5)
+        font_td_bold = Font(name="Arial", size=7.5, bold=True)
+        font_totales = Font(name="Arial", size=8, bold=True)
+
+        fill_header = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+        fill_totales = PatternFill(start_color="E6E6E6", end_color="E6E6E6", fill_type="solid")
+
+        thin_side = Side(style='thin', color='808080')
+        border_cell = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+        double_bottom = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style='double', color='000000'))
+
+        # Encabezado institucional (Ministerio de Trabajo / Caja de Salud)
+        ws['B2'] = "NOMBRE O RAZÓN SOCIAL"
+        ws['B2'].font = font_h_bold
+        ws['D2'] = empresa
+        ws['D2'].font = font_h_bold
+
+        ws['B3'] = "N° EMPLEADOR MINISTERIO DE TRABAJO"
+        ws['B3'].font = font_h_bold
+        ws['D3'] = nit
+        ws['D3'].font = font_h_val
+
+        ws['B4'] = "N° DE NIT"
+        ws['B4'].font = font_h_bold
+        ws['D4'] = nit
+        ws['D4'].font = font_h_val
+
+        ws['B5'] = "N° DE EMPLEADOR (Caja de Salud)"
+        ws['B5'].font = font_h_bold
+        ws['D5'] = nro_patronal
+        ws['D5'].font = font_h_val
+
+        # Título central
+        ws.merge_cells('H6:O6')
+        ws['H6'] = "PLANILLA DE PAGO DE AGUINALDO DE NAVIDAD"
+        ws['H6'].font = font_title_main
+        ws['H6'].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells('H7:O7')
+        ws['H7'] = "(En Bolivianos)"
+        ws['H7'].font = font_h_bold
+        ws['H7'].alignment = Alignment(horizontal="center", vertical="center")
+
+        # Periodo a la derecha
+        ws.merge_cells('P7:T7')
+        ws['P7'] = f"CORRESPONDIENTE AL MES DE DICIEMBRE DE {anio}"
+        ws['P7'].font = font_h_bold
+        ws['P7'].alignment = Alignment(horizontal="right", vertical="center")
+
+        # Fila de Encabezados de Columnas (Fila 9)
+        th_list = [
+            ("B", "N°"),
+            ("C", "CARNET DE\nIDENTIDAD"),
+            ("D", "APELLIDOS Y NOMBRES"),
+            ("E", "NACIONALIDAD"),
+            ("F", "FECHA DE\nNACIMIENTO"),
+            ("G", "SEXO\n(F/M)"),
+            ("H", "OCUPACIÓN QUE\nDESEMPEÑA"),
+            ("I", "FECHA DE\nINGRESO"),
+            ("J", "Promedio del\nhaber básico\n(A)"),
+            ("K", "Promedio del\nbono de\nantigüedad (B)"),
+            ("L", "Promedio\ndel bono\nproducción\n(C)"),
+            ("M", "Promedio\nsubsidio\nfrontera\n(D)"),
+            ("N", "Promedio\ntrabajo\nextraord.\n(E)"),
+            ("O", "Promedio\npago\ndominical\n(F)"),
+            ("P", "Promedio\notros\nbonos\n(G)"),
+            ("Q", "Promedio\ntotal\nganado\n(H=A+..+G)"),
+            ("R", "Meses\ntrabajados\n(I)"),
+            ("S", "Total ganado\ndespués de\nduodécimas\n(J=H*I/12)"),
+            ("T", "FIRMA DEL\nEMPLEADO")
+        ]
+        ws.row_dimensions[9].height = 42
+        for col_l, text in th_list:
+            cell = ws[f"{col_l}9"]
+            cell.value = text
+            cell.font = font_th
+            cell.fill = fill_header
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = border_cell
+
+        # Llenar datos
+        current_row = 10
+        slips = aguinaldo_data.get('slips', [])
+        for idx, item in enumerate(slips, start=1):
+            ws.row_dimensions[current_row].height = 20
+
+            ws[f"B{current_row}"] = idx
+            ws[f"B{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+            ws[f"B{current_row}"].font = font_td_bold
+
+            ws[f"C{current_row}"] = str(item.get('employee_ci') or '')
+            ws[f"C{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+            ws[f"C{current_row}"].font = font_td
+
+            ws[f"D{current_row}"] = str(item.get('employee_name') or '').upper()
+            ws[f"D{current_row}"].alignment = Alignment(horizontal="left", vertical="center")
+            ws[f"D{current_row}"].font = font_td
+
+            ws[f"E{current_row}"] = str(item.get('employee_nacionalidad') or 'BOLIVIANO').upper()
+            ws[f"E{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+            ws[f"E{current_row}"].font = font_td
+
+            ws[f"F{current_row}"] = DocumentService.format_date_dmy(item.get('employee_fecha_nacimiento'))
+            ws[f"F{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+            ws[f"F{current_row}"].font = font_td
+
+            ws[f"G{current_row}"] = str(item.get('employee_sexo') or 'M').upper()
+            ws[f"G{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+            ws[f"G{current_row}"].font = font_td
+
+            ws[f"H{current_row}"] = str(item.get('employee_cargo') or '').upper()
+            ws[f"H{current_row}"].alignment = Alignment(horizontal="left", vertical="center")
+            ws[f"H{current_row}"].font = font_td
+
+            ws[f"I{current_row}"] = DocumentService.format_date_dmy(item.get('employee_fecha_ingreso'))
+            ws[f"I{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+            ws[f"I{current_row}"].font = font_td
+
+            num_cols = [
+                ("J", float(item.get('haber_basico', 0))),
+                ("K", float(item.get('bono_antiguedad', 0))),
+                ("L", float(item.get('bono_produccion', 0))),
+                ("M", float(item.get('subsidio_frontera', 0))),
+                ("N", float(item.get('trabajo_extraordinario', 0))),
+                ("O", float(item.get('pago_dominical', 0))),
+                ("P", float(item.get('otros_bonos', 0))),
+                ("Q", float(item.get('promedio_total_ganado', 0))),
+                ("R", float(item.get('meses_trabajados', 12))),
+                ("S", float(item.get('total_aguinaldo', 0)))
+            ]
+            for col_l, val in num_cols:
+                c = ws[f"{col_l}{current_row}"]
+                c.value = val
+                c.number_format = '#,##0.00'
+                c.font = font_td
+                c.alignment = Alignment(horizontal="right", vertical="center")
+
+            ws[f"T{current_row}"] = "" # Espacio para firma
+            for col_c in ['B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']:
+                ws[f"{col_c}{current_row}"].border = border_cell
+
+            current_row += 1
+
+        # Fila TOTALES
+        ws.row_dimensions[current_row].height = 22
+        ws.merge_cells(f"B{current_row}:I{current_row}")
+        ws[f"B{current_row}"] = "TOTALES"
+        ws[f"B{current_row}"].font = font_totales
+        ws[f"B{current_row}"].fill = fill_totales
+        ws[f"B{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        totals_cols = ['J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S']
+        for col_l in totals_cols:
+            c = ws[f"{col_l}{current_row}"]
+            if slips:
+                c.value = f"=SUM({col_l}10:{col_l}{current_row-1})"
+            else:
+                c.value = 0.0
+            c.number_format = '#,##0.00'
+            c.font = font_totales
+            c.fill = fill_totales
+            c.alignment = Alignment(horizontal="right", vertical="center")
+
+        ws[f"T{current_row}"].fill = fill_totales
+        for col_c in ['B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']:
+            ws[f"{col_c}{current_row}"].border = double_bottom
+
+        # Pie Legal de Firmas
+        f_row = current_row + 4
+        ws.merge_cells(f"C{f_row}:G{f_row}")
+        ws[f"C{f_row}"] = rep_legal
+        ws[f"C{f_row}"].font = font_h_bold
+        ws[f"C{f_row}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells(f"C{f_row+1}:G{f_row+1}")
+        ws[f"C{f_row+1}"] = "NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL"
+        ws[f"C{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+        ws[f"C{f_row+1}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells(f"I{f_row}:L{f_row}")
+        ws[f"I{f_row}"] = rep_ci
+        ws[f"I{f_row}"].font = font_h_bold
+        ws[f"I{f_row}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells(f"I{f_row+1}:L{f_row+1}")
+        ws[f"I{f_row+1}"] = "N° DE DOCUMENTO DE IDENTIDAD"
+        ws[f"I{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+        ws[f"I{f_row+1}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells(f"N{f_row}:P{f_row}")
+        ws[f"N{f_row}"] = "____________________________"
+        ws[f"N{f_row}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells(f"N{f_row+1}:P{f_row+1}")
+        ws[f"N{f_row+1}"] = "FIRMA"
+        ws[f"N{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+        ws[f"N{f_row+1}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells(f"R{f_row+1}:T{f_row+1}")
+        ws[f"R{f_row+1}"] = f"FECHA: Diciembre {anio}"
+        ws[f"R{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+        ws[f"R{f_row+1}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        xlsx_path = os.path.join(exports_dir, f"planilla_aguinaldos_{empresa_slug}_{anio}.xlsx")
+        effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
+
+        if output_format.lower() == "pdf":
+            pdf_path = os.path.join(exports_dir, f"planilla_aguinaldos_{empresa_slug}_{anio}.pdf")
+            return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
+
+        return effective_xlsx
+
+    @staticmethod
+    def _render_single_aguinaldo_papeleta(ws, start_row: int, slip_data: dict, index_num: int):
+        """
+        Dibuja una Papeleta de Aguinaldo individual (enmarcada) según la Imagen 2.
+        """
+        empresa = str(slip_data.get('empresa_nombre') or '').upper()
+        anio = str(slip_data.get('anio') or datetime.now().year)
+        internal_code = str(slip_data.get('internal_code') or '')
+        emp_name = str(slip_data.get('nombre_completo') or slip_data.get('employee_name') or '').upper()
+        cargo = str(slip_data.get('cargo') or slip_data.get('employee_cargo') or '').upper()
+        meses = str(int(float(slip_data.get('meses_trabajados', 12))))
+        fecha_ingreso = DocumentService.format_date_dmy(slip_data.get('fecha_ingreso') or slip_data.get('employee_fecha_ingreso'))
+        liquido = float(slip_data.get('total_aguinaldo') or 0.0)
+        
+        entero = int(liquido)
+        centavos = int(round((liquido - entero) * 100))
+        monto_literal = f"{DocumentService._numero_a_letras(entero).title()} {centavos:02d}/100"
+        monto_fmt = f"{liquido:,.2f}"
+
+        # Fonts
+        font_empresa = Font(name="Arial", size=10, bold=True)
+        font_papeleta_tag = Font(name="Arial", size=8.5, bold=True)
+        font_title_main = Font(name="Arial", size=12, bold=True, underline="single")
+        font_title_sub = Font(name="Arial", size=9, bold=True)
+        font_lbl = Font(name="Arial", size=8.5, bold=True)
+        font_val = Font(name="Arial", size=8.5)
+        font_liq_lbl = Font(name="Arial", size=9, bold=True)
+        font_liq_val = Font(name="Arial", size=9.5, bold=True)
+        font_lit = Font(name="Arial", size=8.5, italic=True)
+
+        thin = Side(style='thin', color='404040')
+        border_all = Border(left=thin, right=thin, top=thin, bottom=thin)
+        border_bottom = Border(bottom=thin)
+
+        # Fila 1: Empresa y Nro Papeleta
+        r1 = start_row
+        ws[f"B{r1}"] = empresa
+        ws[f"B{r1}"].font = font_empresa
+
+        ws[f"F{r1}"] = f"Papeleta :    {index_num}"
+        ws[f"F{r1}"].font = font_papeleta_tag
+        ws[f"F{r1}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"F{r1}"].border = border_all
+
+        # Fila 2: Título Central
+        r2 = start_row + 2
+        ws.merge_cells(f"B{r2}:F{r2}")
+        ws[f"B{r2}"] = "PAPELETA DE AGUINALDO"
+        ws[f"B{r2}"].font = font_title_main
+        ws[f"B{r2}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        # Fila 3: Subtítulo
+        r3 = start_row + 3
+        ws.merge_cells(f"B{r3}:F{r3}")
+        ws[f"B{r3}"] = f"AGUINALDO CORRESPONDIENTE AL PERIODO :  {anio}"
+        ws[f"B{r3}"].font = font_title_sub
+        ws[f"B{r3}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        # Línea divisoria
+        for col in ['B', 'C', 'D', 'E', 'F']:
+            ws[f"{col}{r3}"].border = border_bottom
+
+        # Fila 4: CODIGO y NOMBRE
+        r4 = start_row + 5
+        ws[f"B{r4}"] = "CODIGO  :"
+        ws[f"B{r4}"].font = font_lbl
+        ws[f"C{r4}"] = internal_code
+        ws[f"C{r4}"].font = font_val
+
+        ws[f"D{r4}"] = "NOMBRE :"
+        ws[f"D{r4}"].font = font_lbl
+        ws[f"E{r4}"] = emp_name
+        ws[f"E{r4}"].font = font_val
+
+        # Fila 5: CARGO y MESES
+        r5 = start_row + 6
+        ws[f"B{r5}"] = "CARGO    :"
+        ws[f"B{r5}"].font = font_lbl
+        ws[f"C{r5}"] = cargo
+        ws[f"C{r5}"].font = font_val
+
+        ws[f"E{r5}"] = f"NRO. DE MESES :  {meses}"
+        ws[f"E{r5}"].font = font_lbl
+        ws[f"E{r5}"].alignment = Alignment(horizontal="right", vertical="center")
+
+        # Fila 6: FECHA INGRESO
+        r6 = start_row + 7
+        ws[f"B{r6}"] = "FECHA INGRESO :"
+        ws[f"B{r6}"].font = font_lbl
+        ws[f"C{r6}"] = fecha_ingreso
+        ws[f"C{r6}"].font = font_val
+
+        # Cuadro de Líquido Pagable (Fila 13 aprox)
+        r_liq = start_row + 13
+        ws[f"B{r_liq}"] = "LIQUIDO PAGABLE:"
+        ws[f"B{r_liq}"].font = font_liq_lbl
+        ws[f"C{r_liq}"] = monto_fmt
+        ws[f"C{r_liq}"].font = font_liq_val
+        ws[f"C{r_liq}"].alignment = Alignment(horizontal="right", vertical="center")
+
+        for col in ['B', 'C']:
+            ws[f"{col}{r_liq}"].border = border_all
+
+        ws.merge_cells(f"D{r_liq}:F{r_liq}")
+        ws[f"D{r_liq}"] = monto_literal
+        ws[f"D{r_liq}"].font = font_lit
+        ws[f"D{r_liq}"].alignment = Alignment(horizontal="left", vertical="center")
+
+        # Firmas al pie
+        r_sig = start_row + 17
+        ws[f"B{r_sig}"] = "____________________________________"
+        ws[f"B{r_sig}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws[f"E{r_sig}"] = empresa
+        ws[f"E{r_sig}"].font = font_empresa
+        ws[f"E{r_sig}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws[f"B{r_sig+1}"] = "RECIBI CONFORME"
+        ws[f"B{r_sig+1}"].font = font_lbl
+        ws[f"B{r_sig+1}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        # Marco exterior en recuadro completo
+        end_row = start_row + 19
+        for r in range(start_row, end_row + 1):
+            for c_idx, col in enumerate(['B', 'C', 'D', 'E', 'F']):
+                curr_cell = ws[f"{col}{r}"]
+                top_b = thin if r == start_row else curr_cell.border.top
+                bot_b = thin if r == end_row else curr_cell.border.bottom
+                left_b = thin if col == 'B' else curr_cell.border.left
+                right_b = thin if col == 'F' else curr_cell.border.right
+                curr_cell.border = Border(top=top_b, bottom=bot_b, left=left_b, right=right_b)
+
+    @staticmethod
+    def generate_aguinaldo_payslip(boleta_data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
+        """
+        Genera una papeleta individual de aguinaldo o un talonario listo para impresión (2 por página).
+        """
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "boletas_aguinaldo"))
+        os.makedirs(exports_dir, exist_ok=True)
+
+        empresa = str(boleta_data.get('empresa_nombre') or '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
+        anio = str(boleta_data.get('anio') or datetime.now().year)
+        emp_slug = DocumentService._slugify(boleta_data.get('nombre_completo') or boleta_data.get('employee_name') or 'empleado')
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = DocumentService._safe_sheet_title(f"Papeleta {anio}")
+
+        ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.4, bottom=0.4)
+
+        ws.column_dimensions['A'].width = 2.0
+        ws.column_dimensions['B'].width = 16.0
+        ws.column_dimensions['C'].width = 16.0
+        ws.column_dimensions['D'].width = 14.0
+        ws.column_dimensions['E'].width = 26.0
+        ws.column_dimensions['F'].width = 14.0
+
+        # Dibujar 2 copias idénticas en la misma hoja Carta vertical (Copia Empresa y Copia Empleado)
+        DocumentService._render_single_aguinaldo_papeleta(ws, start_row=2, slip_data=boleta_data, index_num=1)
+        DocumentService._render_single_aguinaldo_papeleta(ws, start_row=24, slip_data=boleta_data, index_num=1)
+
+        xlsx_path = os.path.join(exports_dir, f"papeleta_aguinaldo_{emp_slug}_{empresa_slug}_{anio}.xlsx")
+        effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
+
+        if output_format.lower() == "pdf":
+            pdf_path = os.path.join(exports_dir, f"papeleta_aguinaldo_{emp_slug}_{empresa_slug}_{anio}.pdf")
+            return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
+
+        return effective_xlsx
+
+    @staticmethod
+    def generate_aguinaldo_payslips_batch(boletas_list: list[dict], output_format: str = "xlsx", schema_name: str = None) -> str:
+        """
+        Genera el talonario completo de papeletas de aguinaldo de todos los empleados de la empresa (2 por hoja Carta).
+        """
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "boletas_aguinaldo"))
+        os.makedirs(exports_dir, exist_ok=True)
+
+        empresa = str(boletas_list[0].get('empresa_nombre', '') if boletas_list else '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
+        anio = str(boletas_list[0].get('anio', datetime.now().year) if boletas_list else datetime.now().year)
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active) # Eliminar hoja por defecto
+
+        # Agrupar de 2 en 2 por cada hoja (Carta Portrait)
+        for i in range(0, len(boletas_list), 2):
+            page_num = (i // 2) + 1
+            ws = wb.create_sheet(title=f"Hoja {page_num}")
+
+            ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+            ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+            ws.sheet_properties.pageSetUpPr.fitToPage = True
+            ws.page_setup.fitToWidth = 1
+            ws.page_setup.fitToHeight = 1
+            ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.4, bottom=0.4)
+
+            ws.column_dimensions['A'].width = 2.0
+            ws.column_dimensions['B'].width = 16.0
+            ws.column_dimensions['C'].width = 16.0
+            ws.column_dimensions['D'].width = 14.0
+            ws.column_dimensions['E'].width = 26.0
+            ws.column_dimensions['F'].width = 14.0
+
+            slip1 = boletas_list[i]
+            DocumentService._render_single_aguinaldo_papeleta(ws, start_row=2, slip_data=slip1, index_num=i+1)
+
+            if i + 1 < len(boletas_list):
+                slip2 = boletas_list[i+1]
+                DocumentService._render_single_aguinaldo_papeleta(ws, start_row=24, slip_data=slip2, index_num=i+2)
+
+        xlsx_path = os.path.join(exports_dir, f"talonario_aguinaldos_{empresa_slug}_{anio}.xlsx")
+        effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
+
+        if output_format.lower() == "pdf":
+            pdf_path = os.path.join(exports_dir, f"talonario_aguinaldos_{empresa_slug}_{anio}.pdf")
+            return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
+
+        return effective_xlsx
+

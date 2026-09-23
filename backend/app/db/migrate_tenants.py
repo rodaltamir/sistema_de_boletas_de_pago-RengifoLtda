@@ -56,7 +56,63 @@ def migrate_tenants():
                     )
                 '''))
                 
-                # 4. Sembrar departamentos predeterminados si no existen
+                # 4. Crear tabla patronal_details si no existe
+                conn.execute(text(f'''
+                    CREATE TABLE IF NOT EXISTS "{schema}".patronal_details (
+                        id SERIAL PRIMARY KEY,
+                        payroll_id INTEGER,
+                        employee_id INTEGER NOT NULL,
+                        month INTEGER NOT NULL,
+                        year INTEGER NOT NULL,
+                        total_ganado NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                        cns NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                        afp NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                        fonvi NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                        aps NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                        total_aportes NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                        provision_aguinaldo NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                        provision_indemnizacion NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                        total_provisiones NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                        total_carga_patronal NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                        is_customized BOOLEAN DEFAULT FALSE,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    )
+                '''))
+
+                # 5. Crear tablas de aguinaldos si no existen
+                conn.execute(text(f'''
+                    CREATE TABLE IF NOT EXISTS "{schema}".aguinaldo_payrolls (
+                        id SERIAL PRIMARY KEY,
+                        year INTEGER NOT NULL,
+                        is_closed BOOLEAN DEFAULT FALSE,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    )
+                '''))
+
+                conn.execute(text(f'''
+                    CREATE TABLE IF NOT EXISTS "{schema}".aguinaldo_slips (
+                        id SERIAL PRIMARY KEY,
+                        aguinaldo_payroll_id INTEGER NOT NULL,
+                        employee_id INTEGER NOT NULL,
+                        haber_basico NUMERIC(12, 2) DEFAULT 0,
+                        bono_antiguedad NUMERIC(12, 2) DEFAULT 0,
+                        bono_produccion NUMERIC(12, 2) DEFAULT 0,
+                        subsidio_frontera NUMERIC(12, 2) DEFAULT 0,
+                        trabajo_extraordinario NUMERIC(12, 2) DEFAULT 0,
+                        pago_dominical NUMERIC(12, 2) DEFAULT 0,
+                        otros_bonos NUMERIC(12, 2) DEFAULT 0,
+                        promedio_total_ganado NUMERIC(12, 2) DEFAULT 0,
+                        meses_trabajados NUMERIC(5, 2) DEFAULT 12,
+                        total_aguinaldo NUMERIC(12, 2) DEFAULT 0,
+                        is_customized BOOLEAN DEFAULT FALSE,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    )
+                '''))
+                
+                # 6. Sembrar departamentos predeterminados si no existen
                 dept_res = conn.execute(text(f'SELECT COUNT(*) FROM "{schema}".departments'))
                 dept_count = dept_res.scalar()
                 
