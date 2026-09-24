@@ -23,7 +23,9 @@ import {
   Building2,
   Gift,
   Building,
-  Save
+  Save,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
 
@@ -482,6 +484,22 @@ function PlanillasPageContent() {
     meses_trabajados: 12
   });
   const [savingAguinaldo, setSavingAguinaldo] = useState(false);
+  const [expandedAguinaldoSlips, setExpandedAguinaldoSlips] = useState<number[]>([]);
+
+  const toggleExpandAguinaldo = (id: number) => {
+    setExpandedAguinaldoSlips(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleExpandAllAguinaldo = () => {
+    if (!aguinaldoData) return;
+    if (expandedAguinaldoSlips.length === aguinaldoData.slips.length) {
+      setExpandedAguinaldoSlips([]);
+    } else {
+      setExpandedAguinaldoSlips(aguinaldoData.slips.map(s => s.id));
+    }
+  };
 
   const fetchAguinaldo = async () => {
     if (!tenantSchema) return;
@@ -670,31 +688,33 @@ function PlanillasPageContent() {
               <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-3">
                   <h2 className="font-bold text-slate-900">Planilla Correspondiente al Mes de {MONTHS[payroll.month-1].toUpperCase()} {payroll.year}</h2>
-                  {payroll.is_closed && (
-                    <span className="bg-slate-800 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
-                      <CheckCircle className="w-4 h-4" /> Cerrada / Confirmada
+                  {payroll.is_closed ? (
+                    <span className="bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm">
+                      <CheckCircle className="w-4 h-4 text-emerald-400" /> Mes Cerrado (Bloqueado)
+                    </span>
+                  ) : (
+                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm">
+                      <Unlock className="w-4 h-4 text-emerald-600" /> Mes Abierto (En Edición)
                     </span>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                   {isAdmin && (
-                     payroll.is_closed ? (
-                       <button 
-                         onClick={() => setShowReopenModal(true)} 
-                         className="flex items-center gap-2 px-3 py-1.5 text-sm bg-amber-600 text-white border border-amber-700 rounded-lg hover:bg-amber-700 transition shadow-sm font-semibold"
-                         title="Desconfirmar y reabrir mes para edición"
-                       >
-                         <Unlock className="w-4 h-4" /> Desconfirmar Mes
-                       </button>
-                     ) : (
-                       <button 
-                         onClick={() => setShowConfirmModal(true)} 
-                         className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white border border-blue-700 rounded-lg hover:bg-blue-700 transition shadow-sm font-semibold"
-                         title="Confirmar y bloquear mes"
-                       >
-                         <Lock className="w-4 h-4" /> Confirmar Mes
-                       </button>
-                     )
+                <div className="flex flex-wrap gap-2 items-center">
+                   {payroll.is_closed ? (
+                     <button 
+                       onClick={() => setShowReopenModal(true)} 
+                       className="flex items-center gap-2 px-4 py-2 text-sm bg-amber-600 text-white border border-amber-700 rounded-xl hover:bg-amber-700 transition shadow-md font-bold"
+                       title="Reabrir mes para permitir edición"
+                     >
+                       <Unlock className="w-4 h-4" /> Reabrir Mes
+                     </button>
+                   ) : (
+                     <button 
+                       onClick={() => setShowConfirmModal(true)} 
+                       className="flex items-center gap-2 px-4 py-2 text-sm bg-rose-600 text-white border border-rose-700 rounded-xl hover:bg-rose-700 transition shadow-md font-bold"
+                       title="Cerrar y bloquear mes para edición y seguridad de la información"
+                     >
+                       <Lock className="w-4 h-4" /> Cerrar Mes
+                     </button>
                    )}
                    <button onClick={toggleExpandAll} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-200 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-300 transition">
                      <Eye className="w-4 h-4" /> {expandedSlips.length === payroll.payslips.length ? 'Colapsar Todo' : 'Expandir Todo'}
@@ -886,7 +906,7 @@ function PlanillasPageContent() {
 
               {/* Tabla Patronal idéntica a Imagen 1 */}
               <div className="overflow-x-auto w-full pb-4 custom-scrollbar">
-                <table className="w-full text-xs text-left border-collapse min-w-[1000px]">
+                <table className="w-full text-xs text-left border-collapse min-w-full">
                   <thead>
                     <tr className="bg-[#7E4842] text-white border-b border-[#6A3C37]">
                       <th className="p-3 text-center w-10">No</th>
@@ -999,114 +1019,288 @@ function PlanillasPageContent() {
           {aguinaldoData && (
             <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col">
               {/* Encabezado Ministerial Imagen 3 */}
-              <div className="p-6 border-b border-slate-100 bg-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div className="space-y-1">
-                  <div className="text-xs text-slate-700">
-                    <span className="font-bold">NOMBRE O RAZÓN SOCIAL:</span> {aguinaldoData.tenant_name}
+              <div className="p-6 border-b border-slate-200 bg-slate-50 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                <div className="space-y-1.5 text-xs text-black">
+                  <div>
+                    <span className="font-extrabold text-black">NOMBRE O RAZÓN SOCIAL:</span>{" "}
+                    <span className="font-bold text-black uppercase">{aguinaldoData.tenant_name}</span>
                   </div>
-                  <div className="text-xs text-slate-700">
-                    <span className="font-bold">N° EMPLEADOR MINISTERIO DE TRABAJO:</span> {aguinaldoData.tenant_nit}
+                  <div>
+                    <span className="font-extrabold text-black">N° EMPLEADOR MINISTERIO DE TRABAJO:</span>{" "}
+                    <span className="font-bold text-black">{aguinaldoData.tenant_nit}</span>
                   </div>
-                  <div className="text-xs text-slate-700">
-                    <span className="font-bold">N° DE NIT:</span> {aguinaldoData.tenant_nit} | <span className="font-bold">N° DE EMPLEADOR (Caja de Salud):</span> {aguinaldoData.tenant_nro_patronal}
+                  <div>
+                    <span className="font-extrabold text-black">N° DE NIT:</span>{" "}
+                    <span className="font-bold text-black">{aguinaldoData.tenant_nit}</span> |{" "}
+                    <span className="font-extrabold text-black">N° DE EMPLEADOR (Caja de Salud):</span>{" "}
+                    <span className="font-bold text-black">{aguinaldoData.tenant_nro_patronal || "350-1-2177"}</span>
                   </div>
-                  <p className="text-xs font-bold text-teal-800 uppercase mt-2">
+                  <p className="text-xs font-black text-black uppercase mt-2 tracking-wide">
                     CORRESPONDIENTE AL MES DE DICIEMBRE DE {aguinaldoData.year}
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => handleExportAguinaldo("excel")} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition font-semibold">
-                    <FileSpreadsheet className="w-4 h-4" /> Excel
+                
+                {/* Herramientas de Vista y Exportación */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button 
+                    onClick={toggleExpandAllAguinaldo}
+                    className="flex items-center gap-2 px-3.5 py-2 text-sm bg-slate-200 text-slate-800 border border-slate-300 rounded-xl hover:bg-slate-300 transition font-bold shadow-sm"
+                    title={expandedAguinaldoSlips.length === aguinaldoData.slips.length ? 'Colapsar todos los desgloses' : 'Ver todos los desgloses ministeriales'}
+                  >
+                    <Eye className="w-4 h-4" />
+                    {expandedAguinaldoSlips.length === aguinaldoData.slips.length ? 'Colapsar Todo' : 'Expandir Desgloses'}
                   </button>
-                  <button onClick={() => handleExportAguinaldo("pdf")} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition font-semibold">
-                    <FileText className="w-4 h-4" /> PDF
+
+                  <button onClick={() => handleExportAguinaldo("excel")} className="flex items-center gap-2 px-3.5 py-2 text-sm bg-green-50 text-green-800 border border-green-300 rounded-xl hover:bg-green-100 transition font-bold shadow-sm">
+                    <FileSpreadsheet className="w-4 h-4 text-green-700" /> Excel
+                  </button>
+                  <button onClick={() => handleExportAguinaldo("pdf")} className="flex items-center gap-2 px-3.5 py-2 text-sm bg-red-50 text-red-800 border border-red-300 rounded-xl hover:bg-red-100 transition font-bold shadow-sm">
+                    <FileText className="w-4 h-4 text-red-700" /> PDF
                   </button>
                 </div>
               </div>
 
-              {/* Tabla Oficial de Aguinaldos */}
-              <div className="overflow-x-auto w-full pb-4 custom-scrollbar">
-                <table className="w-full text-[11px] text-left border-collapse min-w-[1400px]">
-                  <thead>
-                    <tr className="bg-slate-900 text-white border-b border-slate-700 text-center">
-                      <th className="p-2.5 w-8">N°</th>
-                      <th className="p-2.5">CARNET DE<br/>IDENTIDAD</th>
-                      <th className="p-2.5 text-left">APELLIDOS Y NOMBRES</th>
-                      <th className="p-2.5">NACIONALIDAD</th>
-                      <th className="p-2.5">FECHA DE<br/>NACIMIENTO</th>
-                      <th className="p-2.5">SEXO</th>
-                      <th className="p-2.5 text-left">OCUPACIÓN QUE<br/>DESEMPEÑA</th>
-                      <th className="p-2.5">FECHA DE<br/>INGRESO</th>
-                      <th className="p-2.5 text-right">Promedio<br/>Básico (A)</th>
-                      <th className="p-2.5 text-right">Promedio<br/>Antig. (B)</th>
-                      <th className="p-2.5 text-right">Prom.<br/>Prod. (C)</th>
-                      <th className="p-2.5 text-right">Prom.<br/>Front. (D)</th>
-                      <th className="p-2.5 text-right">Prom.<br/>Extra (E)</th>
-                      <th className="p-2.5 text-right">Prom.<br/>Domin. (F)</th>
-                      <th className="p-2.5 text-right">Prom.<br/>Otros (G)</th>
-                      <th className="p-2.5 text-right font-bold text-teal-300">Promedio<br/>Total (H)</th>
-                      <th className="p-2.5 text-center font-bold">Meses<br/>Trab. (I)</th>
-                      <th className="p-2.5 text-right font-bold text-emerald-300 text-xs">Total Líquido<br/>Aguinaldo (J)</th>
-                      <th className="p-2.5 text-center">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {aguinaldoData.slips.map((slip, idx) => (
-                      <tr key={slip.id} className="border-b border-slate-200 hover:bg-slate-50 transition">
-                        <td className="p-2 text-center font-bold text-slate-700">{idx + 1}</td>
-                        <td className="p-2 text-center font-semibold text-slate-800">{slip.employee_ci}</td>
-                        <td className="p-2 text-left font-bold text-slate-900">{slip.employee_name}</td>
-                        <td className="p-2 text-center text-slate-600">{slip.employee_nacionalidad || 'BOLIVIANO'}</td>
-                        <td className="p-2 text-center text-slate-600">{formatDate(slip.employee_fecha_nacimiento)}</td>
-                        <td className="p-2 text-center text-slate-600">{slip.employee_sexo || 'M'}</td>
-                        <td className="p-2 text-left text-slate-600 uppercase">{slip.employee_cargo}</td>
-                        <td className="p-2 text-center text-slate-600">{formatDate(slip.employee_fecha_ingreso)}</td>
-                        
-                        <td className="p-2 text-right">{formatBs(slip.haber_basico)}</td>
-                        <td className="p-2 text-right">{formatBs(slip.bono_antiguedad)}</td>
-                        <td className="p-2 text-right">{formatBs(slip.bono_produccion)}</td>
-                        <td className="p-2 text-right">{formatBs(slip.subsidio_frontera)}</td>
-                        <td className="p-2 text-right">{formatBs(slip.trabajo_extraordinario)}</td>
-                        <td className="p-2 text-right">{formatBs(slip.pago_dominical)}</td>
-                        <td className="p-2 text-right">{formatBs(slip.otros_bonos)}</td>
-                        <td className="p-2 text-right font-bold text-teal-700 bg-teal-50/40">{formatBs(slip.promedio_total_ganado)}</td>
-                        <td className="p-2 text-center font-bold text-slate-800">{slip.meses_trabajados}</td>
-                        <td className="p-2 text-right font-black text-emerald-600 bg-emerald-50/50 text-xs">{formatBs(slip.total_aguinaldo)}</td>
-                        <td className="p-2 text-center">
-                          <button 
-                            onClick={() => handleOpenAguinaldoEdit(slip)}
-                            className="p-1 text-blue-600 bg-blue-50 rounded hover:bg-blue-600 hover:text-white transition"
-                            title="Editar Promedios y Duodécimas"
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {aguinaldoData.slips.length === 0 && (
-                      <tr>
-                        <td colSpan={19} className="p-8 text-center text-slate-500">No hay empleados habilitados para el aguinaldo de este año.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-slate-800 text-white font-bold">
-                      <td colSpan={8} className="p-3 text-center uppercase tracking-wider">TOTALES</td>
-                      <td className="p-3 text-right">{formatBs(aguinaldoData.totals.haber_basico)}</td>
-                      <td className="p-3 text-right">{formatBs(aguinaldoData.totals.bono_antiguedad)}</td>
-                      <td className="p-3 text-right">{formatBs(aguinaldoData.totals.bono_produccion)}</td>
-                      <td className="p-3 text-right">{formatBs(aguinaldoData.totals.subsidio_frontera)}</td>
-                      <td className="p-3 text-right">{formatBs(aguinaldoData.totals.trabajo_extraordinario)}</td>
-                      <td className="p-3 text-right">{formatBs(aguinaldoData.totals.pago_dominical)}</td>
-                      <td className="p-3 text-right">{formatBs(aguinaldoData.totals.otros_bonos)}</td>
-                      <td className="p-3 text-right text-teal-300">{formatBs(aguinaldoData.totals.promedio_total_ganado)}</td>
-                      <td className="p-3 text-center">{aguinaldoData.totals.meses_trabajados}</td>
-                      <td className="p-3 text-right text-emerald-300 text-sm">{formatBs(aguinaldoData.totals.total_aguinaldo)}</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                </table>
+              {/* Tarjetas Resumen de Planilla de Aguinaldos */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-teal-50/40 border-b border-teal-100">
+                <div className="bg-white p-3.5 rounded-xl border border-teal-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Total Aguinaldo a Desembolsar</span>
+                    <div className="text-xl font-black text-emerald-900 mt-0.5">
+                      {formatBs(aguinaldoData.totals.total_aguinaldo)} Bs.
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                    <Gift className="w-5 h-5" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-teal-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Trabajadores Beneficiarios</span>
+                    <div className="text-xl font-black text-slate-900 mt-0.5">
+                      {aguinaldoData.slips.length} Empleados
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-sm">
+                    100%
+                  </div>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-teal-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Promedio Aguinaldo por Trabajador</span>
+                    <div className="text-xl font-black text-teal-900 mt-0.5">
+                      {formatBs(aguinaldoData.slips.length ? aguinaldoData.totals.total_aguinaldo / aguinaldoData.slips.length : 0)} Bs.
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-bold">
+                    <Calculator className="w-5 h-5" />
+                  </div>
+                </div>
               </div>
+
+              {/* Tabla de Aguinaldos Adaptada a Pantalla (Sin Scroll Horizontal) */}
+              <div className="w-full">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-900 text-white border-b border-slate-700">
+                        <th className="p-3 text-center w-10">N°</th>
+                        <th className="p-3 text-left">EMPLEADO / DATOS GENERALES</th>
+                        <th className="p-3 text-right">Promedio Haber<br/>Básico (A)</th>
+                        <th className="p-3 text-right">Promedio Bono<br/>Antigüedad (B)</th>
+                        <th className="p-3 text-right">Otros Bonos<br/>Promedio (C a G)</th>
+                        <th className="p-3 text-right font-bold text-teal-300">Promedio Total<br/>Ganado (H)</th>
+                        <th className="p-3 text-center font-bold w-20">Meses<br/>Trabajados (I)</th>
+                        <th className="p-3 text-right font-bold text-emerald-400">Total Aguinaldo<br/>a Pagar (J)</th>
+                        <th className="p-3 text-center w-28">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aguinaldoData.slips.map((slip, idx) => {
+                        const isExpanded = expandedAguinaldoSlips.includes(slip.id);
+                        const otrosBonosSum = Number(slip.bono_produccion) + 
+                                              Number(slip.subsidio_frontera) + 
+                                              Number(slip.trabajo_extraordinario) + 
+                                              Number(slip.pago_dominical) + 
+                                              Number(slip.otros_bonos);
+
+                        return (
+                          <React.Fragment key={slip.id}>
+                            <tr 
+                              onClick={() => toggleExpandAguinaldo(slip.id)}
+                              className={`border-b border-slate-200 hover:bg-teal-50/40 transition cursor-pointer ${
+                                isExpanded ? 'bg-slate-50 border-l-4 border-l-teal-600' : 'bg-white'
+                              }`}
+                            >
+                              <td className="p-3 text-center font-bold text-black">{idx + 1}</td>
+                              <td className="p-3 text-left">
+                                <div className="flex flex-col">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-black text-black text-sm uppercase">{slip.employee_name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[11px] font-bold text-slate-800 mt-0.5">
+                                    <span className="bg-slate-100 text-black px-1.5 py-0.5 rounded border border-slate-300">
+                                      CI: {slip.employee_ci}
+                                    </span>
+                                    <span className="text-teal-900 font-extrabold uppercase">{slip.employee_cargo}</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-700 font-medium mt-0.5 flex flex-wrap gap-2">
+                                    <span>Ingreso: <strong>{formatDate(slip.employee_fecha_ingreso)}</strong></span>
+                                    <span>•</span>
+                                    <span>Nac: <strong>{formatDate(slip.employee_fecha_nacimiento)}</strong> ({slip.employee_sexo || 'M'})</span>
+                                    <span>•</span>
+                                    <span><strong>{slip.employee_nacionalidad || 'BOLIVIANA'}</strong></span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-3 text-right font-bold text-black whitespace-nowrap">{formatBs(slip.haber_basico)}</td>
+                              <td className="p-3 text-right font-bold text-black whitespace-nowrap">{formatBs(slip.bono_antiguedad)}</td>
+                              <td className="p-3 text-right font-bold text-black whitespace-nowrap">
+                                <div>{formatBs(otrosBonosSum)}</div>
+                                {otrosBonosSum > 0 && (
+                                  <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-200">
+                                    Bonos Adicionales
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3 text-right whitespace-nowrap">
+                                <span className="font-black text-black bg-slate-100 px-2.5 py-1 rounded-lg">
+                                  {formatBs(slip.promedio_total_ganado)}
+                                </span>
+                              </td>
+                              <td className="p-3 text-center font-black text-black text-sm whitespace-nowrap">
+                                {slip.meses_trabajados}
+                              </td>
+                              <td className="p-3 text-right whitespace-nowrap">
+                                <span className="font-black text-emerald-950 bg-emerald-100/90 border border-emerald-300 rounded-xl px-2.5 py-1.5 text-xs shadow-sm block text-right">
+                                  {formatBs(slip.total_aguinaldo)} Bs.
+                                </span>
+                              </td>
+                              <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    onClick={() => toggleExpandAguinaldo(slip.id)}
+                                    className="p-1.5 text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-600 hover:text-white transition shadow-sm"
+                                    title={isExpanded ? 'Ocultar desglose' : 'Ver desglose ministerial'}
+                                  >
+                                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                  </button>
+                                  <button 
+                                    onClick={() => handleOpenAguinaldoEdit(slip)}
+                                    className="p-1.5 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-600 hover:text-white transition shadow-sm"
+                                    title="Editar Promedios y Duodécimas"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+
+                            {/* FILA EXPANDIDA CON EL DESGLOSE COMPLETO MINISTERIAL */}
+                            {isExpanded && (
+                              <tr className="bg-slate-50 border-b-2 border-teal-500">
+                                <td colSpan={9} className="p-4 pl-8 lg:pl-12 bg-gradient-to-r from-teal-50/50 via-slate-50 to-white">
+                                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                                      <div>
+                                        <h4 className="font-black text-black text-sm flex items-center gap-2">
+                                          <Gift className="w-4 h-4 text-teal-600" />
+                                          Desglose Detallado Ministerial (Promedios Sep - Oct - Nov)
+                                        </h4>
+                                        <p className="text-xs text-slate-700 font-semibold mt-0.5">
+                                          Empleado: <span className="font-extrabold text-black uppercase">{slip.employee_name}</span> | CI: <span className="font-bold text-black">{slip.employee_ci}</span>
+                                        </p>
+                                      </div>
+                                      <button
+                                        onClick={() => handleOpenAguinaldoEdit(slip)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-600 hover:text-white transition"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" /> Editar Valores
+                                      </button>
+                                    </div>
+
+                                    {/* Cuadrícula de los 7 componentes de promedios */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+                                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                        <span className="text-[10px] font-bold text-slate-600 uppercase block">(A) Haber Básico</span>
+                                        <span className="text-xs font-black text-black mt-1 block">{formatBs(slip.haber_basico)} Bs.</span>
+                                      </div>
+                                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                        <span className="text-[10px] font-bold text-slate-600 uppercase block">(B) Bono Antigüedad</span>
+                                        <span className="text-xs font-black text-black mt-1 block">{formatBs(slip.bono_antiguedad)} Bs.</span>
+                                      </div>
+                                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                        <span className="text-[10px] font-bold text-slate-600 uppercase block">(C) Bono Producción</span>
+                                        <span className="text-xs font-black text-black mt-1 block">{formatBs(slip.bono_produccion)} Bs.</span>
+                                      </div>
+                                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                        <span className="text-[10px] font-bold text-slate-600 uppercase block">(D) Subsidio Frontera</span>
+                                        <span className="text-xs font-black text-black mt-1 block">{formatBs(slip.subsidio_frontera)} Bs.</span>
+                                      </div>
+                                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                        <span className="text-[10px] font-bold text-slate-600 uppercase block">(E) Extraordinario</span>
+                                        <span className="text-xs font-black text-black mt-1 block">{formatBs(slip.trabajo_extraordinario)} Bs.</span>
+                                      </div>
+                                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                        <span className="text-[10px] font-bold text-slate-600 uppercase block">(F) Pago Dominical</span>
+                                        <span className="text-xs font-black text-black mt-1 block">{formatBs(slip.pago_dominical)} Bs.</span>
+                                      </div>
+                                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                        <span className="text-[10px] font-bold text-slate-600 uppercase block">(G) Otros Bonos</span>
+                                        <span className="text-xs font-black text-black mt-1 block">{formatBs(slip.otros_bonos)} Bs.</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Cuadro de Resumen de Cálculo Oficial */}
+                                    <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                                      <div className="text-xs text-teal-950 font-bold space-y-1">
+                                        <div>
+                                          <span className="text-teal-800 font-extrabold uppercase">(H) Promedio Total Ganado:</span>{" "}
+                                          <span className="text-black font-black text-sm">{formatBs(slip.promedio_total_ganado)} Bs.</span>
+                                        </div>
+                                        <div className="text-slate-700 font-semibold text-[11px]">
+                                          Fórmula de Ley: (Total Ganado Promedio ÷ 12) × {slip.meses_trabajados} Meses = <strong>{formatBs(slip.total_aguinaldo)} Bs.</strong>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-teal-200 shadow-sm">
+                                        <span className="text-xs font-extrabold text-slate-700">LÍQUIDO A PAGAR (J):</span>
+                                        <span className="text-base font-black text-emerald-800">{formatBs(slip.total_aguinaldo)} Bs.</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                      {aguinaldoData.slips.length === 0 && (
+                        <tr>
+                          <td colSpan={9} className="p-8 text-center font-bold text-black">No hay empleados habilitados para el aguinaldo de este año.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-900 text-white font-extrabold text-xs">
+                        <td colSpan={2} className="p-3.5 text-center uppercase tracking-widest text-sm">TOTALES GENERALES</td>
+                        <td className="p-3.5 text-right font-bold whitespace-nowrap">{formatBs(aguinaldoData.totals.haber_basico)}</td>
+                        <td className="p-3.5 text-right font-bold whitespace-nowrap">{formatBs(aguinaldoData.totals.bono_antiguedad)}</td>
+                        <td className="p-3.5 text-right font-bold whitespace-nowrap">{formatBs(
+                          Number(aguinaldoData.totals.bono_produccion) +
+                          Number(aguinaldoData.totals.subsidio_frontera) +
+                          Number(aguinaldoData.totals.trabajo_extraordinario) +
+                          Number(aguinaldoData.totals.pago_dominical) +
+                          Number(aguinaldoData.totals.otros_bonos)
+                        )}</td>
+                        <td className="p-3.5 text-right text-teal-300 font-black whitespace-nowrap">{formatBs(aguinaldoData.totals.promedio_total_ganado)}</td>
+                        <td className="p-3.5 text-center font-black whitespace-nowrap">{aguinaldoData.totals.meses_trabajados}</td>
+                        <td className="p-3.5 text-right text-emerald-400 font-black text-sm whitespace-nowrap">{formatBs(aguinaldoData.totals.total_aguinaldo)}</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
             </div>
           )}
         </div>
@@ -1284,77 +1478,77 @@ function PlanillasPageContent() {
               <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Prom. Haber Básico (A)</label>
+                    <label className="block text-xs font-bold text-black mb-1">Promedio Haber Básico (A)</label>
                     <input 
                       type="number" 
                       step="0.01" 
                       value={aguinaldoEditForm.haber_basico} 
                       onChange={e => setAguinaldoEditForm({...aguinaldoEditForm, haber_basico: Number(e.target.value)})} 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900" 
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-black focus:ring-2 focus:ring-teal-500" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Prom. Bono Antigüedad (B)</label>
+                    <label className="block text-xs font-bold text-black mb-1">Promedio Bono Antigüedad (B)</label>
                     <input 
                       type="number" 
                       step="0.01" 
                       value={aguinaldoEditForm.bono_antiguedad} 
                       onChange={e => setAguinaldoEditForm({...aguinaldoEditForm, bono_antiguedad: Number(e.target.value)})} 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900" 
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-black focus:ring-2 focus:ring-teal-500" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Prom. Producción (C)</label>
+                    <label className="block text-xs font-bold text-black mb-1">Promedio Bono Producción (C)</label>
                     <input 
                       type="number" 
                       step="0.01" 
                       value={aguinaldoEditForm.bono_produccion} 
                       onChange={e => setAguinaldoEditForm({...aguinaldoEditForm, bono_produccion: Number(e.target.value)})} 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900" 
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-black focus:ring-2 focus:ring-teal-500" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Prom. Frontera (D)</label>
+                    <label className="block text-xs font-bold text-black mb-1">Promedio Subsidio Frontera (D)</label>
                     <input 
                       type="number" 
                       step="0.01" 
                       value={aguinaldoEditForm.subsidio_frontera} 
                       onChange={e => setAguinaldoEditForm({...aguinaldoEditForm, subsidio_frontera: Number(e.target.value)})} 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900" 
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-black focus:ring-2 focus:ring-teal-500" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Prom. Horas Extra (E)</label>
+                    <label className="block text-xs font-bold text-black mb-1">Promedio Trabajo Extraordinario (E)</label>
                     <input 
                       type="number" 
                       step="0.01" 
                       value={aguinaldoEditForm.trabajo_extraordinario} 
                       onChange={e => setAguinaldoEditForm({...aguinaldoEditForm, trabajo_extraordinario: Number(e.target.value)})} 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900" 
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-black focus:ring-2 focus:ring-teal-500" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Prom. Dominical (F)</label>
+                    <label className="block text-xs font-bold text-black mb-1">Promedio Pago Dominical (F)</label>
                     <input 
                       type="number" 
                       step="0.01" 
                       value={aguinaldoEditForm.pago_dominical} 
                       onChange={e => setAguinaldoEditForm({...aguinaldoEditForm, pago_dominical: Number(e.target.value)})} 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900" 
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-black focus:ring-2 focus:ring-teal-500" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Prom. Otros Bonos (G)</label>
+                    <label className="block text-xs font-bold text-black mb-1">Promedio Otros Bonos (G)</label>
                     <input 
                       type="number" 
                       step="0.01" 
                       value={aguinaldoEditForm.otros_bonos} 
                       onChange={e => setAguinaldoEditForm({...aguinaldoEditForm, otros_bonos: Number(e.target.value)})} 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900" 
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-black focus:ring-2 focus:ring-teal-500" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Meses Trabajados (I)</label>
+                    <label className="block text-xs font-bold text-black mb-1">Meses Trabajados (I)</label>
                     <input 
                       type="number" 
                       step="0.01" 
@@ -1362,7 +1556,7 @@ function PlanillasPageContent() {
                       min="0"
                       value={aguinaldoEditForm.meses_trabajados} 
                       onChange={e => setAguinaldoEditForm({...aguinaldoEditForm, meses_trabajados: Number(e.target.value)})} 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900" 
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-black focus:ring-2 focus:ring-teal-500" 
                     />
                   </div>
                 </div>
@@ -1402,27 +1596,27 @@ function PlanillasPageContent() {
         )}
       </AnimatePresence>
 
-      {/* MODALES CONFIRMAR / REABRIR SUELDOS (EXISTENTES) */}
+      {/* MODALES CERRAR / REABRIR MES */}
       <AnimatePresence>
         {showConfirmModal && (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
               <div className="p-6">
-                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
+                <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mb-4">
                   <Lock className="w-6 h-6" />
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Confirmar Planilla</h3>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Cerrar y Bloquear Mes</h3>
                 <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-                  ¿Estás seguro de que deseas <strong>confirmar y cerrar</strong> la planilla de {MONTHS[month - 1]} {year}?
-                  Al cerrarla, los valores de haberes, horas extras y bonos quedarán bloqueados para edición.
+                  ¿Estás seguro de que deseas <strong>cerrar y bloquear</strong> la planilla de {MONTHS[month - 1]} {year}?
+                  Al cerrarla, los valores de haberes, horas extras, bonos y descuentos quedarán <strong>bloqueados para edición</strong> para garantizar la seguridad y control de la información.
                 </p>
                 <div className="flex justify-end gap-3 mt-6">
-                  <button onClick={() => setShowConfirmModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition">
+                  <button onClick={() => setShowConfirmModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition font-semibold">
                     Cancelar
                   </button>
-                  <button onClick={handleConfirmPayroll} disabled={confirming} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 flex items-center gap-2 transition disabled:opacity-50">
+                  <button onClick={handleConfirmPayroll} disabled={confirming} className="px-4 py-2 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 flex items-center gap-2 transition disabled:opacity-50 shadow-md">
                     {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                    Sí, Confirmar Mes
+                    Sí, Cerrar Mes
                   </button>
                 </div>
               </div>
@@ -1439,18 +1633,18 @@ function PlanillasPageContent() {
                 <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-4">
                   <Unlock className="w-6 h-6" />
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Desconfirmar Mes</h3>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Reabrir Mes</h3>
                 <p className="text-slate-600 mb-4 text-sm leading-relaxed">
-                  ¿Estás seguro de que deseas <strong>desconfirmar y reabrir</strong> la planilla del mes de {MONTHS[month - 1]} {year}?
-                  Se habilitará nuevamente la edición de boletas, ingresos y descuentos para todos los usuarios.
+                  ¿Estás seguro de que deseas <strong>reabrir el mes</strong> de {MONTHS[month - 1]} {year}?
+                  Se habilitará nuevamente la edición de boletas, ingresos y descuentos para los usuarios autorizados.
                 </p>
                 <div className="flex justify-end gap-3 mt-6">
-                  <button onClick={() => setShowReopenModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition">
+                  <button onClick={() => setShowReopenModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition font-semibold">
                     Cancelar
                   </button>
-                  <button onClick={handleReopenPayroll} disabled={reopening} className="px-4 py-2 bg-amber-600 text-white font-semibold rounded-lg hover:bg-amber-700 flex items-center gap-2 transition disabled:opacity-50">
+                  <button onClick={handleReopenPayroll} disabled={reopening} className="px-4 py-2 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 flex items-center gap-2 transition disabled:opacity-50 shadow-md">
                     {reopening ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
-                    Sí, Desconfirmar Mes
+                    Sí, Reabrir Mes
                   </button>
                 </div>
               </div>

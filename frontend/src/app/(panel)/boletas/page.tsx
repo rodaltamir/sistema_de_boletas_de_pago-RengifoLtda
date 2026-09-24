@@ -522,16 +522,35 @@ function BoletasPageContent() {
             </div>
             
             {payroll && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-slate-500">Total Boletas: {sortedPayslips.length}</span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-slate-500 hidden sm:inline">Total Boletas: {sortedPayslips.length}</span>
                 {payroll.is_closed ? (
-                  <span className="flex items-center gap-1 text-xs font-bold bg-slate-800 text-white px-3 py-1.5 rounded-xl shadow-sm">
-                    <CheckCircle className="w-3.5 h-3.5" /> Mes Cerrado
+                  <span className="flex items-center gap-1.5 text-xs font-bold bg-slate-800 text-white px-3 py-1.5 rounded-xl shadow-sm">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Mes Cerrado (Bloqueado)
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1 text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-xl shadow-sm">
-                    <Unlock className="w-3.5 h-3.5" /> Mes Abierto
+                  <span className="flex items-center gap-1.5 text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-xl shadow-sm">
+                    <Unlock className="w-3.5 h-3.5 text-emerald-600" /> Mes Abierto (En Edición)
                   </span>
+                )}
+
+                {/* BOTÓN CERRAR / REABRIR MES EN BOLETAS */}
+                {payroll.is_closed ? (
+                  <button
+                    onClick={() => setShowReopenModal(true)}
+                    className="flex items-center gap-2 px-3.5 py-1.5 text-xs md:text-sm bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 transition shadow-sm"
+                    title="Reabrir mes para permitir edición"
+                  >
+                    <Unlock className="w-4 h-4" /> Reabrir Mes
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowConfirmModal(true)}
+                    className="flex items-center gap-2 px-3.5 py-1.5 text-xs md:text-sm bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 transition shadow-sm"
+                    title="Cerrar y bloquear mes para edición y seguridad de datos"
+                  >
+                    <Lock className="w-4 h-4" /> Cerrar Mes
+                  </button>
                 )}
               </div>
             )}
@@ -714,20 +733,20 @@ function BoletasPageContent() {
                   <tbody>
                     {filteredAguinaldoSlips.map((slip, idx) => (
                       <tr key={slip.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
-                        <td className="p-4 text-center font-bold text-slate-700">{idx + 1}</td>
+                        <td className="p-4 text-center font-bold text-black">{idx + 1}</td>
                         <td className="p-4">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-md">
+                            <span className="text-xs font-bold text-teal-900 bg-teal-100 border border-teal-300 px-2 py-0.5 rounded-md">
                               Cód. {slip.employee_code || slip.employee_id}
                             </span>
-                            <p className="font-bold text-slate-900">{slip.employee_name}</p>
+                            <p className="font-black text-black">{slip.employee_name}</p>
                           </div>
-                          <p className="text-xs text-slate-500 mt-0.5">CI: {slip.employee_ci}</p>
+                          <p className="text-xs text-black font-semibold mt-0.5">CI: {slip.employee_ci}</p>
                         </td>
-                        <td className="p-4 text-slate-600 uppercase font-medium">{slip.employee_cargo}</td>
-                        <td className="p-4 text-center text-slate-600">{formatDate(slip.employee_fecha_ingreso)}</td>
-                        <td className="p-4 text-center font-bold text-slate-700">{slip.meses_trabajados}</td>
-                        <td className="p-4 text-right font-black text-emerald-600 text-base">{formatBs(slip.total_aguinaldo)}</td>
+                        <td className="p-4 text-black uppercase font-bold">{slip.employee_cargo}</td>
+                        <td className="p-4 text-center text-black font-semibold">{formatDate(slip.employee_fecha_ingreso)}</td>
+                        <td className="p-4 text-center font-black text-black">{slip.meses_trabajados}</td>
+                        <td className="p-4 text-right font-black text-emerald-700 text-base">{formatBs(slip.total_aguinaldo)}</td>
                         <td className="p-4 text-center flex justify-center gap-2">
                           <button 
                             onClick={() => handleOpenAguinaldoPreview(slip, idx + 1)}
@@ -798,66 +817,83 @@ function BoletasPageContent() {
               <div className="p-8 bg-slate-100/70 overflow-y-auto max-h-[75vh] flex justify-center">
                 <div className="w-full max-w-2xl bg-white border border-black p-6 font-sans text-xs text-black shadow-md">
                   
-                  {/* Fila 1: Empresa y N° Papeleta */}
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="font-bold text-sm tracking-wide uppercase">
-                      {aguinaldoData.tenant_name}
+                  {/* Fila 1: Empresa, N° Patronal y N° Papeleta */}
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <div className="font-bold text-sm tracking-wide uppercase text-black">
+                        {aguinaldoData.tenant_name}
+                      </div>
+                      <div className="text-[11px] font-bold text-black mt-0.5">
+                        N° Patronal : &nbsp; <span className="font-normal">{aguinaldoData.tenant_nro_patronal || "S/N"}</span>
+                      </div>
                     </div>
-                    <div className="border border-black px-3 py-1 text-xs font-bold">
+                    <div className="border border-black px-4 py-1 text-xs font-bold text-black self-start">
                       Papeleta : &nbsp; {aguinaldoSlipIndex}
                     </div>
                   </div>
 
                   {/* Título Central */}
-                  <div className="text-center my-4">
-                    <h2 className="text-lg font-bold underline tracking-wide">PAPELETA DE AGUINALDO</h2>
-                    <p className="text-xs font-bold mt-1">AGUINALDO CORRESPONDIENTE AL PERIODO : &nbsp; {aguinaldoData.year}</p>
+                  <div className="text-center my-3">
+                    <h2 className="text-base font-bold underline tracking-wider uppercase text-black">PAPELETA DE AGUINALDO</h2>
+                    <p className="text-xs font-bold mt-1 text-black">AGUINALDO CORRESPONDIENTE AL PERIODO : &nbsp; {aguinaldoData.year}</p>
                   </div>
 
                   <div className="border-b border-black mb-4"></div>
 
-                  {/* Datos del Empleado */}
-                  <div className="grid grid-cols-2 gap-y-2 gap-x-4 mb-16 text-xs font-bold">
-                    <div className="flex">
-                      <span className="w-24 shrink-0">CODIGO :</span>
-                      <span className="font-normal">{selectedAguinaldoSlip.employee_code || selectedAguinaldoSlip.employee_id}</span>
+                  {/* Datos del Empleado (Simétricos y alineados según Imagen 2) */}
+                  <div className="space-y-2 mb-4 text-xs font-bold text-black">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center">
+                        <span className="w-28 shrink-0">CODIGO :</span>
+                        <span className="font-normal">{selectedAguinaldoSlip.employee_code || selectedAguinaldoSlip.employee_id}</span>
+                      </div>
+                      <div className="flex items-center flex-1 max-w-md ml-4">
+                        <span className="w-20 shrink-0">NOMBRE :</span>
+                        <span className="font-normal uppercase truncate">{selectedAguinaldoSlip.employee_name}</span>
+                      </div>
                     </div>
-                    <div className="flex">
-                      <span className="w-24 shrink-0">NOMBRE :</span>
-                      <span className="font-normal uppercase">{selectedAguinaldoSlip.employee_name}</span>
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center">
+                        <span className="w-28 shrink-0">CARGO :</span>
+                        <span className="font-normal uppercase">{selectedAguinaldoSlip.employee_cargo || "PERSONAL"}</span>
+                      </div>
                     </div>
-                    <div className="flex">
-                      <span className="w-24 shrink-0">CARGO :</span>
-                      <span className="font-normal uppercase">{selectedAguinaldoSlip.employee_cargo}</span>
-                    </div>
-                    <div className="flex">
-                      <span className="w-32 shrink-0">NRO. DE MESES :</span>
-                      <span className="font-normal">{selectedAguinaldoSlip.meses_trabajados}</span>
-                    </div>
-                    <div className="flex col-span-2">
-                      <span className="w-32 shrink-0">FECHA INGRESO :</span>
-                      <span className="font-normal">{formatDate(selectedAguinaldoSlip.employee_fecha_ingreso)}</span>
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center">
+                        <span className="w-28 shrink-0">FECHA INGRESO :</span>
+                        <span className="font-normal">{formatDate(selectedAguinaldoSlip.employee_fecha_ingreso)}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="font-bold mr-3">NRO. DE MESES :</span>
+                        <span className="font-normal">{selectedAguinaldoSlip.meses_trabajados}</span>
+                      </div>
                     </div>
                   </div>
 
+                  <div className="border-b border-black mb-8"></div>
+
+                  {/* Espacio limpio intermedio (Cuerpo libre según Imagen 2) */}
+                  <div className="min-h-[80px]"></div>
+
                   {/* Cuadro Líquido Pagable */}
-                  <div className="flex border border-black mb-16 items-center">
-                    <div className="border-r border-black p-2 font-bold whitespace-nowrap bg-slate-50/50">
+                  <div className="flex border border-black mb-10 items-center">
+                    <div className="border-r border-black py-2 px-3 font-bold whitespace-nowrap bg-slate-50/50 text-black">
                       LIQUIDO PAGABLE: &nbsp; {formatBs(selectedAguinaldoSlip.total_aguinaldo)}
                     </div>
-                    <div className="p-2 font-normal italic uppercase text-[11px] flex-1">
+                    <div className="py-2 px-3 font-normal italic uppercase text-[11px] flex-1 text-black">
                       {selectedAguinaldoSlip.total_aguinaldo_literal || getLeteral(selectedAguinaldoSlip.total_aguinaldo)}
                     </div>
                   </div>
 
-                  {/* Firmas al pie */}
-                  <div className="flex justify-between items-end mt-12 pt-4 px-6 text-center text-xs">
-                    <div>
-                      <div className="border-t border-dashed border-black w-48 mb-1"></div>
+                  {/* Firmas al pie simétricas */}
+                  <div className="flex justify-between items-end mt-8 pt-4 px-6 text-center text-xs text-black">
+                    <div className="w-56">
+                      <div className="border-t border-dashed border-black w-full mb-1"></div>
                       <span className="font-bold">RECIBI CONFORME</span>
                     </div>
-                    <div>
-                      <span className="font-bold uppercase block">{aguinaldoData.tenant_name}</span>
+                    <div className="w-56">
+                      <div className="border-t border-dashed border-black w-full mb-1"></div>
+                      <span className="font-bold uppercase block truncate">{aguinaldoData.tenant_name}</span>
                     </div>
                   </div>
 
@@ -1058,6 +1094,63 @@ function BoletasPageContent() {
                    </button>
                 </div>
              </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODALES CERRAR / REABRIR MES */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+              <div className="p-6">
+                <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mb-4">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Cerrar y Bloquear Mes</h3>
+                <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+                  ¿Estás seguro de que deseas <strong>cerrar y bloquear</strong> las boletas del mes de {MONTHS[month - 1]} {year}?
+                  Al cerrarlo, los valores de haberes, horas extras, bonos y descuentos quedarán <strong>bloqueados para edición</strong> para garantizar la seguridad y control de la información.
+                </p>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button onClick={() => setShowConfirmModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition font-semibold">
+                    Cancelar
+                  </button>
+                  <button onClick={handleConfirmPayroll} disabled={confirming} className="px-4 py-2 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 flex items-center gap-2 transition disabled:opacity-50 shadow-md">
+                    {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                    Sí, Cerrar Mes
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showReopenModal && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+              <div className="p-6">
+                <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-4">
+                  <Unlock className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Reabrir Mes</h3>
+                <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+                  ¿Estás seguro de que deseas <strong>reabrir el mes</strong> de {MONTHS[month - 1]} {year}?
+                  Se habilitará nuevamente la edición de boletas, ingresos y descuentos para los usuarios autorizados.
+                </p>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button onClick={() => setShowReopenModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition font-semibold">
+                    Cancelar
+                  </button>
+                  <button onClick={handleReopenPayroll} disabled={reopening} className="px-4 py-2 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 flex items-center gap-2 transition disabled:opacity-50 shadow-md">
+                    {reopening ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
+                    Sí, Reabrir Mes
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>

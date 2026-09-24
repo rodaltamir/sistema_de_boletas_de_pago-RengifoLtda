@@ -69,6 +69,20 @@ def get_patronal_payroll(schema_name: str, month: int, year: int, db: Session = 
         PatronalDetail.month == month,
         PatronalDetail.year == year
     ).all()
+
+    # Si hay planilla del mes, eliminar registros patronales de empleados que ya no estén en la planilla
+    if payslips:
+        payslip_emp_ids = {p.employee_id for p in payslips}
+        for d in existing_details:
+            if d.employee_id not in payslip_emp_ids:
+                db.delete(d)
+        db.commit()
+        # Recargar existentes
+        existing_details = db.query(PatronalDetail).filter(
+            PatronalDetail.month == month,
+            PatronalDetail.year == year
+        ).all()
+
     details_by_emp = {d.employee_id: d for d in existing_details}
 
     # Sincronizar o crear registros patronales para cada empleado en payslips
@@ -80,19 +94,18 @@ def get_patronal_payroll(schema_name: str, month: int, year: int, db: Session = 
         tot_ganado = Decimal(str(p.total_ganado or 0.0))
         d_record = details_by_emp.get(p.employee_id)
 
+        cns_val = round(tot_ganado * Decimal("0.10"), 2)
+        afp_val = round(tot_ganado * Decimal("0.0171"), 2)
+        fonvi_val = round(tot_ganado * Decimal("0.02"), 2)
+        aps_val = round(tot_ganado * Decimal("0.035"), 2)
+        tot_aportes = cns_val + afp_val + fonvi_val + aps_val
+
+        prov_ag = round(tot_ganado / Decimal("12"), 2)
+        prov_ind = round(tot_ganado / Decimal("12"), 2)
+        tot_prov = prov_ag + prov_ind
+        tot_carga = tot_aportes + tot_prov
+
         if not d_record:
-            # Cálculo legal boliviano:
-            cns_val = round(tot_ganado * Decimal("0.10"), 2)
-            afp_val = round(tot_ganado * Decimal("0.0171"), 2)
-            fonvi_val = round(tot_ganado * Decimal("0.02"), 2)
-            aps_val = round(tot_ganado * Decimal("0.035"), 2)
-            tot_aportes = cns_val + afp_val + fonvi_val + aps_val
-
-            prov_ag = round(tot_ganado / Decimal("12"), 2)
-            prov_ind = round(tot_ganado / Decimal("12"), 2)
-            tot_prov = prov_ag + prov_ind
-            tot_carga = tot_aportes + tot_prov
-
             d_record = PatronalDetail(
                 payroll_id=payroll.id if payroll else None,
                 employee_id=emp.id,
@@ -117,15 +130,15 @@ def get_patronal_payroll(schema_name: str, month: int, year: int, db: Session = 
         elif not d_record.is_customized and d_record.total_ganado != tot_ganado:
             # Si no fue modificado manualmente y el total ganado del mes cambió, recalcular
             d_record.total_ganado = tot_ganado
-            d_record.cns = round(tot_ganado * Decimal("0.10"), 2)
-            d_record.afp = round(tot_ganado * Decimal("0.0171"), 2)
-            d_record.fonvi = round(tot_ganado * Decimal("0.02"), 2)
-            d_record.aps = round(tot_ganado * Decimal("0.035"), 2)
-            d_record.total_aportes = d_record.cns + d_record.afp + d_record.fonvi + d_record.aps
-            d_record.provision_aguinaldo = round(tot_ganado / Decimal("12"), 2)
-            d_record.provision_indemnizacion = round(tot_ganado / Decimal("12"), 2)
-            d_record.total_provisiones = d_record.provision_aguinaldo + d_record.provision_indemnizacion
-            d_record.total_carga_patronal = d_record.total_aportes + d_record.total_provisiones
+            d_record.cns = cns_val
+            d_record.afp = afp_val
+            d_record.fonvi = fonvi_val
+            d_record.aps = aps_val
+            d_record.total_aportes = tot_aportes
+            d_record.provision_aguinaldo = prov_ag
+            d_record.provision_indemnizacion = prov_ind
+            d_record.total_provisiones = tot_prov
+            d_record.total_carga_patronal = tot_carga
             db.commit()
             db.refresh(d_record)
 

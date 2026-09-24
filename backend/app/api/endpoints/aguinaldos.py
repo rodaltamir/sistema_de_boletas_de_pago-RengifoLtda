@@ -74,20 +74,23 @@ def get_or_generate_aguinaldo_payroll(schema_name: str, year: int, db: Session =
     start_of_year = date(year, 1, 1)
     smn_actual = get_smn(db, year)
 
-    # Si la planilla no está cerrada, sincronizar empleados
+    # Si la planilla no está cerrada, sincronizar empleados y actualizar con planillas mensuales
     if not payroll.is_closed:
-        existing_emp_ids = {s.employee_id for s in payroll.slips}
+        existing_slips_map = {s.employee_id: s for s in payroll.slips}
         all_employees = db.query(Employee).all()
+        active_emp_ids = {e.id for e in all_employees}
+
+        # Eliminar slips de empleados que hayan sido eliminados del sistema
+        for s in list(payroll.slips):
+            if s.employee_id not in active_emp_ids:
+                db.delete(s)
 
         for emp in all_employees:
-            if emp.id in existing_emp_ids:
-                continue
-
             # Debe haber ingresado a más tardar en el año
             if emp.fecha_ingreso > end_of_year:
                 continue
 
-            # Si ya está inactivo, verificar si su retiro ocurrió en el año
+            pref = None
             if not emp.is_active:
                 pref = db.query(Prefiniquito).filter(Prefiniquito.employee_id == emp.id).order_by(Prefiniquito.id.desc()).first()
                 if pref and pref.fecha_retiro < start_of_year:
@@ -95,17 +98,27 @@ def get_or_generate_aguinaldo_payroll(schema_name: str, year: int, db: Session =
 
             # Calcular meses trabajados en el año
             if emp.fecha_ingreso < start_of_year:
-                meses = Decimal("12.00")
-            else:
-                m_ingreso = emp.fecha_ingreso.month
-                d_ingreso = emp.fecha_ingreso.day
-                # Si ingresó el primer día del mes cuenta mes completo, sino duodécimas proporcionales
-                meses_completos = 12 - m_ingreso + (1 if d_ingreso <= 1 else 0)
-                if d_ingreso > 1:
-                    fraccion = Decimal(str(max(0, 30 - d_ingreso + 1))) / Decimal("30")
-                    meses = Decimal(str(12 - m_ingreso)) + fraccion
+                if not emp.is_active and pref and pref.fecha_retiro <= end_of_year:
+                    m_ret = pref.fecha_retiro.month
+                    d_ret = pref.fecha_retiro.day
+                    meses_ret = Decimal(str(m_ret - 1)) + (Decimal(str(min(30, d_ret))) / Decimal("30"))
+                    meses = round(max(Decimal("0.5"), min(Decimal("12.0"), meses_ret)), 2)
                 else:
-                    meses = Decimal(str(meses_completos))
+                    meses = Decimal("12.00")
+            else:
+                end_calc = pref.fecha_retiro if (not emp.is_active and pref and pref.fecha_retiro <= end_of_year) else end_of_year
+                m_ing = emp.fecha_ingreso.month
+                d_ing = emp.fecha_ingreso.day
+                m_end = end_calc.month
+                d_end = end_calc.day
+                if m_ing == m_end:
+                    dias = max(0, d_end - d_ing + 1)
+                    meses = round(Decimal(str(dias)) / Decimal("30"), 2)
+                else:
+                    meses_ent = Decimal(str(max(0, m_end - m_ing - 1)))
+                    dias_ini = max(0, 30 - d_ing + 1)
+                    dias_fin = min(30, d_end)
+                    meses = round(meses_ent + (Decimal(str(dias_ini + dias_fin)) / Decimal("30")), 2)
                 meses = round(max(Decimal("0.5"), min(Decimal("12.0"), meses)), 2)
 
             # Buscar boletas previas del año (preferentemente sep, oct, nov, o las disponibles)
@@ -145,22 +158,36 @@ def get_or_generate_aguinaldo_payroll(schema_name: str, year: int, db: Session =
             prom_total = h_basico + b_ant + b_prod + sub_front + trab_ext + p_dom + ot_bonos
             tot_ag = round(prom_total * (meses / Decimal("12")), 2)
 
-            new_slip = AguinaldoSlip(
-                aguinaldo_payroll_id=payroll.id,
-                employee_id=emp.id,
-                haber_basico=h_basico,
-                bono_antiguedad=b_ant,
-                bono_produccion=b_prod,
-                subsidio_frontera=sub_front,
-                trabajo_extraordinario=trab_ext,
-                pago_dominical=p_dom,
-                otros_bonos=ot_bonos,
-                promedio_total_ganado=prom_total,
-                meses_trabajados=meses,
-                total_aguinaldo=tot_ag,
-                is_customized=False
-            )
-            db.add(new_slip)
+            existing_slip = existing_slips_map.get(emp.id)
+            if existing_slip:
+                if not existing_slip.is_customized:
+                    existing_slip.haber_basico = h_basico
+                    existing_slip.bono_antiguedad = b_ant
+                    existing_slip.bono_produccion = b_prod
+                    existing_slip.subsidio_frontera = sub_front
+                    existing_slip.trabajo_extraordinario = trab_ext
+                    existing_slip.pago_dominical = p_dom
+                    existing_slip.otros_bonos = ot_bonos
+                    existing_slip.promedio_total_ganado = prom_total
+                    existing_slip.meses_trabajados = meses
+                    existing_slip.total_aguinaldo = tot_ag
+            else:
+                new_slip = AguinaldoSlip(
+                    aguinaldo_payroll_id=payroll.id,
+                    employee_id=emp.id,
+                    haber_basico=h_basico,
+                    bono_antiguedad=b_ant,
+                    bono_produccion=b_prod,
+                    subsidio_frontera=sub_front,
+                    trabajo_extraordinario=trab_ext,
+                    pago_dominical=p_dom,
+                    otros_bonos=ot_bonos,
+                    promedio_total_ganado=prom_total,
+                    meses_trabajados=meses,
+                    total_aguinaldo=tot_ag,
+                    is_customized=False
+                )
+                db.add(new_slip)
 
         db.commit()
         db.refresh(payroll)
@@ -395,6 +422,7 @@ def export_single_aguinaldo_papeleta(
 
     boleta_payload = {
         'empresa_nombre': payroll_data.tenant_name,
+        'numero_patronal': payroll_data.tenant_nro_patronal,
         'anio': year,
         'internal_code': target_slip.employee_code,
         'nombre_completo': target_slip.employee_name,
@@ -430,6 +458,7 @@ def export_batch_aguinaldo_papeletas(
     for s in payroll_data.slips:
         boletas_list.append({
             'empresa_nombre': payroll_data.tenant_name,
+            'numero_patronal': payroll_data.tenant_nro_patronal,
             'anio': year,
             'internal_code': s.employee_code,
             'nombre_completo': s.employee_name,

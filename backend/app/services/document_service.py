@@ -2764,6 +2764,7 @@ class DocumentService:
         ws.sheet_properties.pageSetUpPr.fitToPage = True
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 0
+        ws.print_options.horizontalCentered = True
         ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.25, right=0.25, top=0.3, bottom=0.3)
 
         # Configurar anchos de columna
@@ -2804,20 +2805,29 @@ class DocumentService:
         double_bottom = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style='double', color='2C3E50'))
 
         # Encabezado superior
+        ws.merge_cells('B2:E2')
         ws['B2'] = empresa
         ws['B2'].font = font_empresa
+        ws['B2'].alignment = Alignment(horizontal="left", vertical="center")
+
+        ws.merge_cells('B3:E3')
         ws['B3'] = ciudad
         ws['B3'].font = font_ciudad
+        ws['B3'].alignment = Alignment(horizontal="left", vertical="center")
 
-        ws['J2'] = "N° Patronal"
-        ws['J2'].font = font_patronal
-        ws['K2'] = nro_patronal
-        ws['K2'].font = font_patronal
+        ws['L2'] = "N° Patronal"
+        ws['L2'].font = font_patronal
+        ws['L2'].alignment = Alignment(horizontal="right", vertical="center")
+        ws['M2'] = f"  {nro_patronal}"
+        ws['M2'].font = font_patronal
+        ws['M2'].alignment = Alignment(horizontal="left", vertical="center")
 
-        ws['J3'] = "N° N.I.T.  :"
-        ws['J3'].font = font_patronal
-        ws['K3'] = nit
-        ws['K3'].font = font_patronal
+        ws['L3'] = "N° N.I.T.  :"
+        ws['L3'].font = font_patronal
+        ws['L3'].alignment = Alignment(horizontal="right", vertical="center")
+        ws['M3'] = f"  {nit}"
+        ws['M3'].font = font_patronal
+        ws['M3'].alignment = Alignment(horizontal="left", vertical="center")
 
         # Título
         ws.merge_cells('B5:M5')
@@ -2952,30 +2962,31 @@ class DocumentService:
         ws.sheet_properties.pageSetUpPr.fitToPage = True
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 0
+        ws.print_options.horizontalCentered = True
         ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.2, right=0.2, top=0.3, bottom=0.3)
 
         # Configurar anchos de columna (B hasta T = 19 cols)
         col_widths = {
             'A': 1.5,
-            'B': 4.0,   # N°
-            'C': 13.0,  # CARNET DE IDENTIDAD
+            'B': 4.5,   # N°
+            'C': 13.5,  # CARNET DE IDENTIDAD
             'D': 28.0,  # APELLIDOS Y NOMBRES
             'E': 12.0,  # NACIONALIDAD
-            'F': 11.0,  # FECHA DE NACIMIENTO
-            'G': 6.0,   # SEXO (F/M)
+            'F': 11.5,  # FECHA DE NACIMIENTO
+            'G': 6.5,   # SEXO (F/M)
             'H': 18.0,  # OCUPACIÓN
-            'I': 11.0,  # FECHA DE INGRESO
-            'J': 12.0,  # Promedio haber básico (A)
-            'K': 12.0,  # Promedio bono antiguedad (B)
-            'L': 11.0,  # Promedio producción (C)
-            'M': 11.0,  # Promedio frontera (D)
-            'N': 11.0,  # Promedio extraordinario (E)
-            'O': 11.0,  # Promedio dominical (F)
-            'P': 11.0,  # Promedio otros bonos (G)
-            'Q': 13.0,  # Promedio total ganado (H)
-            'R': 8.0,   # Meses trabajados (I)
-            'S': 14.0,  # Total ganado duodécimas (J)
-            'T': 16.0   # FIRMA DEL EMPLEADO
+            'I': 11.5,  # FECHA DE INGRESO
+            'J': 12.5,  # Promedio haber básico (A)
+            'K': 12.5,  # Promedio bono antiguedad (B)
+            'L': 11.5,  # Promedio producción (C)
+            'M': 11.5,  # Promedio frontera (D)
+            'N': 12.5,  # Promedio extraordinario (E)
+            'O': 12.0,  # Promedio dominical (F)
+            'P': 11.5,  # Promedio otros bonos (G)
+            'Q': 14.0,  # Promedio total ganado (H)
+            'R': 9.5,   # Meses trabajados (I)
+            'S': 15.5,  # Total ganado duodécimas (J)
+            'T': 16.5   # FIRMA DEL EMPLEADO
         }
         for col_let, width in col_widths.items():
             ws.column_dimensions[col_let].width = width
@@ -2997,25 +3008,44 @@ class DocumentService:
         double_bottom = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style='double', color='000000'))
 
         # Encabezado institucional (Ministerio de Trabajo / Caja de Salud)
+        line_side_dark = Side(style='thin', color='000000')
+        border_underline_header = Border(bottom=line_side_dark)
+
+        ws.merge_cells('B2:D2')
         ws['B2'] = "NOMBRE O RAZÓN SOCIAL"
         ws['B2'].font = font_h_bold
-        ws['D2'] = empresa
-        ws['D2'].font = font_h_bold
+        ws.merge_cells('E2:I2')
+        ws['E2'] = empresa
+        ws['E2'].font = font_h_bold
+        for c_col in ['E', 'F', 'G', 'H', 'I']:
+            ws[f"{c_col}2"].border = border_underline_header
 
+        ws.merge_cells('B3:D3')
         ws['B3'] = "N° EMPLEADOR MINISTERIO DE TRABAJO"
         ws['B3'].font = font_h_bold
-        ws['D3'] = nit
-        ws['D3'].font = font_h_val
+        ws.merge_cells('E3:H3')
+        ws['E3'] = nit
+        ws['E3'].font = font_h_val
+        for c_col in ['E', 'F', 'G', 'H']:
+            ws[f"{c_col}3"].border = border_underline_header
 
+        ws.merge_cells('B4:D4')
         ws['B4'] = "N° DE NIT"
         ws['B4'].font = font_h_bold
-        ws['D4'] = nit
-        ws['D4'].font = font_h_val
+        ws.merge_cells('E4:H4')
+        ws['E4'] = nit
+        ws['E4'].font = font_h_val
+        for c_col in ['E', 'F', 'G', 'H']:
+            ws[f"{c_col}4"].border = border_underline_header
 
+        ws.merge_cells('B5:D5')
         ws['B5'] = "N° DE EMPLEADOR (Caja de Salud)"
         ws['B5'].font = font_h_bold
-        ws['D5'] = nro_patronal
-        ws['D5'].font = font_h_val
+        ws.merge_cells('E5:H5')
+        ws['E5'] = nro_patronal
+        ws['E5'].font = font_h_val
+        for c_col in ['E', 'F', 'G', 'H']:
+            ws[f"{c_col}5"].border = border_underline_header
 
         # Título central
         ws.merge_cells('H6:O6')
@@ -3048,21 +3078,22 @@ class DocumentService:
             ("K", "Promedio del\nbono de\nantigüedad (B)"),
             ("L", "Promedio\ndel bono\nproducción\n(C)"),
             ("M", "Promedio\nsubsidio\nfrontera\n(D)"),
-            ("N", "Promedio\ntrabajo\nextraord.\n(E)"),
-            ("O", "Promedio\npago\ndominical\n(F)"),
-            ("P", "Promedio\notros\nbonos\n(G)"),
-            ("Q", "Promedio\ntotal\nganado\n(H=A+..+G)"),
+            ("N", "Promedio\ntrabajo\nextraord. (E)"),
+            ("O", "Promedio\npago\ndominical (F)"),
+            ("P", "Promedio\notros\nbonos (G)"),
+            ("Q", "Promedio\ntotal ganado\n(H=A+..+G)"),
             ("R", "Meses\ntrabajados\n(I)"),
             ("S", "Total ganado\ndespués de\nduodécimas\n(J=H*I/12)"),
             ("T", "FIRMA DEL\nEMPLEADO")
         ]
-        ws.row_dimensions[9].height = 42
+        ws.row_dimensions[9].height = 48
         for col_l, text in th_list:
             cell = ws[f"{col_l}9"]
             cell.value = text
             cell.font = font_th
             cell.fill = fill_header
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = border_cell
             cell.border = border_cell
 
         # Llenar datos
@@ -3154,39 +3185,60 @@ class DocumentService:
 
         # Pie Legal de Firmas
         f_row = current_row + 4
+        thin_dark = Side(style='thin', color='000000')
+        border_underline = Border(bottom=thin_dark)
+
+        ws.row_dimensions[f_row].height = 20.0
+        ws.row_dimensions[f_row+1].height = 16.0
+
+        # Bloque 1: Representante Legal (Cols C a G)
         ws.merge_cells(f"C{f_row}:G{f_row}")
         ws[f"C{f_row}"] = rep_legal
         ws[f"C{f_row}"].font = font_h_bold
-        ws[f"C{f_row}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"C{f_row}"].alignment = Alignment(horizontal="center", vertical="bottom")
+        for col_c in ['C', 'D', 'E', 'F', 'G']:
+            ws[f"{col_c}{f_row}"].border = border_underline
 
         ws.merge_cells(f"C{f_row+1}:G{f_row+1}")
         ws[f"C{f_row+1}"] = "NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL"
         ws[f"C{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
-        ws[f"C{f_row+1}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"C{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
 
+        # Bloque 2: N° Documento de Identidad (Cols I a L)
         ws.merge_cells(f"I{f_row}:L{f_row}")
         ws[f"I{f_row}"] = rep_ci
         ws[f"I{f_row}"].font = font_h_bold
-        ws[f"I{f_row}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"I{f_row}"].alignment = Alignment(horizontal="center", vertical="bottom")
+        for col_c in ['I', 'J', 'K', 'L']:
+            ws[f"{col_c}{f_row}"].border = border_underline
 
         ws.merge_cells(f"I{f_row+1}:L{f_row+1}")
         ws[f"I{f_row+1}"] = "N° DE DOCUMENTO DE IDENTIDAD"
         ws[f"I{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
-        ws[f"I{f_row+1}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"I{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
 
+        # Bloque 3: Firma (Cols N a P)
         ws.merge_cells(f"N{f_row}:P{f_row}")
-        ws[f"N{f_row}"] = "____________________________"
-        ws[f"N{f_row}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"N{f_row}"] = ""
+        for col_c in ['N', 'O', 'P']:
+            ws[f"{col_c}{f_row}"].border = border_underline
 
         ws.merge_cells(f"N{f_row+1}:P{f_row+1}")
         ws[f"N{f_row+1}"] = "FIRMA"
         ws[f"N{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
-        ws[f"N{f_row+1}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"N{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
 
-        ws.merge_cells(f"R{f_row+1}:T{f_row+1}")
-        ws[f"R{f_row+1}"] = f"FECHA: Diciembre {anio}"
-        ws[f"R{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
-        ws[f"R{f_row+1}"].alignment = Alignment(horizontal="center", vertical="center")
+        # Bloque 4: Fecha (Cols R a T)
+        ws[f"R{f_row}"] = "FECHA:"
+        ws[f"R{f_row}"].font = Font(name="Arial", size=8, bold=True)
+        ws[f"R{f_row}"].alignment = Alignment(horizontal="right", vertical="bottom")
+
+        ws.merge_cells(f"S{f_row}:T{f_row}")
+        ws[f"S{f_row}"] = f"Diciembre {anio}"
+        ws[f"S{f_row}"].font = Font(name="Arial", size=8, bold=True)
+        ws[f"S{f_row}"].alignment = Alignment(horizontal="center", vertical="bottom")
+        for col_c in ['S', 'T']:
+            ws[f"{col_c}{f_row}"].border = border_underline
 
         xlsx_path = os.path.join(exports_dir, f"planilla_aguinaldos_{empresa_slug}_{anio}.xlsx")
         effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
@@ -3201,8 +3253,10 @@ class DocumentService:
     def _render_single_aguinaldo_papeleta(ws, start_row: int, slip_data: dict, index_num: int):
         """
         Dibuja una Papeleta de Aguinaldo individual (enmarcada) según la Imagen 2.
+        Totalmente simétrica, sin cortes, con N° Patronal y diseño institucional.
         """
         empresa = str(slip_data.get('empresa_nombre') or '').upper()
+        nro_patronal = str(slip_data.get('numero_patronal') or slip_data.get('tenant_nro_patronal') or '')
         anio = str(slip_data.get('anio') or datetime.now().year)
         internal_code = str(slip_data.get('internal_code') or '')
         emp_name = str(slip_data.get('nombre_completo') or slip_data.get('employee_name') or '').upper()
@@ -3218,16 +3272,17 @@ class DocumentService:
 
         # Fonts
         font_empresa = Font(name="Arial", size=10, bold=True)
+        font_patronal = Font(name="Arial", size=8.5, bold=True)
         font_papeleta_tag = Font(name="Arial", size=8.5, bold=True)
-        font_title_main = Font(name="Arial", size=12, bold=True, underline="single")
-        font_title_sub = Font(name="Arial", size=9, bold=True)
+        font_title_main = Font(name="Arial", size=11, bold=True, underline="single")
+        font_title_sub = Font(name="Arial", size=8.5, bold=True)
         font_lbl = Font(name="Arial", size=8.5, bold=True)
         font_val = Font(name="Arial", size=8.5)
-        font_liq_lbl = Font(name="Arial", size=9, bold=True)
-        font_liq_val = Font(name="Arial", size=9.5, bold=True)
-        font_lit = Font(name="Arial", size=8.5, italic=True)
+        font_liq_lbl = Font(name="Arial", size=8.5, bold=True)
+        font_liq_val = Font(name="Arial", size=9, bold=True)
+        font_lit = Font(name="Arial", size=8.0, italic=True)
 
-        thin = Side(style='thin', color='404040')
+        thin = Side(style='thin', color='000000')
         border_all = Border(left=thin, right=thin, top=thin, bottom=thin)
         border_bottom = Border(bottom=thin)
 
@@ -3240,6 +3295,11 @@ class DocumentService:
         ws[f"F{r1}"].font = font_papeleta_tag
         ws[f"F{r1}"].alignment = Alignment(horizontal="center", vertical="center")
         ws[f"F{r1}"].border = border_all
+
+        # Fila 1+1: N° Patronal
+        if nro_patronal:
+            ws[f"B{r1+1}"] = f"N° Patronal : {nro_patronal}"
+            ws[f"B{r1+1}"].font = font_patronal
 
         # Fila 2: Título Central
         r2 = start_row + 2
@@ -3268,31 +3328,41 @@ class DocumentService:
 
         ws[f"D{r4}"] = "NOMBRE :"
         ws[f"D{r4}"].font = font_lbl
+        ws.merge_cells(f"E{r4}:F{r4}")
         ws[f"E{r4}"] = emp_name
         ws[f"E{r4}"].font = font_val
 
-        # Fila 5: CARGO y MESES
+        # Fila 5: CARGO
         r5 = start_row + 6
         ws[f"B{r5}"] = "CARGO    :"
         ws[f"B{r5}"].font = font_lbl
+        ws.merge_cells(f"C{r5}:D{r5}")
         ws[f"C{r5}"] = cargo
         ws[f"C{r5}"].font = font_val
 
-        ws[f"E{r5}"] = f"NRO. DE MESES :  {meses}"
-        ws[f"E{r5}"].font = font_lbl
-        ws[f"E{r5}"].alignment = Alignment(horizontal="right", vertical="center")
-
-        # Fila 6: FECHA INGRESO
+        # Fila 6: FECHA INGRESO y NRO. DE MESES
         r6 = start_row + 7
         ws[f"B{r6}"] = "FECHA INGRESO :"
         ws[f"B{r6}"].font = font_lbl
         ws[f"C{r6}"] = fecha_ingreso
         ws[f"C{r6}"].font = font_val
 
-        # Cuadro de Líquido Pagable (Fila 13 aprox)
+        ws.merge_cells(f"E{r6}:F{r6}")
+        ws[f"E{r6}"] = f"NRO. DE MESES :  {meses}"
+        ws[f"E{r6}"].font = font_lbl
+        ws[f"E{r6}"].alignment = Alignment(horizontal="right", vertical="center")
+
+        # Línea divisoria inferior a los datos del empleado (exactamente como en Imagen 2)
+        r_div = start_row + 8
+        for col in ['B', 'C', 'D', 'E', 'F']:
+            ws[f"{col}{r_div}"].border = border_bottom
+
+        # Cuadro de Líquido Pagable (Fila 13)
         r_liq = start_row + 13
         ws[f"B{r_liq}"] = "LIQUIDO PAGABLE:"
         ws[f"B{r_liq}"].font = font_liq_lbl
+        ws[f"B{r_liq}"].alignment = Alignment(horizontal="center", vertical="center")
+
         ws[f"C{r_liq}"] = monto_fmt
         ws[f"C{r_liq}"].font = font_liq_val
         ws[f"C{r_liq}"].alignment = Alignment(horizontal="right", vertical="center")
@@ -3301,38 +3371,51 @@ class DocumentService:
             ws[f"{col}{r_liq}"].border = border_all
 
         ws.merge_cells(f"D{r_liq}:F{r_liq}")
-        ws[f"D{r_liq}"] = monto_literal
+        ws[f"D{r_liq}"] = f"{monto_literal} Bolivianos"
         ws[f"D{r_liq}"].font = font_lit
         ws[f"D{r_liq}"].alignment = Alignment(horizontal="left", vertical="center")
 
-        # Firmas al pie
-        r_sig = start_row + 17
-        ws[f"B{r_sig}"] = "____________________________________"
-        ws[f"B{r_sig}"].alignment = Alignment(horizontal="center", vertical="center")
+        # Firmas al pie (Fila 16 y 17)
+        r_sig = start_row + 16
+        for col in ['B', 'C']:
+            ws[f"{col}{r_sig}"].border = border_bottom
 
-        ws[f"E{r_sig}"] = empresa
-        ws[f"E{r_sig}"].font = font_empresa
-        ws[f"E{r_sig}"].alignment = Alignment(horizontal="center", vertical="center")
+        for col in ['E', 'F']:
+            ws[f"{col}{r_sig}"].border = border_bottom
 
+        ws.merge_cells(f"B{r_sig+1}:C{r_sig+1}")
         ws[f"B{r_sig+1}"] = "RECIBI CONFORME"
         ws[f"B{r_sig+1}"].font = font_lbl
-        ws[f"B{r_sig+1}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"B{r_sig+1}"].alignment = Alignment(horizontal="center", vertical="top")
 
-        # Marco exterior en recuadro completo
-        end_row = start_row + 19
+        ws.merge_cells(f"E{r_sig+1}:F{r_sig+1}")
+        ws[f"E{r_sig+1}"] = empresa
+        ws[f"E{r_sig+1}"].font = font_lbl
+        ws[f"E{r_sig+1}"].alignment = Alignment(horizontal="center", vertical="top")
+
+        # Marco exterior en recuadro completo simétrico y altura de fila explícita
+        end_row = start_row + 18
         for r in range(start_row, end_row + 1):
-            for c_idx, col in enumerate(['B', 'C', 'D', 'E', 'F']):
+            ws.row_dimensions[r].height = 15.5
+            for col in ['B', 'C', 'D', 'E', 'F']:
                 curr_cell = ws[f"{col}{r}"]
-                top_b = thin if r == start_row else curr_cell.border.top
-                bot_b = thin if r == end_row else curr_cell.border.bottom
-                left_b = thin if col == 'B' else curr_cell.border.left
-                right_b = thin if col == 'F' else curr_cell.border.right
-                curr_cell.border = Border(top=top_b, bottom=bot_b, left=left_b, right=right_b)
+                cur_b = curr_cell.border
+                top_side = thin if r == start_row else (cur_b.top if cur_b and cur_b.top and cur_b.top.style else None)
+                bot_side = thin if r == end_row else (cur_b.bottom if cur_b and cur_b.bottom and cur_b.bottom.style else None)
+                left_side = thin if col == 'B' else (cur_b.left if cur_b and cur_b.left and cur_b.left.style else None)
+                right_side = thin if col == 'F' else (cur_b.right if cur_b and cur_b.right and cur_b.right.style else None)
+
+                curr_cell.border = Border(
+                    top=top_side,
+                    bottom=bot_side,
+                    left=left_side,
+                    right=right_side
+                )
 
     @staticmethod
     def generate_aguinaldo_payslip(boleta_data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
         """
-        Genera una papeleta individual de aguinaldo o un talonario listo para impresión (2 por página).
+        Genera una papeleta individual de aguinaldo o un talonario listo para impresión (2 por página Carta).
         """
         exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "boletas_aguinaldo"))
         os.makedirs(exports_dir, exist_ok=True)
@@ -3351,7 +3434,8 @@ class DocumentService:
         ws.sheet_properties.pageSetUpPr.fitToPage = True
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 1
-        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.4, bottom=0.4)
+        ws.print_options.horizontalCentered = True
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.35, bottom=0.35)
 
         ws.column_dimensions['A'].width = 2.0
         ws.column_dimensions['B'].width = 16.0
@@ -3362,7 +3446,13 @@ class DocumentService:
 
         # Dibujar 2 copias idénticas en la misma hoja Carta vertical (Copia Empresa y Copia Empleado)
         DocumentService._render_single_aguinaldo_papeleta(ws, start_row=2, slip_data=boleta_data, index_num=1)
-        DocumentService._render_single_aguinaldo_papeleta(ws, start_row=24, slip_data=boleta_data, index_num=1)
+        ws.row_dimensions[21].height = 16.0
+        ws.merge_cells('B21:F21')
+        ws['B21'] = "- - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - -"
+        ws['B21'].font = Font(name="Arial", size=8.5, italic=True, color="666666")
+        ws['B21'].alignment = Alignment(horizontal='center', vertical='center')
+        ws.row_dimensions[22].height = 10.0
+        DocumentService._render_single_aguinaldo_papeleta(ws, start_row=23, slip_data=boleta_data, index_num=1)
 
         xlsx_path = os.path.join(exports_dir, f"papeleta_aguinaldo_{emp_slug}_{empresa_slug}_{anio}.xlsx")
         effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
@@ -3376,7 +3466,8 @@ class DocumentService:
     @staticmethod
     def generate_aguinaldo_payslips_batch(boletas_list: list[dict], output_format: str = "xlsx", schema_name: str = None) -> str:
         """
-        Genera el talonario completo de papeletas de aguinaldo de todos los empleados de la empresa (2 por hoja Carta).
+        Genera el talonario completo de papeletas de aguinaldo de todos los empleados de la empresa.
+        Cada empleado cuenta con su propia hoja conteniendo 2 copias idénticas (Copia Empleador y Copia Empleado).
         """
         exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "boletas_aguinaldo"))
         os.makedirs(exports_dir, exist_ok=True)
@@ -3388,17 +3479,18 @@ class DocumentService:
         wb = openpyxl.Workbook()
         wb.remove(wb.active) # Eliminar hoja por defecto
 
-        # Agrupar de 2 en 2 por cada hoja (Carta Portrait)
-        for i in range(0, len(boletas_list), 2):
-            page_num = (i // 2) + 1
-            ws = wb.create_sheet(title=f"Hoja {page_num}")
+        # Cada empleado en su propia hoja, con 2 copias (Copia Empresa y Copia Empleado) en la misma página Carta
+        for idx, slip in enumerate(boletas_list, start=1):
+            sheet_title = DocumentService._safe_sheet_title(f"Hoja {idx}")
+            ws = wb.create_sheet(title=sheet_title)
 
             ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
             ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
             ws.sheet_properties.pageSetUpPr.fitToPage = True
             ws.page_setup.fitToWidth = 1
             ws.page_setup.fitToHeight = 1
-            ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.4, bottom=0.4)
+            ws.print_options.horizontalCentered = True
+            ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.35, bottom=0.35)
 
             ws.column_dimensions['A'].width = 2.0
             ws.column_dimensions['B'].width = 16.0
@@ -3407,12 +3499,19 @@ class DocumentService:
             ws.column_dimensions['E'].width = 26.0
             ws.column_dimensions['F'].width = 14.0
 
-            slip1 = boletas_list[i]
-            DocumentService._render_single_aguinaldo_papeleta(ws, start_row=2, slip_data=slip1, index_num=i+1)
+            # Copia 1 (Superior)
+            DocumentService._render_single_aguinaldo_papeleta(ws, start_row=2, slip_data=slip, index_num=idx)
 
-            if i + 1 < len(boletas_list):
-                slip2 = boletas_list[i+1]
-                DocumentService._render_single_aguinaldo_papeleta(ws, start_row=24, slip_data=slip2, index_num=i+2)
+            # Separador / Guía de corte entre ambas copias del mismo empleado
+            ws.row_dimensions[21].height = 16.0
+            ws.merge_cells('B21:F21')
+            ws['B21'] = "- - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - -"
+            ws['B21'].font = Font(name="Arial", size=8.5, italic=True, color="666666")
+            ws['B21'].alignment = Alignment(horizontal='center', vertical='center')
+            ws.row_dimensions[22].height = 10.0
+
+            # Copia 2 (Inferior - del mismo empleado)
+            DocumentService._render_single_aguinaldo_papeleta(ws, start_row=23, slip_data=slip, index_num=idx)
 
         xlsx_path = os.path.join(exports_dir, f"talonario_aguinaldos_{empresa_slug}_{anio}.xlsx")
         effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
