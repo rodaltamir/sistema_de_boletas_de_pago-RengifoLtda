@@ -338,8 +338,18 @@ function InicioDashboardContent() {
   const complianceCount = complianceItems.filter(i => i.registered).length;
   const isComplianceComplete = complianceCount === complianceItems.length;
 
-  // Quick actions
+  // Quick actions reordered as requested
   const quickActions = [
+    {
+      title: "Directorio de Personal",
+      subtitle: `${data.total_employees} colaboradores activos`,
+      href: `/empleados?tenant=${tenantSchema}`,
+      icon: Users,
+      badge: Number(data.total_desvinculados || 0) > 0 ? `${data.total_desvinculados} retirados` : "100% activo",
+      badgeClass: "bg-teal-50 text-teal-700 border-teal-200",
+      accent: "from-teal-600 to-emerald-600",
+      borderHover: "hover:border-teal-400"
+    },
     {
       title: "Planillas de Sueldos",
       subtitle: data.latest_payroll
@@ -355,16 +365,6 @@ function InicioDashboardContent() {
       borderHover: "hover:border-blue-400"
     },
     {
-      title: "Directorio de Personal",
-      subtitle: `${data.total_employees} colaboradores activos`,
-      href: `/empleados?tenant=${tenantSchema}`,
-      icon: Users,
-      badge: Number(data.total_desvinculados || 0) > 0 ? `${data.total_desvinculados} retirados` : "100% activo",
-      badgeClass: "bg-teal-50 text-teal-700 border-teal-200",
-      accent: "from-teal-600 to-emerald-600",
-      borderHover: "hover:border-teal-400"
-    },
-    {
       title: "Boletas",
       subtitle: "Papeletas de pago mensual y de aguinaldo",
       href: `/boletas?tenant=${tenantSchema}`,
@@ -375,16 +375,6 @@ function InicioDashboardContent() {
       borderHover: "hover:border-purple-400"
     },
     {
-      title: "Prefiniquitos & Liquidación",
-      subtitle: "Cálculo según Ley General del Trabajo",
-      href: `/prefiniquitos?tenant=${tenantSchema}`,
-      icon: Briefcase,
-      badge: `${data.total_prefiniquitos || 0} emitidos`,
-      badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
-      accent: "from-amber-600 to-orange-600",
-      borderHover: "hover:border-amber-400"
-    },
-    {
       title: "Asientos Contables",
       subtitle: "Comprobantes de nómina y cargas patronales",
       href: `/asientos?tenant=${tenantSchema}`,
@@ -393,6 +383,16 @@ function InicioDashboardContent() {
       badgeClass: "bg-teal-50 text-teal-700 border-teal-200",
       accent: "from-emerald-600 to-teal-600",
       borderHover: "hover:border-emerald-400"
+    },
+    {
+      title: "Prefiniquitos y Liquidaciones",
+      subtitle: "Cálculo según Ley General del Trabajo",
+      href: `/prefiniquitos?tenant=${tenantSchema}`,
+      icon: Briefcase,
+      badge: `${data.total_prefiniquitos || 0} emitidos`,
+      badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
+      accent: "from-amber-600 to-orange-600",
+      borderHover: "hover:border-amber-400"
     }
   ];
 

@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { getApiUrl } from "@/utils/api";
+import { getStoredPeriod, setStoredPeriod } from "@/utils/period";
 
 const MONTHS = [
   { id: 1, name: "Enero" },
@@ -275,8 +276,28 @@ function AsientosPageContent() {
   const router = useRouter();
   const tenantSchema = searchParams.get("tenant");
 
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().month;
+    }
+    return new Date().getMonth() + 1;
+  });
+  const [selectedYear, setSelectedYear] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().year;
+    }
+    return new Date().getFullYear();
+  });
+
+  const handleMonthChange = (newMonth: number) => {
+    setSelectedMonth(newMonth);
+    setStoredPeriod(newMonth, selectedYear, tenantSchema);
+  };
+
+  const handleYearChange = (newYear: number) => {
+    setSelectedYear(newYear);
+    setStoredPeriod(selectedMonth, newYear, tenantSchema);
+  };
   const [sheetData, setSheetData] = useState<AccountingSheetData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -330,6 +351,14 @@ function AsientosPageContent() {
   const [newDeptName, setNewDeptName] = useState("");
   const [newDeptDesc, setNewDeptDesc] = useState("");
   const [savingNewDept, setSavingNewDept] = useState(false);
+
+  useEffect(() => {
+    if (tenantSchema) {
+      const p = getStoredPeriod(tenantSchema);
+      setSelectedMonth(p.month);
+      setSelectedYear(p.year);
+    }
+  }, [tenantSchema]);
 
   useEffect(() => {
     if (!tenantSchema) {
@@ -1096,7 +1125,7 @@ function AsientosPageContent() {
               <Calendar className="w-4 h-4 text-slate-500 ml-2" />
               <select
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                onChange={(e) => handleMonthChange(Number(e.target.value))}
                 className="bg-transparent text-sm font-semibold text-slate-800 focus:outline-none cursor-pointer pr-2"
               >
                 {MONTHS.map((m) => (
@@ -1109,7 +1138,7 @@ function AsientosPageContent() {
               <input
                 type="number"
                 value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                onChange={(e) => handleYearChange(Number(e.target.value))}
                 className="w-16 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none pl-1"
                 min="2020"
                 max="2035"
@@ -2546,7 +2575,7 @@ function AsientosPageContent() {
                   <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-1 text-xs">
                     <button
                       onClick={() => {
-                        setSelectedMonth(m.month);
+                        handleMonthChange(m.month);
                         setActiveTab("guiado");
                       }}
                       className="flex-1 py-1.5 px-2 bg-blue-800 hover:bg-blue-900 text-white rounded-lg font-bold text-center transition flex items-center justify-center gap-1"
@@ -2560,7 +2589,7 @@ function AsientosPageContent() {
                       <>
                         <button
                           onClick={() => {
-                            setSelectedMonth(m.month);
+                            handleMonthChange(m.month);
                             setActiveTab("oficial");
                           }}
                           className="py-1.5 px-2.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-lg font-semibold transition"

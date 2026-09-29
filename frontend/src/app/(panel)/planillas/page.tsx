@@ -28,6 +28,7 @@ import {
   ChevronUp
 } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
+import { getStoredPeriod, setStoredPeriod } from "@/utils/period";
 
 // --- INTERFACES: SUELDOS Y SALARIOS (EXISTENTE) ---
 interface Payslip {
@@ -202,10 +203,30 @@ function PlanillasPageContent() {
   // ==========================================
   // ESTADO Y MÉTODOS: PLANILLA DE SUELDOS (INTACTA)
   // ==========================================
-  const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
-  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [month, setMonth] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().month;
+    }
+    return new Date().getMonth() + 1;
+  });
+  const [year, setYear] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().year;
+    }
+    return new Date().getFullYear();
+  });
   const [payroll, setPayroll] = useState<PayrollData | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const handleMonthChange = (newMonth: number) => {
+    setMonth(newMonth);
+    setStoredPeriod(newMonth, year, tenantSchema);
+  };
+
+  const handleYearChange = (newYear: number) => {
+    setYear(newYear);
+    setStoredPeriod(month, newYear, tenantSchema);
+  };
 
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
   const [viewMode, setViewMode] = useState<'boleta' | 'edit' | null>(null);
@@ -255,6 +276,19 @@ function PlanillasPageContent() {
         return String(codeA).localeCompare(String(codeB));
       });
   }, [payroll, month, year]);
+
+  const totalsSueldos = React.useMemo(() => {
+    if (!sortedPayslips.length) {
+      return { haber_basico: 0, bono_antiguedad: 0, total_ganado: 0, total_descuentos: 0, liquido_pagable: 0 };
+    }
+    return sortedPayslips.reduce((acc, slip) => ({
+      haber_basico: acc.haber_basico + Number(slip.haber_basico || 0),
+      bono_antiguedad: acc.bono_antiguedad + Number(slip.bono_antiguedad || 0),
+      total_ganado: acc.total_ganado + Number(slip.total_ganado || 0),
+      total_descuentos: acc.total_descuentos + Number(slip.total_descuentos || 0),
+      liquido_pagable: acc.liquido_pagable + Number(slip.liquido_pagable || 0),
+    }), { haber_basico: 0, bono_antiguedad: 0, total_ganado: 0, total_descuentos: 0, liquido_pagable: 0 });
+  }, [sortedPayslips]);
 
   const fetchPayroll = async () => {
     if (!tenantSchema) return;
@@ -362,9 +396,28 @@ function PlanillasPageContent() {
 
   // ==========================================
   // ESTADO Y MÉTODOS: PLANILLA PATRONAL (NUEVA)
-  // ==========================================
-  const [patronalMonth, setPatronalMonth] = useState<number>(new Date().getMonth() + 1);
-  const [patronalYear, setPatronalYear] = useState<number>(new Date().getFullYear());
+  const [patronalMonth, setPatronalMonth] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().month;
+    }
+    return new Date().getMonth() + 1;
+  });
+  const [patronalYear, setPatronalYear] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().year;
+    }
+    return new Date().getFullYear();
+  });
+
+  const handlePatronalMonthChange = (newMonth: number) => {
+    setPatronalMonth(newMonth);
+    setStoredPeriod(newMonth, patronalYear, tenantSchema);
+  };
+
+  const handlePatronalYearChange = (newYear: number) => {
+    setPatronalYear(newYear);
+    setStoredPeriod(patronalMonth, newYear, tenantSchema);
+  };
   const [patronalData, setPatronalData] = useState<PatronalPayrollData | null>(null);
   const [patronalLoading, setPatronalLoading] = useState(false);
   const [selectedPatronalSlip, setSelectedPatronalSlip] = useState<PatronalDetail | null>(null);
@@ -468,7 +521,17 @@ function PlanillasPageContent() {
   // ==========================================
   // ESTADO Y MÉTODOS: PLANILLA DE AGUINALDOS (NUEVA)
   // ==========================================
-  const [aguinaldoYear, setAguinaldoYear] = useState<number>(new Date().getFullYear());
+  const [aguinaldoYear, setAguinaldoYear] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().year;
+    }
+    return new Date().getFullYear();
+  });
+
+  const handleAguinaldoYearChange = (newYear: number) => {
+    setAguinaldoYear(newYear);
+    setStoredPeriod(month, newYear, tenantSchema);
+  };
   const [aguinaldoData, setAguinaldoData] = useState<AguinaldoPayrollData | null>(null);
   const [aguinaldoLoading, setAguinaldoLoading] = useState(false);
   const [selectedAguinaldoSlip, setSelectedAguinaldoSlip] = useState<AguinaldoSlip | null>(null);
@@ -586,16 +649,39 @@ function PlanillasPageContent() {
     window.open(url, '_blank');
   };
 
-  // Carga inicial según pestaña
+  // Sincronizar período guardado al inicializar o cambiar de tenant
   useEffect(() => {
-    if (activeTab === 'sueldos' && !payroll) {
+    if (tenantSchema) {
+      const p = getStoredPeriod(tenantSchema);
+      setMonth(p.month);
+      setYear(p.year);
+      setPatronalMonth(p.month);
+      setPatronalYear(p.year);
+      setAguinaldoYear(p.year);
+    }
+  }, [tenantSchema]);
+
+  // Carga reactiva de datos al cambiar pestaña o período
+  useEffect(() => {
+    if (!tenantSchema) return;
+    if (activeTab === 'sueldos') {
       fetchPayroll();
-    } else if (activeTab === 'patronal' && !patronalData) {
+    }
+  }, [activeTab, tenantSchema, month, year]);
+
+  useEffect(() => {
+    if (!tenantSchema) return;
+    if (activeTab === 'patronal') {
       fetchPatronal();
-    } else if (activeTab === 'aguinaldos' && !aguinaldoData) {
+    }
+  }, [activeTab, tenantSchema, patronalMonth, patronalYear]);
+
+  useEffect(() => {
+    if (!tenantSchema) return;
+    if (activeTab === 'aguinaldos') {
       fetchAguinaldo();
     }
-  }, [activeTab]);
+  }, [activeTab, tenantSchema, aguinaldoYear]);
 
   return (
     <motion.div 
@@ -659,7 +745,7 @@ function PlanillasPageContent() {
             <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
               <select 
                 value={month} 
-                onChange={(e) => setMonth(Number(e.target.value))}
+                onChange={(e) => handleMonthChange(Number(e.target.value))}
                 className="bg-slate-50 border-none outline-none text-slate-900 font-semibold px-4 py-2 rounded-xl focus:ring-2 focus:ring-teal-500"
               >
                 {MONTHS.map((m, i) => (
@@ -669,7 +755,7 @@ function PlanillasPageContent() {
               <input 
                 type="number" 
                 value={year}
-                onChange={(e) => setYear(Number(e.target.value))}
+                onChange={(e) => handleYearChange(Number(e.target.value))}
                 className="w-24 bg-slate-50 border-none outline-none text-slate-900 font-semibold px-4 py-2 rounded-xl focus:ring-2 focus:ring-teal-500"
               />
               <button 
@@ -686,17 +772,22 @@ function PlanillasPageContent() {
           {payroll && (
             <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col">
               <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <h2 className="font-bold text-slate-900">Planilla Correspondiente al Mes de {MONTHS[payroll.month-1].toUpperCase()} {payroll.year}</h2>
-                  {payroll.is_closed ? (
-                    <span className="bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm">
-                      <CheckCircle className="w-4 h-4 text-emerald-400" /> Mes Cerrado (Bloqueado)
-                    </span>
-                  ) : (
-                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm">
-                      <Unlock className="w-4 h-4 text-emerald-600" /> Mes Abierto (En Edición)
-                    </span>
-                  )}
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-3">
+                    <h2 className="font-bold text-slate-900 text-base md:text-lg">PLANILLA DE SUELDOS Y SALARIOS</h2>
+                    {payroll.is_closed ? (
+                      <span className="bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm">
+                        <CheckCircle className="w-4 h-4 text-emerald-400" /> Mes Cerrado (Bloqueado)
+                      </span>
+                    ) : (
+                      <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm">
+                        <Unlock className="w-4 h-4 text-emerald-600" /> Mes Abierto (En Edición)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                    (Expresado en Bolivianos) — Correspondiente al Mes de {MONTHS[payroll.month-1].toUpperCase()} {payroll.year}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
                    {payroll.is_closed ? (
@@ -727,17 +818,71 @@ function PlanillasPageContent() {
                    </button>
                 </div>
               </div>
+
+              {/* Tarjetas Resumen de Planilla de Sueldos y Totales */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-teal-50/40 border-b border-teal-100">
+                <div className="bg-white p-3.5 rounded-xl border border-teal-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Total Líquido Pagable</span>
+                    <div className="text-xl font-black text-emerald-700 mt-0.5">
+                      {formatBs(totalsSueldos.liquido_pagable)} Bs.
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-teal-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Total Ganado Bruto</span>
+                    <div className="text-xl font-black text-teal-800 mt-0.5">
+                      {formatBs(totalsSueldos.total_ganado)} Bs.
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center font-bold">
+                    <Plus className="w-5 h-5 text-teal-600" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-teal-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Total Descuentos Ley</span>
+                    <div className="text-xl font-black text-rose-700 mt-0.5">
+                      {formatBs(totalsSueldos.total_descuentos)} Bs.
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-800 flex items-center justify-center font-bold">
+                    <Minus className="w-5 h-5 text-rose-600" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-teal-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Haber Básico Base</span>
+                    <div className="text-xl font-black text-slate-800 mt-0.5">
+                      {formatBs(totalsSueldos.haber_basico)} Bs.
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-sm">
+                    {sortedPayslips.length} Emp.
+                  </div>
+                </div>
+              </div>
+
               <div className="overflow-x-auto w-full pb-4 custom-scrollbar">
                 <table className="w-full text-sm text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-900 text-white border-b border-slate-700">
                       <th className="p-4 font-semibold text-center w-12 rounded-tl-xl">N°</th>
                       <th className="p-4 font-semibold">Empleado</th>
-                      <th className="p-4 font-semibold hidden md:table-cell">Cargo</th>
-                      <th className="p-4 font-semibold text-right text-teal-400">Total Ganado</th>
-                      <th className="p-4 font-semibold text-right text-rose-400">Total Descuentos</th>
-                      <th className="p-4 font-semibold text-right text-emerald-400 rounded-tr-xl">Líquido Pagable</th>
-                      <th className="p-4 font-semibold text-center">Acciones</th>
+                      <th className="p-4 font-semibold hidden lg:table-cell">Cargo</th>
+                      <th className="p-4 font-semibold text-right text-slate-200 whitespace-nowrap">Haber Básico</th>
+                      <th className="p-4 font-semibold text-right text-slate-200 whitespace-nowrap">Bono Antigüedad</th>
+                      <th className="p-4 font-semibold text-right text-teal-400 whitespace-nowrap">Total Ganado</th>
+                      <th className="p-4 font-semibold text-right text-rose-400 whitespace-nowrap">Total Descuentos</th>
+                      <th className="p-4 font-semibold text-right text-emerald-400 whitespace-nowrap">Líquido Pagable</th>
+                      <th className="p-4 font-semibold text-center rounded-tr-xl w-28">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -761,29 +906,33 @@ function PlanillasPageContent() {
                               </div>
                               <p className="text-xs text-slate-500 mt-0.5">CI: {slip.employee_ci ? slip.employee_ci.replace(/\s*-\s*/, ' ') : ''}</p>
                             </td>
-                            <td className="p-4 text-slate-600 hidden md:table-cell">{slip.employee_cargo}</td>
-                            <td className="p-4 text-right font-bold text-teal-700">{formatBs(slip.total_ganado)}</td>
-                            <td className="p-4 text-right font-bold text-rose-600">{formatBs(slip.total_descuentos)}</td>
-                            <td className="p-4 text-right font-black text-emerald-600 text-base">{formatBs(slip.liquido_pagable)}</td>
-                            <td className="p-4 text-center flex justify-center gap-2">
-                              {!payroll.is_closed ? (
-                                <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(slip); }} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-600 hover:text-white transition-colors" title="Editar Valores">
-                                  <Edit className="w-4 h-4" />
+                            <td className="p-4 text-slate-600 hidden lg:table-cell">{slip.employee_cargo}</td>
+                            <td className="p-4 text-right font-semibold text-slate-800 whitespace-nowrap">{formatBs(slip.haber_basico)}</td>
+                            <td className="p-4 text-right font-semibold text-slate-800 whitespace-nowrap">{formatBs(slip.bono_antiguedad)}</td>
+                            <td className="p-4 text-right font-bold text-teal-700 whitespace-nowrap">{formatBs(slip.total_ganado)}</td>
+                            <td className="p-4 text-right font-bold text-rose-600 whitespace-nowrap">{formatBs(slip.total_descuentos)}</td>
+                            <td className="p-4 text-right font-black text-emerald-600 text-base whitespace-nowrap">{formatBs(slip.liquido_pagable)}</td>
+                            <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex justify-center gap-1.5">
+                                {!payroll.is_closed ? (
+                                  <button onClick={() => handleOpenEdit(slip)} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-600 hover:text-white transition-colors" title="Editar Valores">
+                                    <Edit className="w-4 h-4" />
+                                  </button>
+                                ) : (
+                                  <span className="p-2 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed" title="Mes cerrado / ineditable">
+                                    <Lock className="w-4 h-4" />
+                                  </span>
+                                )}
+                                <button onClick={() => toggleExpand(slip.id)} className={`p-2 rounded-lg transition-colors ${isExpanded ? 'bg-slate-800 text-white' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`} title={isExpanded ? 'Colapsar Detalles' : 'Ver Detalles'}>
+                                  <Eye className="w-4 h-4" />
                                 </button>
-                              ) : (
-                                <span className="p-2 text-slate-400 bg-slate-100 rounded-lg cursor-not-allowed" title="Mes cerrado / ineditable">
-                                  <Lock className="w-4 h-4" />
-                                </span>
-                              )}
-                              <button onClick={(e) => { e.stopPropagation(); toggleExpand(slip.id); }} className={`p-2 rounded-lg transition-colors ${isExpanded ? 'bg-slate-800 text-white' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`} title="Ver Detalles">
-                                <Eye className="w-4 h-4" />
-                              </button>
+                              </div>
                             </td>
                           </tr>
                           <AnimatePresence>
                             {isExpanded && (
                               <tr>
-                                <td colSpan={7} className="p-0 bg-slate-50 border-b-2 border-slate-200">
+                                <td colSpan={9} className="p-0 bg-slate-50 border-b-2 border-slate-200">
                                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                                     <div className="p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
                                       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
@@ -796,7 +945,7 @@ function PlanillasPageContent() {
                                       </div>
                                       
                                       <div className="bg-teal-50/30 p-5 rounded-2xl shadow-sm border border-teal-100">
-                                        <h4 className="text-teal-800 font-bold mb-4 flex items-center gap-2"><Plus className="w-5 h-5 text-teal-500" /> Ingresos</h4>
+                                        <h4 className="text-teal-800 font-bold mb-4 flex items-center gap-2"><Plus className="w-5 h-5 text-teal-500" /> Ingresos Adicionales</h4>
                                         <div className="space-y-2 text-sm">
                                           <div className="flex justify-between border-b border-teal-100/50 pb-1"><span className="text-teal-700/80">Haber Básico:</span><span className="font-semibold text-teal-900">{formatBs(slip.haber_basico)}</span></div>
                                           <div className="flex justify-between border-b border-teal-100/50 pb-1"><span className="text-teal-700/80">Bono Antigüedad:</span><span className="font-semibold text-teal-900">{formatBs(slip.bono_antiguedad)}</span></div>
@@ -806,9 +955,9 @@ function PlanillasPageContent() {
                                       </div>
 
                                       <div className="bg-rose-50/30 p-5 rounded-2xl shadow-sm border border-rose-100">
-                                        <h4 className="text-rose-800 font-bold mb-4 flex items-center gap-2"><Minus className="w-5 h-5 text-rose-500" /> Descuentos</h4>
+                                        <h4 className="text-rose-800 font-bold mb-4 flex items-center gap-2"><Minus className="w-5 h-5 text-rose-500" /> Descuentos Detallados</h4>
                                         <div className="space-y-2 text-sm">
-                                          <div className="flex justify-between border-b border-rose-100/50 pb-1"><span className="text-rose-700/80">AFP (12.71%):</span><span className="font-semibold text-rose-900">{formatBs(slip.aporte_gestora)}</span></div>
+                                          <div className="flex justify-between border-b border-rose-100/50 pb-1"><span className="text-rose-700/80">AFP / Gestora (12.71%):</span><span className="font-semibold text-rose-900">{formatBs(slip.aporte_gestora)}</span></div>
                                           <div className="flex justify-between border-b border-rose-100/50 pb-1"><span className="text-rose-700/80">RC-IVA:</span><span className="font-semibold text-rose-900">{formatBs(slip.rc_iva)}</span></div>
                                           <div className="flex justify-between border-b border-rose-100/50 pb-1"><span className="text-rose-700/80">Anticipos:</span><span className="font-semibold text-rose-900">{formatBs(slip.anticipos)}</span></div>
                                           <div className="flex justify-between pb-1"><span className="text-rose-700/80">Otros Desc.:</span><span className="font-semibold text-rose-900">{formatBs(slip.otros_descuentos)}</span></div>
@@ -825,10 +974,39 @@ function PlanillasPageContent() {
                     })}
                     {payroll.payslips.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="p-12 text-center text-slate-500 font-medium">No hay empleados registrados para este periodo.</td>
+                        <td colSpan={9} className="p-12 text-center text-slate-500 font-medium">No hay empleados registrados para este periodo.</td>
                       </tr>
                     )}
                   </tbody>
+                  {/* Fila de TOTALES (Excel Style) */}
+                  <tfoot>
+                    <tr className="bg-[#2C3E50] text-white font-extrabold text-xs border-t-2 border-slate-700">
+                      <td colSpan={2} className="p-3.5 text-center uppercase tracking-widest text-sm font-black lg:hidden">
+                        T O T A L E S
+                      </td>
+                      <td colSpan={3} className="p-3.5 text-center uppercase tracking-widest text-sm font-black hidden lg:table-cell">
+                        T O T A L E S
+                      </td>
+                      <td className="p-3.5 text-right font-black text-slate-100 whitespace-nowrap">
+                        {formatBs(totalsSueldos.haber_basico)}
+                      </td>
+                      <td className="p-3.5 text-right font-black text-slate-100 whitespace-nowrap">
+                        {formatBs(totalsSueldos.bono_antiguedad)}
+                      </td>
+                      <td className="p-3.5 text-right font-black text-teal-300 text-sm whitespace-nowrap">
+                        {formatBs(totalsSueldos.total_ganado)}
+                      </td>
+                      <td className="p-3.5 text-right font-black text-rose-300 text-sm whitespace-nowrap">
+                        {formatBs(totalsSueldos.total_descuentos)}
+                      </td>
+                      <td className="p-3.5 text-right font-black text-emerald-300 text-base whitespace-nowrap">
+                        {formatBs(totalsSueldos.liquido_pagable)}
+                      </td>
+                      <td className="p-3.5 text-center text-[11px] text-slate-300 font-bold whitespace-nowrap">
+                        {sortedPayslips.length} Colab.
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
@@ -853,7 +1031,7 @@ function PlanillasPageContent() {
             <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
               <select 
                 value={patronalMonth} 
-                onChange={(e) => setPatronalMonth(Number(e.target.value))}
+                onChange={(e) => handlePatronalMonthChange(Number(e.target.value))}
                 className="bg-slate-50 border-none outline-none text-slate-900 font-semibold px-4 py-2 rounded-xl focus:ring-2 focus:ring-teal-500"
               >
                 {MONTHS.map((m, i) => (
@@ -863,7 +1041,7 @@ function PlanillasPageContent() {
               <input 
                 type="number" 
                 value={patronalYear}
-                onChange={(e) => setPatronalYear(Number(e.target.value))}
+                onChange={(e) => handlePatronalYearChange(Number(e.target.value))}
                 className="w-24 bg-slate-50 border-none outline-none text-slate-900 font-semibold px-4 py-2 rounded-xl focus:ring-2 focus:ring-teal-500"
               />
               <button 
@@ -882,10 +1060,10 @@ function PlanillasPageContent() {
               {/* Header Info Documento */}
               <div className="p-6 border-b border-slate-100 bg-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">{patronalData.tenant_name}</h3>
-                  <p className="text-xs text-slate-500">{patronalData.tenant_ciudad}</p>
-                  <p className="text-sm font-semibold text-teal-800 mt-1">
-                    Planilla Patronal Correspondiente al mes de {MONTHS[patronalData.month - 1]} {patronalData.year}
+                  <h3 className="text-lg font-bold text-slate-900 uppercase">PLANILLA PATRONAL</h3>
+                  <p className="text-xs font-semibold text-slate-500">(Expresado en Bolivianos)</p>
+                  <p className="text-xs font-medium text-slate-600 mt-1">
+                    {patronalData.tenant_name} | {patronalData.tenant_ciudad} — Correspondiente al mes de {MONTHS[patronalData.month - 1]} {patronalData.year}
                   </p>
                 </div>
                 <div className="flex flex-col md:items-end gap-2">
@@ -908,19 +1086,19 @@ function PlanillasPageContent() {
               <div className="overflow-x-auto w-full pb-4 custom-scrollbar">
                 <table className="w-full text-xs text-left border-collapse min-w-full">
                   <thead>
-                    <tr className="bg-[#7E4842] text-white border-b border-[#6A3C37]">
-                      <th className="p-3 text-center w-10">No</th>
+                    <tr className="bg-[#2C3E50] text-white border-b border-slate-700">
+                      <th className="p-3 text-center w-10">N°</th>
                       <th className="p-3">NOMBRES Y APELLIDOS<br/><span className="text-[10px] font-normal opacity-80">CARGO</span></th>
                       <th className="p-3 text-right">TOTAL<br/>GANADO</th>
                       <th className="p-3 text-right">CNS<br/>10%</th>
                       <th className="p-3 text-right">AFP's<br/>1,71%</th>
                       <th className="p-3 text-right">FONVI<br/>2%</th>
                       <th className="p-3 text-right">APS<br/>3.5%</th>
-                      <th className="p-3 text-right bg-[#6E3C36] font-bold">TOTAL<br/>APORTES</th>
-                      <th className="p-3 text-right">PROVISÓN<br/>AGUINALDO</th>
-                      <th className="p-3 text-right">PROVISÓN<br/>INDEMNIZ</th>
-                      <th className="p-3 text-right bg-[#6E3C36] font-bold">TOTAL<br/>PROVISIONES</th>
-                      <th className="p-3 text-right bg-[#5A2C27] font-bold text-amber-200">TOTAL CARGA<br/>PATRONAL</th>
+                      <th className="p-3 text-right bg-[#1E2B37] font-bold">TOTAL<br/>APORTES</th>
+                      <th className="p-3 text-right">PROVISIÓN<br/>AGUINALDO</th>
+                      <th className="p-3 text-right">PROVISIÓN<br/>INDEMNIZACIÓN</th>
+                      <th className="p-3 text-right bg-[#1E2B37] font-bold">TOTAL<br/>PROVISIONES</th>
+                      <th className="p-3 text-right bg-[#1A252F] font-bold text-emerald-300">TOTAL CARGA<br/>PATRONAL</th>
                       <th className="p-3 text-center">Acciones</th>
                     </tr>
                   </thead>
@@ -1002,7 +1180,7 @@ function PlanillasPageContent() {
               <input 
                 type="number" 
                 value={aguinaldoYear}
-                onChange={(e) => setAguinaldoYear(Number(e.target.value))}
+                onChange={(e) => handleAguinaldoYearChange(Number(e.target.value))}
                 className="w-28 bg-slate-50 border-none outline-none text-slate-900 font-semibold px-4 py-2 rounded-xl focus:ring-2 focus:ring-teal-500"
               />
               <button 
@@ -1035,7 +1213,9 @@ function PlanillasPageContent() {
                     <span className="font-extrabold text-black">N° DE EMPLEADOR (Caja de Salud):</span>{" "}
                     <span className="font-bold text-black">{aguinaldoData.tenant_nro_patronal || "350-1-2177"}</span>
                   </div>
-                  <p className="text-xs font-black text-black uppercase mt-2 tracking-wide">
+                  <h3 className="text-base font-bold text-black uppercase mt-2">PLANILLA DE PAGO DE AGUINALDO DE NAVIDAD</h3>
+                  <p className="text-xs font-semibold text-slate-600">(Expresado en Bolivianos)</p>
+                  <p className="text-xs font-black text-black uppercase mt-1 tracking-wide">
                     CORRESPONDIENTE AL MES DE DICIEMBRE DE {aguinaldoData.year}
                   </p>
                 </div>

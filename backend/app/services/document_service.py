@@ -369,15 +369,25 @@ class DocumentService:
         hb = float(boleta_data.get('haber_basico', 0) or 0)
         ba = float(boleta_data.get('bono_antiguedad', 0) or 0)
         bp = float(boleta_data.get('bono_produccion', 0) or 0)
+        sub_frontera = float(boleta_data.get('subsidio_frontera', 0) or 0)
+        he = float(boleta_data.get('trabajo_extraordinario', 0) or 0)
+        dom = float(boleta_data.get('pago_dominical', 0) or 0)
         sub_nat = float(boleta_data.get('subsidio_natalidad', 0) or 0)
-        otros_ing = float(boleta_data.get('otros_bonos', 0) or 0) + float(boleta_data.get('trabajo_extraordinario', 0) or 0) + float(boleta_data.get('pago_dominical', 0) or 0) + float(boleta_data.get('subsidio_frontera', 0) or 0)
-        if otros_ing == 0:
-            otros_ing = float(boleta_data.get('otros_ingresos', 0) or 0) - bp - sub_nat
-            if otros_ing < 0: otros_ing = 0.0
+        otros_bonos = float(boleta_data.get('otros_bonos', 0) or 0)
+        if bp == 0 and sub_frontera == 0 and he == 0 and dom == 0 and otros_bonos == 0:
+            otros_ing_fallback = float(boleta_data.get('otros_ingresos', 0) or 0)
+            if otros_ing_fallback > 0:
+                otros_bonos = otros_ing_fallback
 
         total_ganado = float(boleta_data.get('total_ganado', 0) or 0)
 
-        gestora = float(boleta_data.get('aporte_gestora', 0) or 0)
+        tot_gestora = float(boleta_data.get('aporte_gestora', 0) or 0)
+        aporte_solidario = round(total_ganado * 0.005, 2)
+        gestora_publica = round(tot_gestora - aporte_solidario, 2)
+        if gestora_publica < 0:
+            gestora_publica = tot_gestora
+            aporte_solidario = 0.0
+
         rc_iva = float(boleta_data.get('rc_iva', 0) or 0)
         anticipos = float(boleta_data.get('anticipos', 0) or 0)
         otros_des = float(boleta_data.get('otros_descuentos', 0) or 0)
@@ -388,16 +398,51 @@ class DocumentService:
         decimal = int(round((liquido - entero) * 100))
         literal = DocumentService._numero_a_letras(entero)
 
-        items_detalle = [
-            ("Sueldo Básico", hb, "Aporte Gestora (10.5%)", gestora),
-            ("Bono de Antigüedad", ba, "R.C. - I.V.A.", rc_iva),
-            ("Subsidio de Natalidad", sub_nat, "Anticipos", anticipos),
-            ("Bono de Producción", bp, "Otros Descuentos", otros_des),
-            ("Otros Ingresos / Bonos", otros_ing, "", None),
-        ]
+        # Construir listas dinámicas: solo incluir ingresos y descuentos que NO sean cero
+        ingresos_list = []
+        ingresos_list.append(("Sueldo Básico", hb))
+        if ba > 0:
+            ingresos_list.append(("Bono de Antigüedad", ba))
+        if bp > 0:
+            ingresos_list.append(("Bono de Producción", bp))
+        if sub_frontera > 0:
+            ingresos_list.append(("Subsidio de Frontera", sub_frontera))
+        if he > 0:
+            ingresos_list.append(("Trabajo Extraordinario", he))
+        if dom > 0:
+            ingresos_list.append(("Pago Dominical", dom))
+        if sub_nat > 0:
+            ingresos_list.append(("Subsidio de Natalidad", sub_nat))
+        if otros_bonos > 0:
+            ingresos_list.append(("Otros Ingresos / Bonos", otros_bonos))
 
-        def _render_boleta(start_r: int, copia_num: int = 1):
-            end_r = start_r + 18  # 19 filas por boleta
+        descuentos_list = []
+        if gestora_publica > 0:
+            descuentos_list.append(("Aporte Gestora Pública", gestora_publica))
+        if aporte_solidario > 0:
+            descuentos_list.append(("Aporte Solidario Asegurado", aporte_solidario))
+        if rc_iva > 0:
+            descuentos_list.append(("R.C. - I.V.A.", rc_iva))
+        if anticipos > 0:
+            descuentos_list.append(("Anticipo", anticipos))
+        if otros_des > 0:
+            descuentos_list.append(("Otros Descuentos", otros_des))
+
+        num_detalles = max(len(ingresos_list), len(descuentos_list), 2)
+        items_detalle = []
+        for i in range(num_detalles):
+            ing_nom, ing_val = ingresos_list[i] if i < len(ingresos_list) else ("", None)
+            desc_nom, desc_val = descuentos_list[i] if i < len(descuentos_list) else ("", None)
+            items_detalle.append((ing_nom, ing_val, desc_nom, desc_val))
+
+        def _render_boleta(start_r: int, copia_num: int = 1) -> int:
+            num_filas = len(items_detalle)
+            r_tot = start_r + 8 + num_filas
+            r_liq = r_tot + 1
+            r_space = r_tot + 2
+            r_sig1 = r_tot + 3
+            r_sig2 = r_tot + 4
+            end_r = r_tot + 5
 
             # 1. Fila 1: Empresa y N° de Boleta / Copia
             ws.row_dimensions[start_r].height = 19
@@ -493,18 +538,19 @@ class DocumentService:
                 ws.cell(row=start_r+7, column=c).fill = fill_subhdr
                 ws.cell(row=start_r+7, column=c).border = border_all_thin
 
-            # 9-13. Filas de Detalle
+            # 9-Filas de Detalle Dinámicas
             for idx, (ing_nom, ing_val, desc_nom, desc_val) in enumerate(items_detalle):
                 r = start_r + 8 + idx
                 ws.row_dimensions[r].height = 17
 
-                c_in = ws.cell(row=r, column=2, value=f"  {ing_nom}")
+                c_in = ws.cell(row=r, column=2, value=f"  {ing_nom}" if ing_nom else "")
                 c_in.font = font_regular
                 c_in.alignment = Alignment(horizontal='left', vertical='center')
 
-                c_v1 = ws.cell(row=r, column=3, value=ing_val)
+                c_v1 = ws.cell(row=r, column=3, value=ing_val if ing_val is not None else "")
                 c_v1.font = font_regular
-                c_v1.number_format = '#,##0.00'
+                if ing_val is not None:
+                    c_v1.number_format = '#,##0.00'
                 c_v1.alignment = Alignment(horizontal='right', vertical='center')
 
                 c_dn = ws.cell(row=r, column=4, value=f"  {desc_nom}" if desc_nom else "")
@@ -520,8 +566,7 @@ class DocumentService:
                 for c in range(2, 6):
                     ws.cell(row=r, column=c).border = border_all_thin
 
-            # 14. Fila TOTALES
-            r_tot = start_r + 13
+            # Fila TOTALES
             ws.row_dimensions[r_tot].height = 20
             ws.cell(row=r_tot, column=2, value="  TOTAL GANADO").font = font_bold
             ws.cell(row=r_tot, column=2).alignment = Alignment(horizontal='left', vertical='center')
@@ -543,8 +588,7 @@ class DocumentService:
                 ws.cell(row=r_tot, column=c).fill = fill_total
                 ws.cell(row=r_tot, column=c).border = border_all_thin
 
-            # 15. Fila LÍQUIDO PAGABLE
-            r_liq = start_r + 14
+            # Fila LÍQUIDO PAGABLE
             ws.row_dimensions[r_liq].height = 26
             c_lpt = ws.cell(row=r_liq, column=2, value="  LÍQUIDO PAGABLE:")
             c_lpt.font = Font(name="Arial", size=10.5, bold=True)
@@ -564,11 +608,10 @@ class DocumentService:
                 ws.cell(row=r_liq, column=c).fill = fill_liquido
                 ws.cell(row=r_liq, column=c).border = border_all_thin
 
-            # 16. Espacio antes de firmas (dentro del recuadro)
-            ws.row_dimensions[start_r + 15].height = 24
+            # Espacio antes de firmas (dentro del recuadro)
+            ws.row_dimensions[r_space].height = 22
 
-            # 17. Líneas de puntos de firmas (dentro del recuadro)
-            r_sig1 = start_r + 16
+            # Líneas de puntos de firmas (dentro del recuadro)
             ws.row_dimensions[r_sig1].height = 18
             ws.merge_cells(start_row=r_sig1, start_column=2, end_row=r_sig1, end_column=3)
             c_s1 = ws.cell(row=r_sig1, column=2, value="........................................................................")
@@ -580,8 +623,7 @@ class DocumentService:
             c_s2.font = Font(name="Arial", size=9)
             c_s2.alignment = Alignment(horizontal='center', vertical='bottom')
 
-            # 18. Nombres y Cargos de Firmas (dentro del recuadro)
-            r_sig2 = start_r + 17
+            # Nombres y Cargos de Firmas (dentro del recuadro)
             ws.row_dimensions[r_sig2].height = 18
             ws.merge_cells(start_row=r_sig2, start_column=2, end_row=r_sig2, end_column=3)
             c_t1 = ws.cell(row=r_sig2, column=2, value="Vo. Bo. Contabilidad / Gerencia")
@@ -593,7 +635,7 @@ class DocumentService:
             c_t2.font = font_bold
             c_t2.alignment = Alignment(horizontal='center', vertical='center')
 
-            # 19. Espaciador inferior dentro del recuadro
+            # Espaciador inferior dentro del recuadro
             ws.row_dimensions[end_r].height = 10
 
             # APLICAR EL GRAN RECUADRO EXTERIOR (BORDER MEDIUM) A TODO EL BLOQUE (filas start_r hasta end_r, columnas 2 a 5)
@@ -606,21 +648,24 @@ class DocumentService:
                     right_b = border_frame_thick if c == 5 else cell.border.right
                     cell.border = Border(top=top_b, bottom=bot_b, left=left_b, right=right_b)
 
+            return end_r
+
         # 1. Renderizar Boleta Superior (Copia 1 - Empresa)
-        _render_boleta(start_r=1, copia_num=1)
+        end_r1 = _render_boleta(start_r=1, copia_num=1)
 
         # 2. Separador de Corte
-        ws.row_dimensions[20].height = 10
-        ws.row_dimensions[21].height = 16
-        ws.merge_cells('B21:E21')
-        c_cut = ws['B21']
+        r_cut = end_r1 + 2
+        ws.row_dimensions[r_cut - 1].height = 10
+        ws.row_dimensions[r_cut].height = 16
+        ws.merge_cells(f'B{r_cut}:E{r_cut}')
+        c_cut = ws[f'B{r_cut}']
         c_cut.value = "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
         c_cut.font = Font(name="Arial", size=8.5, italic=True, color="666666")
         c_cut.alignment = Alignment(horizontal='center', vertical='center')
-        ws.row_dimensions[22].height = 10
+        ws.row_dimensions[r_cut + 1].height = 10
 
         # 3. Renderizar Boleta Inferior (Copia 2 - Empleado)
-        _render_boleta(start_r=23, copia_num=2)
+        _render_boleta(start_r=r_cut + 2, copia_num=2)
 
         # Ordenar sheets cronológicamente por mes
         MESES_ORDEN = {
@@ -732,6 +777,7 @@ class DocumentService:
 
             # Título principal y moneda centrados y sin cortes
             try:
+                DocumentService._set_cell_value(ws, 'G6', "(Expresado en Bolivianos)")
                 ws['G5'].font = openpyxl.styles.Font(name="Arial", size=15, bold=True)
                 ws['G5'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=False)
                 ws['G6'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
@@ -2791,18 +2837,18 @@ class DocumentService:
         font_empresa = Font(name="Arial", size=11, bold=True, italic=True)
         font_ciudad = Font(name="Arial", size=9, bold=True)
         font_patronal = Font(name="Arial", size=9, bold=True)
-        font_title = Font(name="Arial", size=13, bold=True)
-        font_th = Font(name="Arial", size=8.5, bold=True, color="FFFFFF")
+        font_title = Font(name="Arial", size=14, bold=True)
+        font_th = Font(name="Arial", size=8.5, bold=True, color="000000")
         font_td = Font(name="Arial", size=8.5)
         font_td_bold = Font(name="Arial", size=8.5, bold=True)
-        font_totales = Font(name="Arial", size=9, bold=True, color="FFFFFF")
+        font_totales = Font(name="Arial", size=9, bold=True, color="000000")
 
-        fill_header = PatternFill(start_color="7E4842", end_color="7E4842", fill_type="solid")
-        fill_totales = PatternFill(start_color="2C3E50", end_color="2C3E50", fill_type="solid")
+        fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        fill_totales = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
 
         thin_side = Side(style='thin', color='B0B0B0')
         border_cell = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
-        double_bottom = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style='double', color='2C3E50'))
+        double_bottom = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style='double', color='000000'))
 
         # Encabezado superior
         ws.merge_cells('B2:E2')
@@ -2829,25 +2875,36 @@ class DocumentService:
         ws['M3'].font = font_patronal
         ws['M3'].alignment = Alignment(horizontal="left", vertical="center")
 
-        # Título
+        # Título y Subtítulo
         ws.merge_cells('B5:M5')
-        ws['B5'] = f"Planilla Patronal Correspondiente al mes de {mes_nombre} {anio}"
+        ws['B5'] = "PLANILLA PATRONAL"
         ws['B5'].font = font_title
         ws['B5'].alignment = Alignment(horizontal="center", vertical="center")
-        ws.row_dimensions[5].height = 25
+        ws.row_dimensions[5].height = 22
+
+        ws.merge_cells('B6:G6')
+        ws['B6'] = "(Expresado en Bolivianos)"
+        ws['B6'].font = Font(name="Arial", size=10, bold=True)
+        ws['B6'].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells('H6:M6')
+        ws['H6'] = f"CORRESPONDIENTE AL MES DE {mes_nombre.upper()} DE {anio}"
+        ws['H6'].font = Font(name="Arial", size=9.5, bold=True)
+        ws['H6'].alignment = Alignment(horizontal="right", vertical="center")
+        ws.row_dimensions[6].height = 18
 
         # Encabezados de tabla
         headers = [
-            ("B", "No"),
-            ("C", "NOMBRES Y APELLIDOS\nCARGO"),
+            ("B", "N°"),
+            ("C", "APELLIDOS Y NOMBRES\nOCUPACIÓN QUE DESEMPEÑA"),
             ("D", "TOTAL\nGANADO"),
             ("E", "CNS\n10%"),
             ("F", "AFP's\n1,71%"),
             ("G", "FONVI\n2%"),
             ("H", "APS\n3.5%"),
             ("I", "TOTAL\nAPORTES"),
-            ("J", "PROVISON\nAGUINALDO"),
-            ("K", "PROVISON\nINDEMNIZ"),
+            ("J", "PROVISIÓN\nAGUINALDO"),
+            ("K", "PROVISIÓN\nINDEMNIZACIÓN"),
             ("L", "TOTAL\nPROVISIONES"),
             ("M", "TOTAL CARGA\nPATRONAL")
         ]
@@ -2927,6 +2984,37 @@ class DocumentService:
         for col_c in ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']:
             ws[f"{col_c}{current_row}"].border = double_bottom
 
+        # Bloque de Firmas al pie
+        rep_legal = str(patronal_data.get('representante_legal') or patronal_data.get('empleador_nombre') or empresa).upper()
+        rep_ci = str(patronal_data.get('ci_representante') or nit)
+
+        r_sig = current_row + 3
+        ws.merge_cells(f'C{r_sig}:E{r_sig}')
+        ws.merge_cells(f'G{r_sig}:I{r_sig}')
+        ws.merge_cells(f'K{r_sig}:L{r_sig}')
+        for col_l in ['C', 'D', 'E', 'G', 'H', 'I', 'K', 'L']:
+            ws[f'{col_l}{r_sig}'].border = Border(top=Side(style='thin', color='000000'))
+        
+        ws[f'C{r_sig}'] = rep_legal
+        ws[f'C{r_sig}'].font = Font(name="Arial", size=8.5, bold=True)
+        ws[f'C{r_sig}'].alignment = Alignment(horizontal="center", vertical="top")
+
+        ws[f'C{r_sig+1}'] = "NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL"
+        ws[f'C{r_sig+1}'].font = Font(name="Arial", size=7.5, bold=True)
+        ws[f'C{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
+
+        ws[f'G{r_sig}'] = rep_ci
+        ws[f'G{r_sig}'].font = Font(name="Arial", size=8.5, bold=True)
+        ws[f'G{r_sig}'].alignment = Alignment(horizontal="center", vertical="top")
+
+        ws[f'G{r_sig+1}'] = "N° DE DOCUMENTO DE IDENTIDAD"
+        ws[f'G{r_sig+1}'].font = Font(name="Arial", size=7.5, bold=True)
+        ws[f'G{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
+
+        ws[f'K{r_sig+1}'] = "FIRMA"
+        ws[f'K{r_sig+1}'].font = Font(name="Arial", size=7.5, bold=True)
+        ws[f'K{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
+
         xlsx_path = os.path.join(exports_dir, f"planilla_patronal_{empresa_slug}_{mes_nombre.lower()}_{anio}.xlsx")
         effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
 
@@ -3000,8 +3088,8 @@ class DocumentService:
         font_td_bold = Font(name="Arial", size=7.5, bold=True)
         font_totales = Font(name="Arial", size=8, bold=True)
 
-        fill_header = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
-        fill_totales = PatternFill(start_color="E6E6E6", end_color="E6E6E6", fill_type="solid")
+        fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        fill_totales = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
 
         thin_side = Side(style='thin', color='808080')
         border_cell = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
@@ -3054,7 +3142,7 @@ class DocumentService:
         ws['H6'].alignment = Alignment(horizontal="center", vertical="center")
 
         ws.merge_cells('H7:O7')
-        ws['H7'] = "(En Bolivianos)"
+        ws['H7'] = "(Expresado en Bolivianos)"
         ws['H7'].font = font_h_bold
         ws['H7'].alignment = Alignment(horizontal="center", vertical="center")
 

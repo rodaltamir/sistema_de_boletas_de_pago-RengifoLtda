@@ -213,10 +213,15 @@ export default function SeleccionarEmpresa() {
         : `${getApiUrl()}/api/tenants/`;
       const method = editingTenant ? "PUT" : "POST";
 
+      const payload = {
+        ...formData,
+        empleador_nit: formData.nit || formData.empleador_nit || ""
+      };
+
       const res = await fetch(url, {
         method: method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       });
 
       if (!res.ok) {
@@ -478,23 +483,13 @@ export default function SeleccionarEmpresa() {
                         </div>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-teal-100 mb-1">Cédula de Identidad (CI)</label>
-                        <input 
-                          type="text" placeholder="Ej. 1234567"
-                          value={formData.empleador_ci} onChange={e => setFormData({...formData, empleador_ci: e.target.value})}
-                          className="w-full bg-black/20 border border-white/20 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-teal-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-teal-100 mb-1">NIT del Empleador</label>
-                        <input 
-                          type="text" placeholder="Ej. 1234567010"
-                          value={formData.empleador_nit} onChange={e => setFormData({...formData, empleador_nit: e.target.value})}
-                          className="w-full bg-black/20 border border-white/20 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-teal-400"
-                        />
-                      </div>
+                    <div>
+                      <label className="block text-sm font-medium text-teal-100 mb-1">Cédula de Identidad (CI)</label>
+                      <input 
+                        type="text" placeholder="Ej. 1234567"
+                        value={formData.empleador_ci} onChange={e => setFormData({...formData, empleador_ci: e.target.value})}
+                        className="w-full bg-black/20 border border-white/20 text-white rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                      />
                     </div>
                   </div>
 

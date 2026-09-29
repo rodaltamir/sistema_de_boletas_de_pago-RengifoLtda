@@ -23,6 +23,7 @@ import {
   Download
 } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
+import { getStoredPeriod, setStoredPeriod } from "@/utils/period";
 
 interface Payslip {
   id: number;
@@ -149,8 +150,28 @@ function BoletasPageContent() {
   // ==========================================
   // ESTADO: BOLETAS DE PAGO (MENSUAL REGULAR)
   // ==========================================
-  const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
-  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [month, setMonth] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().month;
+    }
+    return new Date().getMonth() + 1;
+  });
+  const [year, setYear] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().year;
+    }
+    return new Date().getFullYear();
+  });
+
+  const handleMonthChange = (newMonth: number) => {
+    setMonth(newMonth);
+    setStoredPeriod(newMonth, year, tenantSchema);
+  };
+
+  const handleYearChange = (newYear: number) => {
+    setYear(newYear);
+    setStoredPeriod(month, newYear, tenantSchema);
+  };
   
   const [payroll, setPayroll] = useState<PayrollData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -160,6 +181,15 @@ function BoletasPageContent() {
   useEffect(() => {
     setIsAdmin(localStorage.getItem("isAdmin") === "true");
   }, []);
+
+  useEffect(() => {
+    if (tenantSchema) {
+      const p = getStoredPeriod(tenantSchema);
+      setMonth(p.month);
+      setYear(p.year);
+      setAguinaldoYear(p.year);
+    }
+  }, [tenantSchema]);
 
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
   const [viewMode, setViewMode] = useState<'boleta' | 'edit' | null>(null);
@@ -372,8 +402,17 @@ function BoletasPageContent() {
 
   // ==========================================
   // ESTADO: BOLETAS DE AGUINALDO (IMAGEN 2)
-  // ==========================================
-  const [aguinaldoYear, setAguinaldoYear] = useState<number>(new Date().getFullYear());
+  const [aguinaldoYear, setAguinaldoYear] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().year;
+    }
+    return new Date().getFullYear();
+  });
+
+  const handleAguinaldoYearChange = (newYear: number) => {
+    setAguinaldoYear(newYear);
+    setStoredPeriod(month, newYear, tenantSchema);
+  };
   const [aguinaldoData, setAguinaldoData] = useState<AguinaldoPayrollData | null>(null);
   const [aguinaldoLoading, setAguinaldoLoading] = useState(false);
   const [aguinaldoSearch, setAguinaldoSearch] = useState("");
@@ -484,7 +523,7 @@ function BoletasPageContent() {
             <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
               <select 
                 value={month} 
-                onChange={(e) => setMonth(Number(e.target.value))}
+                onChange={(e) => handleMonthChange(Number(e.target.value))}
                 className="bg-slate-50 border-none outline-none text-slate-700 font-semibold px-4 py-2 rounded-xl focus:ring-2 focus:ring-teal-500"
               >
                 {MONTHS.map((m, i) => (
@@ -494,7 +533,7 @@ function BoletasPageContent() {
               <input 
                 type="number" 
                 value={year}
-                onChange={(e) => setYear(Number(e.target.value))}
+                onChange={(e) => handleYearChange(Number(e.target.value))}
                 className="w-24 bg-slate-50 border-none outline-none text-slate-700 font-semibold px-4 py-2 rounded-xl focus:ring-2 focus:ring-teal-500"
               />
               <button 
@@ -671,7 +710,7 @@ function BoletasPageContent() {
               <input 
                 type="number" 
                 value={aguinaldoYear}
-                onChange={(e) => setAguinaldoYear(Number(e.target.value))}
+                onChange={(e) => handleAguinaldoYearChange(Number(e.target.value))}
                 className="w-28 bg-slate-50 border-none outline-none text-slate-900 font-semibold px-4 py-2 rounded-xl focus:ring-2 focus:ring-teal-500"
               />
               <button 
@@ -966,26 +1005,70 @@ function BoletasPageContent() {
                         <div className="col-span-2 text-right">SALDO I.V.A. : <span className="font-normal">0.00</span></div>
                       </div>
 
-                      <div className="border border-black flex mb-4">
-                        <div className="w-1/2 border-r border-black">
-                          <div className="border-b border-black text-center font-bold p-1">INGRESOS</div>
-                          <div className="p-2 space-y-1">
-                            <div className="flex justify-between"><span>Sueldo Básico</span><span>{formatBs(selectedPayslip.haber_basico)}</span></div>
-                            <div className="flex justify-between"><span>Bono de Antigüedad</span><span>{formatBs(selectedPayslip.bono_antiguedad)}</span></div>
-                            <div className="flex justify-between"><span>Otros Ingresos/Bonos</span><span>{formatBs(Number(selectedPayslip.bono_produccion)+Number(selectedPayslip.otros_bonos)+Number(selectedPayslip.subsidio_frontera)+Number(selectedPayslip.trabajo_extraordinario)+Number(selectedPayslip.pago_dominical))}</span></div>
+                      {(() => {
+                        const hb = Number(selectedPayslip.haber_basico || 0);
+                        const ba = Number(selectedPayslip.bono_antiguedad || 0);
+                        const bp = Number(selectedPayslip.bono_produccion || 0);
+                        const sf = Number(selectedPayslip.subsidio_frontera || 0);
+                        const he = Number(selectedPayslip.trabajo_extraordinario || 0);
+                        const dom = Number(selectedPayslip.pago_dominical || 0);
+                        const sn = Number(selectedPayslip.subsidio_natalidad || 0);
+                        const ob = Number(selectedPayslip.otros_bonos || 0);
+
+                        const tg = Number(selectedPayslip.total_ganado || 0);
+                        const totGestora = Number(selectedPayslip.aporte_gestora || 0);
+                        const apSolidario = Math.round(tg * 0.005 * 100) / 100;
+                        const gestoraPub = Math.max(0, Math.round((totGestora - apSolidario) * 100) / 100);
+                        const rcIva = Number(selectedPayslip.rc_iva || 0);
+                        const ant = Number(selectedPayslip.anticipos || 0);
+                        const oDesc = Number(selectedPayslip.otros_descuentos || 0);
+
+                        const itemsIngresos: { label: string; val: number }[] = [
+                          { label: "Sueldo Básico", val: hb },
+                          ...(ba > 0 ? [{ label: "Bono de Antigüedad", val: ba }] : []),
+                          ...(bp > 0 ? [{ label: "Bono de Producción", val: bp }] : []),
+                          ...(sf > 0 ? [{ label: "Subsidio de Frontera", val: sf }] : []),
+                          ...(he > 0 ? [{ label: "Trabajo Extraordinario", val: he }] : []),
+                          ...(dom > 0 ? [{ label: "Pago Dominical", val: dom }] : []),
+                          ...(sn > 0 ? [{ label: "Subsidio de Natalidad", val: sn }] : []),
+                          ...(ob > 0 ? [{ label: "Otros Ingresos / Bonos", val: ob }] : []),
+                        ];
+
+                        const itemsDescuentos: { label: string; val: number }[] = [
+                          ...(gestoraPub > 0 ? [{ label: "Aporte Gestora Pública", val: gestoraPub }] : []),
+                          ...(apSolidario > 0 ? [{ label: "Aporte Solidario Asegurado", val: apSolidario }] : []),
+                          ...(rcIva > 0 ? [{ label: "R.C. - I.V.A.", val: rcIva }] : []),
+                          ...(ant > 0 ? [{ label: "Anticipo", val: ant }] : []),
+                          ...(oDesc > 0 ? [{ label: "Otros Descuentos", val: oDesc }] : []),
+                        ];
+
+                        return (
+                          <div className="border border-black flex mb-4">
+                            <div className="w-1/2 border-r border-black flex flex-col">
+                              <div className="border-b border-black text-center font-bold p-1 bg-gray-50">INGRESOS</div>
+                              <div className="p-2 space-y-1 flex-1">
+                                {itemsIngresos.map((it, idx) => (
+                                  <div key={idx} className="flex justify-between">
+                                    <span>{it.label}</span>
+                                    <span>{formatBs(it.val)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="w-1/2 flex flex-col">
+                              <div className="border-b border-black text-center font-bold p-1 bg-gray-50">DESCUENTOS</div>
+                              <div className="p-2 space-y-1 flex-1">
+                                {itemsDescuentos.map((it, idx) => (
+                                  <div key={idx} className="flex justify-between">
+                                    <span>{it.label}</span>
+                                    <span>{formatBs(it.val)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                        <div className="w-1/2">
-                          <div className="border-b border-black text-center font-bold p-1">DESCUENTOS</div>
-                          <div className="p-2 space-y-1">
-                            <div className="flex justify-between"><span>R.C. - I.V.A.</span><span>{formatBs(selectedPayslip.rc_iva)}</span></div>
-                            <div className="flex justify-between"><span>Gestora Pública de Bolivia</span><span>{formatBs(selectedPayslip.aporte_gestora - (selectedPayslip.total_ganado * 0.005))}</span></div>
-                            <div className="flex justify-between"><span>Aporte Solidario Asegurado</span><span>{formatBs(selectedPayslip.total_ganado * 0.005)}</span></div>
-                            <div className="flex justify-between"><span>Anticipo</span><span>{formatBs(selectedPayslip.anticipos)}</span></div>
-                            <div className="flex justify-between"><span>Otros Desctos.</span><span>{formatBs(selectedPayslip.otros_descuentos)}</span></div>
-                          </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
 
                       <div className="flex font-bold border border-black mb-4 bg-gray-100/50">
                         <div className="w-1/2 p-2 flex justify-between border-r border-black">

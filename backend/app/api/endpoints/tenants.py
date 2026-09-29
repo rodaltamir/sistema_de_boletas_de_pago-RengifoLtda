@@ -41,7 +41,7 @@ def create_tenant(tenant: TenantCreate, db: Session = Depends(get_db)):
         empleador_apellido_paterno=tenant.empleador_apellido_paterno,
         empleador_apellido_materno=tenant.empleador_apellido_materno,
         empleador_ci=tenant.empleador_ci,
-        empleador_nit=tenant.empleador_nit,
+        empleador_nit=tenant.empleador_nit or tenant.nit,
         icon=tenant.icon,
         logo_base64=tenant.logo_base64
     )
@@ -249,7 +249,7 @@ def update_tenant(schema_name: str, data: TenantCreate, db: Session = Depends(ge
     tenant.empleador_apellido_paterno = data.empleador_apellido_paterno
     tenant.empleador_apellido_materno = data.empleador_apellido_materno
     tenant.empleador_ci = data.empleador_ci
-    tenant.empleador_nit = data.empleador_nit
+    tenant.empleador_nit = data.empleador_nit or data.nit or tenant.nit
     tenant.icon = data.icon
     if data.logo_base64:
         tenant.logo_base64 = data.logo_base64
