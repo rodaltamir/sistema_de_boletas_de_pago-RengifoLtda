@@ -665,3 +665,89 @@ def export_payslip(schema_name: str, month: int, year: int, payslip_id: int, for
     media_type = 'application/pdf' if format == "pdf" else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     filename = f"boleta_pago_{emp_slug}_{empresa_slug}_{mes_nombre}_{year}_{fecha_cierre}.pdf" if format == "pdf" else f"boleta_pago_{emp_slug}_{empresa_slug}_{year}_{fecha_cierre}.xlsx"
     return FileResponse(path=file_path, filename=filename, media_type=media_type)
+
+@router.get("/{month}/{year}/payslips/export/batch/{mode}/{format}")
+@router.get("/{month}/{year}/payslips/export/batch/{mode}/{format}/", include_in_schema=False)
+@router.get("/{month}/{year}/payslips/export/batch/{format}")
+@router.get("/{month}/{year}/payslips/export/batch/{format}/", include_in_schema=False)
+def export_payslips_batch(
+    schema_name: str,
+    month: int,
+    year: int,
+    format: str,
+    mode: str = "multi_sheet",
+    db: Session = Depends(get_tenant_db)
+):
+    if format.lower() not in ["excel", "xlsx", "pdf"]:
+        raise HTTPException(status_code=400, detail="Formato no soportado. Use 'excel' o 'pdf'.")
+        
+    payroll = get_or_generate_payroll(schema_name, month, year, db)
+    payroll_dict = payroll.model_dump()
+
+    boletas_list = []
+    for slip in payroll.payslips:
+        emp = db.query(Employee).filter(Employee.id == slip.employee_id).first()
+        h_slip = getattr(slip, "horas_pagadas", 8)
+        try:
+            if h_slip and float(h_slip) > 24:
+                d_val = float(getattr(slip, "dias_pagados", 30) or 30)
+                h_slip = round(float(h_slip) / d_val) if d_val > 0 else 8
+            else:
+                h_slip = int(float(h_slip)) if float(h_slip).is_integer() else float(h_slip)
+        except:
+            h_slip = 8
+
+        doc_slip = re.sub(r'\s*-\s*', ' ', str(slip.employee_ci or '')).strip()
+        real_internal_code = emp.internal_code if emp and emp.internal_code else str(slip.employee_id)
+        ap_paterno = emp.apellido_paterno if emp else (slip.employee_name.split(' ')[0] if ' ' in slip.employee_name else slip.employee_name)
+        ap_materno = (emp.apellido_materno or '') if emp else (slip.employee_name.split(' ')[1] if len(slip.employee_name.split(' ')) > 1 else '')
+        nombres = emp.nombres if emp else (' '.join(slip.employee_name.split(' ')[2:]) if len(slip.employee_name.split(' ')) > 2 else '')
+
+        boletas_list.append({
+            'internal_code': real_internal_code,
+            'empresa_nombre': payroll_dict.get('tenant_name', ''),
+            'nit': payroll_dict.get('tenant_nit', ''),
+            'numero_patronal': payroll_dict.get('tenant_nro_patronal', ''),
+            'mes': month,
+            'anio': year,
+            'ci': doc_slip,
+            'ext_ci': emp.ext_ci if emp else getattr(slip, "employee_ext_ci", None),
+            'nombres': nombres,
+            'apellido_paterno': ap_paterno,
+            'apellido_materno': ap_materno,
+            'fecha_ingreso': slip.employee_fecha_ingreso,
+            'fecha_nacimiento': slip.employee_fecha_nacimiento,
+            'cargo': slip.employee_cargo,
+            'haber_basico': slip.haber_basico,
+            'bono_antiguedad': slip.bono_antiguedad,
+            'subsidio_natalidad': getattr(slip, "subsidio_natalidad", 0),
+            'aporte_gestora': slip.aporte_gestora,
+            'rc_iva': slip.rc_iva,
+            'otros_ingresos': float(getattr(slip, "bono_produccion", 0)) + float(getattr(slip, "subsidio_frontera", 0)) + float(getattr(slip, "trabajo_extraordinario", 0)) + float(getattr(slip, "pago_dominical", 0)) + float(getattr(slip, "otros_bonos", 0)),
+            'anticipos': getattr(slip, "anticipos", 0),
+            'otros_descuentos': getattr(slip, "otros_descuentos", 0),
+            'total_ganado': slip.total_ganado,
+            'total_descuentos': slip.total_descuentos,
+            'liquido_pagable': slip.liquido_pagable,
+            'dias_pagados': getattr(slip, "dias_pagados", 30),
+            'horas_pagadas': h_slip,
+            'bono_produccion': getattr(slip, "bono_produccion", 0),
+            'subsidio_frontera': getattr(slip, "subsidio_frontera", 0),
+            'trabajo_extraordinario': getattr(slip, "trabajo_extraordinario", 0),
+            'pago_dominical': getattr(slip, "pago_dominical", 0),
+            'otros_bonos': getattr(slip, "otros_bonos", 0)
+        })
+
+    boletas_list.sort(key=lambda x: sort_code_key(x.get('internal_code', '')))
+    
+    out_fmt = "pdf" if format.lower() == "pdf" else "xlsx"
+    file_path = DocumentService.generate_payslips_batch(boletas_list, output_format=out_fmt, schema_name=schema_name, mode=mode)
+    
+    empresa_slug = DocumentService._slugify(schema_name if schema_name else payroll_dict.get('tenant_name', ''))
+    MESES = {1:"enero", 2:"febrero", 3:"marzo", 4:"abril", 5:"mayo", 6:"junio", 7:"julio", 8:"agosto", 9:"septiembre", 10:"octubre", 11:"noviembre", 12:"diciembre"}
+    mes_nombre = MESES.get(month, str(month))
+    mode_slug = "2_por_hoja" if mode == "continuous" else "pestanas"
+
+    media_type = 'application/pdf' if out_fmt == "pdf" else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    filename = f"talonario_boletas_{empresa_slug}_{mes_nombre}_{year}_{mode_slug}.{out_fmt}"
+    return FileResponse(path=file_path, filename=filename, media_type=media_type)

@@ -144,10 +144,26 @@ interface PaymentExtraItem {
   monto: number;
 }
 
+interface PendingSettlementPayment {
+  id?: string;
+  month_origen: number;
+  year_origen: number;
+  entidad: string;
+  monto_restante: number;
+  monto_retenciones?: number;
+  monto_patronal?: number;
+  interes_mora: number;
+  pagar_en_este_mes: boolean;
+}
+
 interface GestoraPaymentData {
   fecha?: string;
   nro_transaccion?: string;
   intereses: PaymentExtraItem[];
+  importe_restante?: number;
+  descuento_retenciones?: number;
+  descuento_patronal?: number;
+  pagos_restantes_anteriores?: PendingSettlementPayment[];
 }
 
 interface CajaPaymentData {
@@ -155,6 +171,8 @@ interface CajaPaymentData {
   fecha?: string;
   nro_transaccion?: string;
   ajustes: PaymentExtraItem[];
+  importe_restante?: number;
+  pagos_restantes_anteriores?: PendingSettlementPayment[];
 }
 
 interface MinTrabajoPaymentData {
@@ -269,6 +287,8 @@ interface AccountingSheetData {
   is_customized: boolean;
   is_locked_by_date: boolean;
   is_manually_unlocked: boolean;
+  saldos_pendientes_gestora?: PendingSettlementPayment[];
+  saldos_pendientes_caja?: PendingSettlementPayment[];
 }
 
 function AsientosPageContent() {
@@ -328,14 +348,20 @@ function AsientosPageContent() {
   const [gestoraPayment, setGestoraPayment] = useState<GestoraPaymentData>({
     fecha: new Date().toISOString().split("T")[0],
     nro_transaccion: "",
-    intereses: []
+    intereses: [],
+    importe_restante: 0,
+    descuento_retenciones: 0,
+    descuento_patronal: 0,
+    pagos_restantes_anteriores: []
   });
 
   const [cajaPayment, setCajaPayment] = useState<CajaPaymentData>({
     caja_tipo: "Caja Petrolera de Salud",
     fecha: new Date().toISOString().split("T")[0],
     nro_transaccion: "",
-    ajustes: []
+    ajustes: [],
+    importe_restante: 0,
+    pagos_restantes_anteriores: []
   });
 
   const [minTrabajoPayment, setMinTrabajoPayment] = useState<MinTrabajoPaymentData>({
@@ -433,19 +459,48 @@ function AsientosPageContent() {
       }
 
       if (data.gestora_payment) {
-        setGestoraPayment(data.gestora_payment);
+        const pendingGestora = data.gestora_payment.pagos_restantes_anteriores && data.gestora_payment.pagos_restantes_anteriores.length > 0
+          ? data.gestora_payment.pagos_restantes_anteriores
+          : (data.saldos_pendientes_gestora || []);
+        setGestoraPayment({
+          ...data.gestora_payment,
+          importe_restante: data.gestora_payment.importe_restante ?? 0,
+          descuento_retenciones: data.gestora_payment.descuento_retenciones ?? 0,
+          descuento_patronal: data.gestora_payment.descuento_patronal ?? 0,
+          pagos_restantes_anteriores: pendingGestora,
+          intereses: data.gestora_payment.intereses || []
+        });
+      } else {
+        setGestoraPayment({
+          fecha: new Date().toISOString().split("T")[0],
+          nro_transaccion: "",
+          intereses: [],
+          importe_restante: 0,
+          descuento_retenciones: 0,
+          descuento_patronal: 0,
+          pagos_restantes_anteriores: data.saldos_pendientes_gestora || []
+        });
       }
+
       if (data.caja_payment) {
+        const pendingCaja = data.caja_payment.pagos_restantes_anteriores && data.caja_payment.pagos_restantes_anteriores.length > 0
+          ? data.caja_payment.pagos_restantes_anteriores
+          : (data.saldos_pendientes_caja || []);
         setCajaPayment({
           ...data.caja_payment,
-          caja_tipo: data.caja_payment.caja_tipo || defaultCajaName
+          caja_tipo: data.caja_payment.caja_tipo || defaultCajaName,
+          importe_restante: data.caja_payment.importe_restante ?? 0,
+          pagos_restantes_anteriores: pendingCaja,
+          ajustes: data.caja_payment.ajustes || []
         });
       } else {
         setCajaPayment({
           caja_tipo: defaultCajaName,
           fecha: new Date().toISOString().split("T")[0],
           nro_transaccion: "",
-          ajustes: []
+          ajustes: [],
+          importe_restante: 0,
+          pagos_restantes_anteriores: data.saldos_pendientes_caja || []
         });
       }
       if (data.min_trabajo_payment) {
@@ -630,22 +685,86 @@ function AsientosPageContent() {
   }, [devengamiento.arancel_min_trabajo]);
 
   // 5. Totales de Asientos de Pago
+
+  // Gestora - Desglose proporcional de deducciones por importe restante
+  const gestoraDeduccionCalc = useMemo(() => {
+    const baseRet = Number(devengamiento.retenciones_ley) || 0;
+    const basePat = patronalGestora;
+    const totBase = baseRet + basePat;
+    const impRestante = Number(gestoraPayment.importe_restante) || 0;
+
+    let pctRet = 0;
+    let pctPat = 0;
+    let descRet = 0;
+    let descPat = 0;
+
+    if (totBase > 0) {
+      pctRet = (baseRet / totBase) * 100;
+      pctPat = (basePat / totBase) * 100;
+      descRet = Math.round(impRestante * (baseRet / totBase) * 100) / 100;
+      descPat = Math.round((impRestante - descRet) * 100) / 100;
+    }
+
+    const netoRet = Math.max(0, Math.round((baseRet - descRet) * 100) / 100);
+    const netoPat = Math.max(0, Math.round((basePat - descPat) * 100) / 100);
+    const baseEfectiva = Number((netoRet + netoPat).toFixed(2));
+
+    return {
+      baseRet,
+      basePat,
+      totBase,
+      impRestante,
+      pctRet,
+      pctPat,
+      descRet,
+      descPat,
+      netoRet,
+      netoPat,
+      baseEfectiva
+    };
+  }, [devengamiento.retenciones_ley, patronalGestora, gestoraPayment.importe_restante]);
+
+  // Suma de saldos pendientes de meses anteriores seleccionados para liquidar en Gestora
+  const sumPriorGestora = useMemo(() => {
+    return (gestoraPayment.pagos_restantes_anteriores || [])
+      .filter((p) => p.pagar_en_este_mes)
+      .reduce((acc, p) => acc + (Number(p.monto_restante) || 0) + (Number(p.interes_mora) || 0), 0);
+  }, [gestoraPayment.pagos_restantes_anteriores]);
+
   const sumInteresesGestora = useMemo(() => {
     return (gestoraPayment.intereses || []).reduce((acc, it) => acc + (Number(it.monto) || 0), 0);
   }, [gestoraPayment.intereses]);
 
   const totalPagoGestora = useMemo(() => {
-    const ret = Number(devengamiento.retenciones_ley) || 0;
-    return Number((ret + patronalGestora + sumInteresesGestora).toFixed(2));
-  }, [devengamiento.retenciones_ley, patronalGestora, sumInteresesGestora]);
+    return Number((gestoraDeduccionCalc.baseEfectiva + sumInteresesGestora + sumPriorGestora).toFixed(2));
+  }, [gestoraDeduccionCalc.baseEfectiva, sumInteresesGestora, sumPriorGestora]);
+
+  // Caja de Salud - Deducción por importe restante
+  const cajaDeduccionCalc = useMemo(() => {
+    const baseSalud = patronalCaja;
+    const impRestante = Number(cajaPayment.importe_restante) || 0;
+    const netoSalud = Math.max(0, Math.round((baseSalud - impRestante) * 100) / 100);
+    return {
+      baseSalud,
+      impRestante,
+      netoSalud
+    };
+  }, [patronalCaja, cajaPayment.importe_restante]);
+
+  // Suma de saldos pendientes de meses anteriores seleccionados para liquidar en Caja
+  const sumPriorCaja = useMemo(() => {
+    return (cajaPayment.pagos_restantes_anteriores || [])
+      .filter((p) => p.pagar_en_este_mes)
+      .reduce((acc, p) => acc + (Number(p.monto_restante) || 0) + (Number(p.interes_mora) || 0), 0);
+  }, [cajaPayment.pagos_restantes_anteriores]);
 
   const sumAjustesCaja = useMemo(() => {
     return (cajaPayment.ajustes || []).reduce((acc, it) => acc + (Number(it.monto) || 0), 0);
   }, [cajaPayment.ajustes]);
 
   const totalPagoCaja = useMemo(() => {
-    return Number((patronalCaja + sumAjustesCaja).toFixed(2));
-  }, [patronalCaja, sumAjustesCaja]);
+    return Number((cajaDeduccionCalc.netoSalud + sumAjustesCaja + sumPriorCaja).toFixed(2));
+  }, [cajaDeduccionCalc.netoSalud, sumAjustesCaja, sumPriorCaja]);
 
   const sumAjustesMt = useMemo(() => {
     return (minTrabajoPayment.ajustes || []).reduce((acc, it) => acc + (Number(it.monto) || 0), 0);
@@ -795,7 +914,11 @@ function AsientosPageContent() {
           aguinaldo: aguinaldo,
           indemnizacion: indemnizacion
         },
-        gestora_payment: gestoraPayment,
+        gestora_payment: {
+          ...gestoraPayment,
+          descuento_retenciones: gestoraDeduccionCalc.descRet,
+          descuento_patronal: gestoraDeduccionCalc.descPat
+        },
         caja_payment: cajaPayment,
         min_trabajo_payment: minTrabajoPayment,
         is_manually_unlocked: isManuallyUnlocked
@@ -818,10 +941,30 @@ function AsientosPageContent() {
       const updatedSheet: AccountingSheetData = await res.json();
       setSheetData(updatedSheet);
 
+      if (updatedSheet.gestora_payment) {
+        setGestoraPayment({
+          ...updatedSheet.gestora_payment,
+          importe_restante: updatedSheet.gestora_payment.importe_restante ?? 0,
+          descuento_retenciones: updatedSheet.gestora_payment.descuento_retenciones ?? 0,
+          descuento_patronal: updatedSheet.gestora_payment.descuento_patronal ?? 0,
+          pagos_restantes_anteriores: updatedSheet.gestora_payment.pagos_restantes_anteriores || updatedSheet.saldos_pendientes_gestora || [],
+          intereses: updatedSheet.gestora_payment.intereses || []
+        });
+      }
+      if (updatedSheet.caja_payment) {
+        setCajaPayment({
+          ...updatedSheet.caja_payment,
+          caja_tipo: updatedSheet.caja_payment.caja_tipo || "Caja Petrolera de Salud",
+          importe_restante: updatedSheet.caja_payment.importe_restante ?? 0,
+          pagos_restantes_anteriores: updatedSheet.caja_payment.pagos_restantes_anteriores || updatedSheet.saldos_pendientes_caja || [],
+          ajustes: updatedSheet.caja_payment.ajustes || []
+        });
+      }
+
       Swal.fire({
         icon: "success",
         title: "¡Asientos Guardados!",
-        text: "Los cambios en cuadrantes y asientos de pago se guardaron exitosamente.",
+        text: "Los cambios en cuadrantes, deducciones y pagos se guardaron exitosamente.",
         timer: 2000,
         showConfirmButton: false
       });
@@ -864,8 +1007,25 @@ function AsientosPageContent() {
       const data: AccountingSheetData = await res.json();
       setSheetData(data);
       if (data.devengamiento) setDevengamiento(data.devengamiento);
-      if (data.gestora_payment) setGestoraPayment(data.gestora_payment);
-      if (data.caja_payment) setCajaPayment(data.caja_payment);
+      if (data.gestora_payment) {
+        setGestoraPayment({
+          ...data.gestora_payment,
+          importe_restante: data.gestora_payment.importe_restante ?? 0,
+          descuento_retenciones: data.gestora_payment.descuento_retenciones ?? 0,
+          descuento_patronal: data.gestora_payment.descuento_patronal ?? 0,
+          pagos_restantes_anteriores: data.gestora_payment.pagos_restantes_anteriores || data.saldos_pendientes_gestora || [],
+          intereses: data.gestora_payment.intereses || []
+        });
+      }
+      if (data.caja_payment) {
+        setCajaPayment({
+          ...data.caja_payment,
+          caja_tipo: data.caja_payment.caja_tipo || "Caja Petrolera de Salud",
+          importe_restante: data.caja_payment.importe_restante ?? 0,
+          pagos_restantes_anteriores: data.caja_payment.pagos_restantes_anteriores || data.saldos_pendientes_caja || [],
+          ajustes: data.caja_payment.ajustes || []
+        });
+      }
       if (data.min_trabajo_payment) setMinTrabajoPayment(data.min_trabajo_payment);
 
       Swal.fire({
@@ -920,8 +1080,25 @@ function AsientosPageContent() {
       const data: AccountingSheetData = await res.json();
       setSheetData(data);
       if (data.devengamiento) setDevengamiento(data.devengamiento);
-      if (data.gestora_payment) setGestoraPayment(data.gestora_payment);
-      if (data.caja_payment) setCajaPayment(data.caja_payment);
+      if (data.gestora_payment) {
+        setGestoraPayment({
+          ...data.gestora_payment,
+          importe_restante: data.gestora_payment.importe_restante ?? 0,
+          descuento_retenciones: data.gestora_payment.descuento_retenciones ?? 0,
+          descuento_patronal: data.gestora_payment.descuento_patronal ?? 0,
+          pagos_restantes_anteriores: data.gestora_payment.pagos_restantes_anteriores || data.saldos_pendientes_gestora || [],
+          intereses: data.gestora_payment.intereses || []
+        });
+      }
+      if (data.caja_payment) {
+        setCajaPayment({
+          ...data.caja_payment,
+          caja_tipo: data.caja_payment.caja_tipo || "Caja Petrolera de Salud",
+          importe_restante: data.caja_payment.importe_restante ?? 0,
+          pagos_restantes_anteriores: data.caja_payment.pagos_restantes_anteriores || data.saldos_pendientes_caja || [],
+          ajustes: data.caja_payment.ajustes || []
+        });
+      }
       if (data.min_trabajo_payment) setMinTrabajoPayment(data.min_trabajo_payment);
 
       Swal.fire({
@@ -1022,6 +1199,19 @@ function AsientosPageContent() {
     }
   };
 
+  // Métodos para saldos pendientes de meses anteriores (Gestora Pública)
+  const togglePriorGestora = (index: number) => {
+    const list = [...(gestoraPayment.pagos_restantes_anteriores || [])];
+    list[index] = { ...list[index], pagar_en_este_mes: !list[index].pagar_en_este_mes };
+    setGestoraPayment({ ...gestoraPayment, pagos_restantes_anteriores: list });
+  };
+
+  const updatePriorGestoraMora = (index: number, mora: number) => {
+    const list = [...(gestoraPayment.pagos_restantes_anteriores || [])];
+    list[index] = { ...list[index], interes_mora: mora };
+    setGestoraPayment({ ...gestoraPayment, pagos_restantes_anteriores: list });
+  };
+
   // Métodos para lista dinámica de Gestora (Selector tipo + monto, sin descripción)
   const addInteresGestora = () => {
     setGestoraPayment({
@@ -1043,6 +1233,19 @@ function AsientosPageContent() {
     const list = [...(gestoraPayment.intereses || [])];
     list[index] = { ...list[index], [field]: value };
     setGestoraPayment({ ...gestoraPayment, intereses: list });
+  };
+
+  // Métodos para saldos pendientes de meses anteriores (Caja de Salud)
+  const togglePriorCaja = (index: number) => {
+    const list = [...(cajaPayment.pagos_restantes_anteriores || [])];
+    list[index] = { ...list[index], pagar_en_este_mes: !list[index].pagar_en_este_mes };
+    setCajaPayment({ ...cajaPayment, pagos_restantes_anteriores: list });
+  };
+
+  const updatePriorCajaMora = (index: number, mora: number) => {
+    const list = [...(cajaPayment.pagos_restantes_anteriores || [])];
+    list[index] = { ...list[index], interes_mora: mora };
+    setCajaPayment({ ...cajaPayment, pagos_restantes_anteriores: list });
   };
 
   // Métodos para lista dinámica de Caja (Selector 2 tipos + monto, sin descripción)
@@ -1816,6 +2019,172 @@ function AsientosPageContent() {
                 </div>
               </div>
 
+              {/* FILA DE IMPORTES RESTANTES (DEDUCCIÓN DE SALDO DIFERIDO GESTORA) */}
+              <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
+                      <Scale className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide">
+                        Importes Restantes (Saldo Diferido / Pago Parcial)
+                      </h4>
+                      <p className="text-[11px] text-amber-800/80">
+                        Monto no cancelado este mes. Se distribuye proporcionalmente entre Retenciones y Aporte Patronal Gestora.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-full sm:w-56">
+                    <div className="relative">
+                      <span className="absolute left-3 top-2 text-xs text-amber-700 font-bold">Bs.</span>
+                      <NumericInput
+                        value={gestoraPayment.importe_restante}
+                        onChange={(val) => setGestoraPayment({ ...gestoraPayment, importe_restante: val })}
+                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-amber-300 rounded-lg text-xs md:text-sm font-bold text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Desglose proporcional de distribución */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                  <div className="p-2.5 bg-white rounded-lg border border-amber-200 text-xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span className="font-semibold">Retenciones Laborales:</span>
+                      <span className="font-bold text-amber-700">{gestoraDeduccionCalc.pctRet.toFixed(2)}%</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                      <span>Deducción calculada:</span>
+                      <span className="font-mono text-red-600 font-semibold">- Bs. {gestoraDeduccionCalc.descRet.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-1 font-bold text-slate-800">
+                      <span>Neto a Cancelar:</span>
+                      <span className="font-mono text-emerald-700">Bs. {gestoraDeduccionCalc.netoRet.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-white rounded-lg border border-amber-200 text-xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span className="font-semibold">Patronal Gestora:</span>
+                      <span className="font-bold text-amber-700">{gestoraDeduccionCalc.pctPat.toFixed(2)}%</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                      <span>Deducción calculada:</span>
+                      <span className="font-mono text-red-600 font-semibold">- Bs. {gestoraDeduccionCalc.descPat.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-1 font-bold text-slate-800">
+                      <span>Neto a Cancelar:</span>
+                      <span className="font-mono text-emerald-700">Bs. {gestoraDeduccionCalc.netoPat.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-amber-100/60 rounded-lg border border-amber-300 text-xs space-y-1 flex flex-col justify-between">
+                    <div className="flex items-center justify-between font-bold text-amber-950">
+                      <span>Total Base Efectiva:</span>
+                      <span className="font-mono text-sm">Bs. {gestoraDeduccionCalc.baseEfectiva.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <p className="text-[10px] text-amber-800 leading-tight">
+                      {gestoraDeduccionCalc.impRestante > 0
+                        ? `Se difiere un saldo de Bs. ${gestoraDeduccionCalc.impRestante.toFixed(2)} para regularización en meses posteriores.`
+                        : "Sin saldo diferido. Se cancela la totalidad de las bases devengadas."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* SALDOS PENDIENTES DE MESES ANTERIORES (GESTORA PÚBLICA) */}
+              {Boolean(gestoraPayment.pagos_restantes_anteriores && gestoraPayment.pagos_restantes_anteriores.length > 0) && (
+                <div className="p-4 rounded-xl bg-blue-50/80 border border-blue-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <History className="w-4 h-4 text-blue-700" />
+                      <h4 className="text-xs font-bold text-blue-950 uppercase tracking-wide">
+                        Saldos Pendientes de Meses Anteriores ({gestoraPayment.pagos_restantes_anteriores?.length})
+                      </h4>
+                    </div>
+                    <span className="text-[11px] text-blue-700 font-medium">
+                      Marque el casillero para liquidar el saldo en el pago de este mes
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {(gestoraPayment.pagos_restantes_anteriores || []).map((saldo, sIdx) => {
+                      const mName = MONTHS.find(m => m.id === saldo.month_origen)?.name || `Mes ${saldo.month_origen}`;
+                      const subtotalSaldo = Number(((Number(saldo.monto_restante) || 0) + (Number(saldo.interes_mora) || 0)).toFixed(2));
+                      return (
+                        <div
+                          key={saldo.id || sIdx}
+                          className={`p-3 rounded-lg border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                            saldo.pagar_en_este_mes
+                              ? "bg-white border-blue-500 shadow-xs ring-1 ring-blue-400"
+                              : "bg-white/70 border-slate-200 opacity-80"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              id={`gestora-saldo-${sIdx}`}
+                              checked={Boolean(saldo.pagar_en_este_mes)}
+                              onChange={() => togglePriorGestora(sIdx)}
+                              className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <div>
+                              <label htmlFor={`gestora-saldo-${sIdx}`} className="text-xs font-bold text-slate-800 cursor-pointer flex items-center gap-2">
+                                <span>{mName} {saldo.year_origen}</span>
+                                {saldo.pagar_en_este_mes ? (
+                                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">
+                                    A liquidar este mes
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold">
+                                    Pendiente
+                                  </span>
+                                )}
+                              </label>
+                              <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                                <span>Saldo capital: <b className="text-slate-700">Bs. {Number(saldo.monto_restante).toLocaleString("es-BO", { minimumFractionDigits: 2 })}</b></span>
+                                {((Number(saldo.monto_retenciones) || 0) > 0 || (Number(saldo.monto_patronal) || 0) > 0) && (
+                                  <span className="text-slate-400">
+                                    (Retenciones: Bs. {Number(saldo.monto_retenciones || 0).toFixed(2)} | Patronal: Bs. {Number(saldo.monto_patronal || 0).toFixed(2)})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 self-end sm:self-auto">
+                            <div className="flex items-center gap-1.5">
+                              <label className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
+                                Interés / Mora:
+                              </label>
+                              <div className="relative w-28">
+                                <span className="absolute left-2.5 top-1.5 text-[11px] text-slate-400 font-bold">Bs.</span>
+                                <NumericInput
+                                  value={saldo.interes_mora}
+                                  disabled={!saldo.pagar_en_este_mes}
+                                  onChange={(val) => updatePriorGestoraMora(sIdx, val)}
+                                  className="w-full pl-8 pr-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-blue-500 disabled:bg-slate-100"
+                                  placeholder="0.00"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="text-right min-w-[100px]">
+                              <span className="text-[10px] text-slate-400 block font-semibold">Subtotal:</span>
+                              <span className={`text-xs font-mono font-black ${saldo.pagar_en_este_mes ? "text-blue-900" : "text-slate-500"}`}>
+                                Bs. {subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Lista Dinámica de Intereses Gestora (Selector tipo + monto) */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -1944,6 +2313,151 @@ function AsientosPageContent() {
                   </span>
                 </div>
               </div>
+
+              {/* FILA DE IMPORTES RESTANTES (DEDUCCIÓN DE SALDO DIFERIDO CAJA) */}
+              <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
+                      <Scale className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide">
+                        Importes Restantes (Saldo Diferido / Pago Parcial)
+                      </h4>
+                      <p className="text-[11px] text-amber-800/80">
+                        Monto pendiente que no se cancela este mes. Se deduce directamente del aporte patronal de salud.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-full sm:w-56">
+                    <div className="relative">
+                      <span className="absolute left-3 top-2 text-xs text-amber-700 font-bold">Bs.</span>
+                      <NumericInput
+                        value={cajaPayment.importe_restante}
+                        onChange={(val) => setCajaPayment({ ...cajaPayment, importe_restante: val })}
+                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-amber-300 rounded-lg text-xs md:text-sm font-bold text-amber-950 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                  <div className="p-2.5 bg-white rounded-lg border border-amber-200 text-xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span className="font-semibold">Base Aporte Salud:</span>
+                      <span className="font-mono font-bold text-slate-800">Bs. {cajaDeduccionCalc.baseSalud.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                      <span>Deducción (Saldo diferido):</span>
+                      <span className="font-mono text-red-600 font-semibold">- Bs. {cajaDeduccionCalc.impRestante.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-1 font-bold text-slate-800">
+                      <span>Neto a Cancelar Este Mes:</span>
+                      <span className="font-mono text-emerald-700">Bs. {cajaDeduccionCalc.netoSalud.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-amber-100/60 rounded-lg border border-amber-300 text-xs space-y-1 flex flex-col justify-between">
+                    <div className="flex items-center justify-between font-bold text-amber-950">
+                      <span>Estado del Periodo:</span>
+                      <span className="font-mono text-xs font-semibold">{cajaDeduccionCalc.impRestante > 0 ? "Pago Parcial Diferido" : "Pago Completo"}</span>
+                    </div>
+                    <p className="text-[10px] text-amber-800 leading-tight">
+                      {cajaDeduccionCalc.impRestante > 0
+                        ? `Se difiere un saldo de Bs. ${cajaDeduccionCalc.impRestante.toFixed(2)} para su regularización en meses posteriores.`
+                        : "Sin saldo diferido. Se cancela la totalidad del aporte devengado."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* SALDOS PENDIENTES DE MESES ANTERIORES (CAJA DE SALUD) */}
+              {Boolean(cajaPayment.pagos_restantes_anteriores && cajaPayment.pagos_restantes_anteriores.length > 0) && (
+                <div className="p-4 rounded-xl bg-teal-50/80 border border-teal-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <History className="w-4 h-4 text-teal-700" />
+                      <h4 className="text-xs font-bold text-teal-950 uppercase tracking-wide">
+                        Saldos Pendientes de Meses Anteriores ({cajaPayment.pagos_restantes_anteriores?.length})
+                      </h4>
+                    </div>
+                    <span className="text-[11px] text-teal-700 font-medium">
+                      Marque el casillero para liquidar el saldo en el pago de este mes
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {(cajaPayment.pagos_restantes_anteriores || []).map((saldo, sIdx) => {
+                      const mName = MONTHS.find(m => m.id === saldo.month_origen)?.name || `Mes ${saldo.month_origen}`;
+                      const subtotalSaldo = Number(((Number(saldo.monto_restante) || 0) + (Number(saldo.interes_mora) || 0)).toFixed(2));
+                      return (
+                        <div
+                          key={saldo.id || sIdx}
+                          className={`p-3 rounded-lg border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                            saldo.pagar_en_este_mes
+                              ? "bg-white border-teal-500 shadow-xs ring-1 ring-teal-400"
+                              : "bg-white/70 border-slate-200 opacity-80"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              id={`caja-saldo-${sIdx}`}
+                              checked={Boolean(saldo.pagar_en_este_mes)}
+                              onChange={() => togglePriorCaja(sIdx)}
+                              className="w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer"
+                            />
+                            <div>
+                              <label htmlFor={`caja-saldo-${sIdx}`} className="text-xs font-bold text-slate-800 cursor-pointer flex items-center gap-2">
+                                <span>{mName} {saldo.year_origen}</span>
+                                {saldo.pagar_en_este_mes ? (
+                                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">
+                                    A liquidar este mes
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold">
+                                    Pendiente
+                                  </span>
+                                )}
+                              </label>
+                              <div className="text-[11px] text-slate-500">
+                                <span>Saldo capital: <b className="text-slate-700">Bs. {Number(saldo.monto_restante).toLocaleString("es-BO", { minimumFractionDigits: 2 })}</b></span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 self-end sm:self-auto">
+                            <div className="flex items-center gap-1.5">
+                              <label className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
+                                Interés / Actualización:
+                              </label>
+                              <div className="relative w-28">
+                                <span className="absolute left-2.5 top-1.5 text-[11px] text-slate-400 font-bold">Bs.</span>
+                                <NumericInput
+                                  value={saldo.interes_mora}
+                                  disabled={!saldo.pagar_en_este_mes}
+                                  onChange={(val) => updatePriorCajaMora(sIdx, val)}
+                                  className="w-full pl-8 pr-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-teal-500 disabled:bg-slate-100"
+                                  placeholder="0.00"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="text-right min-w-[100px]">
+                              <span className="text-[10px] text-slate-400 block font-semibold">Subtotal:</span>
+                              <span className={`text-xs font-mono font-black ${saldo.pagar_en_este_mes ? "text-teal-900" : "text-slate-500"}`}>
+                                Bs. {subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Lista Dinámica de Intereses y Actualizaciones (Selector 2 tipos + monto) */}
               <div className="space-y-3">

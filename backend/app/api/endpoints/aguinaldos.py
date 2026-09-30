@@ -207,7 +207,8 @@ def get_or_generate_aguinaldo_payroll(schema_name: str, year: int, db: Session =
         emp_cargo = emp.ocupacion or ""
         emp_nac = emp.nacionalidad or "BOLIVIANO"
         emp_fnac = str(emp.fecha_nacimiento) if emp.fecha_nacimiento else ""
-        emp_sexo = getattr(emp, 'sexo', None) or getattr(emp, 'genero', None) or 'M'
+        raw_sex = getattr(emp, 'sexo', None) or getattr(emp, 'genero', None) or 'M'
+        emp_sexo = 'F' if str(raw_sex).strip().upper() in ['F', 'V', 'FEMENINO', 'MUJER'] else 'M'
         emp_fingreso = str(emp.fecha_ingreso) if emp.fecha_ingreso else ""
 
         # Literal en bolivianos
@@ -441,12 +442,17 @@ def export_single_aguinaldo_papeleta(
     filename = f"papeleta_aguinaldo_{emp_slug}_{empresa_slug}_{year}.{out_fmt}"
     return FileResponse(path=file_path, filename=filename, media_type=media_type)
 
+@router.get("/{year}/papeletas/export/batch/{mode}/{format}")
+@router.get("/{year}/papeletas/export/batch/{mode}/{format}/", include_in_schema=False)
+@router.get("/{year}/papeletas/export/batch/{format}")
+@router.get("/{year}/papeletas/export/batch/{format}/", include_in_schema=False)
 @router.get("/{year}/papeletas/export/{format}")
 @router.get("/{year}/papeletas/export/{format}/", include_in_schema=False)
 def export_batch_aguinaldo_papeletas(
     schema_name: str,
     year: int,
     format: str,
+    mode: str = "multi_sheet",
     db: Session = Depends(get_tenant_db)
 ):
     if format.lower() not in ["excel", "xlsx", "pdf"]:
@@ -468,10 +474,13 @@ def export_batch_aguinaldo_papeletas(
             'total_aguinaldo': float(s.total_aguinaldo)
         })
 
+    boletas_list.sort(key=lambda x: sort_code_key(x.get('internal_code', '')))
+
     out_fmt = "pdf" if format.lower() == "pdf" else "xlsx"
-    file_path = DocumentService.generate_aguinaldo_payslips_batch(boletas_list, output_format=out_fmt, schema_name=schema_name)
+    file_path = DocumentService.generate_aguinaldo_payslips_batch(boletas_list, output_format=out_fmt, schema_name=schema_name, mode=mode)
 
     empresa_slug = DocumentService._slugify(schema_name if schema_name else payroll_data.tenant_name)
+    mode_slug = "2_por_hoja" if mode == "continuous" else "pestanas"
     media_type = 'application/pdf' if out_fmt == "pdf" else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    filename = f"talonario_aguinaldos_{empresa_slug}_{year}.{out_fmt}"
+    filename = f"talonario_aguinaldos_{empresa_slug}_{year}_{mode_slug}.{out_fmt}"
     return FileResponse(path=file_path, filename=filename, media_type=media_type)

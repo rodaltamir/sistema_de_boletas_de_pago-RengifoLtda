@@ -69,6 +69,8 @@ def save_accounting_sheet(
         end_of_month = date(payload.year, payload.month, last_day)
         is_locked_by_date = today > end_of_month
 
+        pending_g, pending_c = AccountingService._get_pending_balances_for_month(tenant_session, payload.month, payload.year)
+
         if payload.devengamiento:
             sheet_data = AccountingService.build_full_sheet(
                 month=payload.month,
@@ -82,7 +84,9 @@ def save_accounting_sheet(
                 payroll_id=payroll_id,
                 is_locked_by_date=is_locked_by_date,
                 is_manually_unlocked=bool(payload.is_manually_unlocked),
-                is_customized=True
+                is_customized=True,
+                saldos_pendientes_gestora=pending_g,
+                saldos_pendientes_caja=pending_c
             )
         else:
             sections = []

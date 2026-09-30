@@ -288,6 +288,34 @@ def export_patronal_payroll(
 
     payroll_data = get_patronal_payroll(schema_name, month, year, db)
     
+    with engine.connect() as conn:
+        result = conn.execute(text(f"SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = '{schema_name}'")).fetchone()
+        t_name = result[0] if result and result[0] else payroll_data.tenant_name
+        t_patronal = result[1] if result and result[1] else payroll_data.tenant_nro_patronal
+        t_nit = result[2] if result and result[2] else payroll_data.tenant_nit
+        t_emp_nombres = result[3] if result and result[3] else ""
+        t_emp_paterno = result[4] if result and result[4] else ""
+        t_emp_materno = result[5] if result and result[5] else ""
+        t_emp_ci = result[6] if result and result[6] else ""
+
+    t_emp_ext = ""
+    if t_emp_ci:
+        digits_only = re.sub(r'\D', '', str(t_emp_ci))
+        emp_match = db.query(Employee).filter(
+            (Employee.documento_identidad == str(t_emp_ci).strip()) | 
+            (Employee.documento_identidad == digits_only)
+        ).first()
+        if emp_match and emp_match.ext_ci:
+            t_emp_ext = emp_match.ext_ci
+
+    rep_legal = f"{t_emp_nombres} {t_emp_paterno} {t_emp_materno}".strip().replace("  ", " ")
+    if not rep_legal:
+        rep_legal = f"{t_emp_paterno} {t_emp_materno} {t_emp_nombres}".strip().replace("  ", " ")
+    if not rep_legal:
+        rep_legal = t_name
+
+    rep_ci = f"{t_emp_ci} {t_emp_ext}".strip() if t_emp_ext else (str(t_emp_ci).strip() if t_emp_ci else t_nit)
+
     details_dict = []
     for d in payroll_data.details:
         details_dict.append({
@@ -306,12 +334,14 @@ def export_patronal_payroll(
         })
 
     data_payload = {
-        'empresa_nombre': payroll_data.tenant_name,
+        'empresa_nombre': t_name,
         'ciudad': payroll_data.tenant_ciudad,
-        'numero_patronal': payroll_data.tenant_nro_patronal,
-        'nit': payroll_data.tenant_nit,
+        'numero_patronal': t_patronal,
+        'nit': t_nit,
         'mes': month,
         'anio': year,
+        'representante_legal': rep_legal,
+        'ci_representante': rep_ci,
         'details': details_dict
     }
 

@@ -5,10 +5,12 @@ import calendar
 import openpyxl
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+from openpyxl.worksheet.pagebreak import Break
 from datetime import datetime
 import re
 import unicodedata
 from copy import copy
+from app.schemas.accounting import AccountingSection
 
 class DocumentService:
 
@@ -263,84 +265,17 @@ class DocumentService:
         return target_docx
 
     @staticmethod
-    def generate_payslip(boleta_data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
-        """
-        Genera la Boleta de Pago en Excel con dos boletas idénticas enmarcadas (recuadro grande)
-        en una sola página Carta Vertical (Superior e Inferior) en un archivo organizado multi-hoja por mes
-        (boleta_pago_{empleado}_{empresa}_{anio}.xlsx) y opcionalmente exporta la hoja del mes a PDF.
-        """
-        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "boletas"))
-        os.makedirs(exports_dir, exist_ok=True)
-        
-        emp_nombres = boleta_data.get('nombres') or ''
-        emp_pat = boleta_data.get('apellido_paterno') or ''
-        emp_mat = boleta_data.get('apellido_materno') or ''
-        full_emp_name = f"{emp_pat} {emp_mat} {emp_nombres}".strip().replace("  ", " ").upper()
-        if not full_emp_name:
-            full_emp_name = str(boleta_data.get('employee_name', '') or '').upper()
-        emp_slug = DocumentService._slugify(full_emp_name) if full_emp_name else "empleado"
-
+    def _render_single_payslip(ws, start_r: int, boleta_data: dict, copia_num: int = 1) -> int:
         empresa = str(boleta_data.get('empresa_nombre', '') or '').upper()
-        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
-
-        mes_int = int(boleta_data.get('mes', 0))
-        MESES = {1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO", 7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"}
-        mes_nombre = MESES.get(mes_int, f"MES_{mes_int}")
-        anio = str(boleta_data.get('anio', datetime.now().year))
-        
-        output_xlsx = os.path.join(exports_dir, f"boleta_pago_{emp_slug}_{empresa_slug}_{anio}.xlsx")
-
-        if os.path.exists(output_xlsx):
-            wb = openpyxl.load_workbook(output_xlsx)
-            if mes_nombre in wb.sheetnames:
-                wb.remove(wb[mes_nombre])
-            ws = wb.create_sheet(title=mes_nombre)
-        else:
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = mes_nombre
-        
-        # Configuración de página: Portrait Letter, exactamente 1 página vertical, centrada
-        ws.sheet_properties.pageSetUpPr.fitToPage = True
-        ws.page_setup.fitToWidth = 1
-        ws.page_setup.fitToHeight = 1
-        ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
-        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
-        ws.print_options.horizontalCentered = True
-        ws.page_margins = openpyxl.worksheet.page.PageMargins(
-            left=0.35, right=0.35, top=0.35, bottom=0.35, header=0.1, footer=0.1
-        )
-        
-        # Anchos de columna amplios para llenar armónicamente el ancho de la hoja
-        ws.column_dimensions['A'].width = 1.5
-        ws.column_dimensions['B'].width = 33.0
-        ws.column_dimensions['C'].width = 18.0
-        ws.column_dimensions['D'].width = 33.0
-        ws.column_dimensions['E'].width = 18.0
-        ws.column_dimensions['F'].width = 1.5
-        
-        # Estilos de borde y rellenos
-        border_frame_thick = Side(border_style='medium', color='000000')
-        border_thin = Side(border_style='thin', color='444444')
-        border_all_thin = Border(top=border_thin, bottom=border_thin, left=border_thin, right=border_thin)
-
-        fill_period = PatternFill(start_color="F2F4F8", end_color="F2F4F8", fill_type="solid")
-        fill_subhdr = PatternFill(start_color="E4E8EE", end_color="E4E8EE", fill_type="solid")
-        fill_total = PatternFill(start_color="EBEFF4", end_color="EBEFF4", fill_type="solid")
-        fill_liquido = PatternFill(start_color="DEE5ED", end_color="DEE5ED", fill_type="solid")
-
-        font_company = Font(name="Arial", size=11, bold=True)
-        font_title = Font(name="Arial", size=13, bold=True, color="002060")
-        font_bol_num = Font(name="Arial", size=11, bold=True, color="002060")
-        font_bold = Font(name="Arial", size=9, bold=True)
-        font_bold_lg = Font(name="Arial", size=10, bold=True)
-        font_regular = Font(name="Arial", size=8.5)
-
         patronal = str(boleta_data.get('numero_patronal', '') or '')
         nit = str(boleta_data.get('nit', '') or '')
         internal_code = str(boleta_data.get('internal_code', '') or '').replace('"', '').replace("'", "")
         
-        # Fecha fin de mes en formato DD/MM/YYYY (último día del mes evaluado)
+        mes_int = int(boleta_data.get('mes', 1))
+        MESES_MAYUS = {1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO", 7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"}
+        mes_nombre = MESES_MAYUS.get(mes_int, f"MES_{mes_int}")
+        anio = str(boleta_data.get('anio', datetime.now().year))
+        
         try:
             _, dias_mes = calendar.monthrange(int(anio), mes_int)
         except Exception:
@@ -398,11 +333,11 @@ class DocumentService:
         decimal = int(round((liquido - entero) * 100))
         literal = DocumentService._numero_a_letras(entero)
 
-        # Construir listas dinámicas: solo incluir ingresos y descuentos que NO sean cero
-        ingresos_list = []
-        ingresos_list.append(("Sueldo Básico", hb))
-        if ba > 0:
-            ingresos_list.append(("Bono de Antigüedad", ba))
+        # Construir listas: Sueldo Básico y Bono de Antigüedad siempre presentes por norma laboral
+        ingresos_list = [
+            ("Sueldo Básico", hb),
+            ("Bono de Antigüedad", ba)
+        ]
         if bp > 0:
             ingresos_list.append(("Bono de Producción", bp))
         if sub_frontera > 0:
@@ -416,11 +351,10 @@ class DocumentService:
         if otros_bonos > 0:
             ingresos_list.append(("Otros Ingresos / Bonos", otros_bonos))
 
-        descuentos_list = []
-        if gestora_publica > 0:
-            descuentos_list.append(("Aporte Gestora Pública", gestora_publica))
-        if aporte_solidario > 0:
-            descuentos_list.append(("Aporte Solidario Asegurado", aporte_solidario))
+        descuentos_list = [
+            ("Aporte Gestora Pública", gestora_publica),
+            ("Aporte Solidario Asegurado", aporte_solidario)
+        ]
         if rc_iva > 0:
             descuentos_list.append(("R.C. - I.V.A.", rc_iva))
         if anticipos > 0:
@@ -435,223 +369,295 @@ class DocumentService:
             desc_nom, desc_val = descuentos_list[i] if i < len(descuentos_list) else ("", None)
             items_detalle.append((ing_nom, ing_val, desc_nom, desc_val))
 
-        def _render_boleta(start_r: int, copia_num: int = 1) -> int:
-            num_filas = len(items_detalle)
-            r_tot = start_r + 8 + num_filas
-            r_liq = r_tot + 1
-            r_space = r_tot + 2
-            r_sig1 = r_tot + 3
-            r_sig2 = r_tot + 4
-            end_r = r_tot + 5
+        border_frame_thick = Side(border_style='medium', color='000000')
+        border_thin = Side(border_style='thin', color='444444')
+        border_all_thin = Border(top=border_thin, bottom=border_thin, left=border_thin, right=border_thin)
 
-            # 1. Fila 1: Empresa y N° de Boleta / Copia
-            ws.row_dimensions[start_r].height = 19
-            ws.merge_cells(start_row=start_r, start_column=2, end_row=start_r, end_column=4)
-            c_emp = ws.cell(row=start_r, column=2, value=empresa)
-            c_emp.font = font_company
-            c_emp.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+        fill_period = PatternFill(start_color="F2F4F8", end_color="F2F4F8", fill_type="solid")
+        fill_subhdr = PatternFill(start_color="E4E8EE", end_color="E4E8EE", fill_type="solid")
+        fill_total = PatternFill(start_color="EBEFF4", end_color="EBEFF4", fill_type="solid")
+        fill_liquido = PatternFill(start_color="DEE5ED", end_color="DEE5ED", fill_type="solid")
 
-            c_num = ws.cell(row=start_r, column=5, value=f"N°: {copia_num}")
-            c_num.font = font_bol_num
-            c_num.alignment = Alignment(horizontal='right', vertical='center')
+        font_company = Font(name="Arial", size=11, bold=True)
+        font_title = Font(name="Arial", size=13, bold=True, color="002060")
+        font_bol_num = Font(name="Arial", size=11, bold=True, color="002060")
+        font_bold = Font(name="Arial", size=9, bold=True)
+        font_bold_lg = Font(name="Arial", size=10, bold=True)
+        font_regular = Font(name="Arial", size=8.5)
 
-            # 2. Fila 2: Patronal y NIT
-            ws.row_dimensions[start_r+1].height = 17
-            ws.merge_cells(start_row=start_r+1, start_column=2, end_row=start_r+1, end_column=5)
-            c_pat = ws.cell(row=start_r+1, column=2, value=f"N° Patronal: {patronal}   |   NIT: {nit}")
-            c_pat.font = font_regular
-            c_pat.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+        num_filas = len(items_detalle)
+        r_tot = start_r + 8 + num_filas
+        r_liq = r_tot + 1
+        r_space = r_tot + 2
+        r_sig1 = r_tot + 3
+        r_sig2 = r_tot + 4
+        end_r = r_tot + 5
 
-            # 3. Fila 3: Título Central PAPELETA DE PAGO
-            ws.row_dimensions[start_r+2].height = 24
-            ws.merge_cells(start_row=start_r+2, start_column=2, end_row=start_r+2, end_column=5)
-            c_tit = ws.cell(row=start_r+2, column=2, value="PAPELETA DE PAGO")
-            c_tit.font = font_title
-            c_tit.alignment = Alignment(horizontal='center', vertical='center')
+        # 1. Fila 1: Empresa y N° de Boleta / Copia
+        ws.row_dimensions[start_r].height = 19
+        ws.merge_cells(start_row=start_r, start_column=2, end_row=start_r, end_column=4)
+        c_emp = ws.cell(row=start_r, column=2, value=empresa)
+        c_emp.font = font_company
+        c_emp.alignment = Alignment(horizontal='left', vertical='center', indent=1)
 
-            # 4. Fila 4: Barra de Período y Fecha
-            ws.row_dimensions[start_r+3].height = 19
-            ws.cell(row=start_r+3, column=2, value=f"  MES: {mes_nombre}").font = font_bold
-            ws.cell(row=start_r+3, column=2).alignment = Alignment(horizontal='left', vertical='center')
-            ws.cell(row=start_r+3, column=3, value=f"AÑO: {anio}").font = font_bold
-            ws.cell(row=start_r+3, column=3).alignment = Alignment(horizontal='left', vertical='center')
+        c_num = ws.cell(row=start_r, column=5, value=f"N°: {copia_num}")
+        c_num.font = font_bol_num
+        c_num.alignment = Alignment(horizontal='right', vertical='center')
 
-            ws.merge_cells(start_row=start_r+3, start_column=4, end_row=start_r+3, end_column=5)
-            c_fec = ws.cell(row=start_r+3, column=4, value=f"FECHA: {fecha_fin}  ")
-            c_fec.font = font_bold
-            c_fec.alignment = Alignment(horizontal='right', vertical='center')
+        # 2. Fila 2: Patronal y NIT
+        ws.row_dimensions[start_r+1].height = 17
+        ws.merge_cells(start_row=start_r+1, start_column=2, end_row=start_r+1, end_column=5)
+        c_pat = ws.cell(row=start_r+1, column=2, value=f"N° Patronal: {patronal}   |   NIT: {nit}")
+        c_pat.font = font_regular
+        c_pat.alignment = Alignment(horizontal='left', vertical='center', indent=1)
 
-            for c in range(2, 6):
-                ws.cell(row=start_r+3, column=c).fill = fill_period
-                ws.cell(row=start_r+3, column=c).border = Border(top=border_thin, bottom=border_thin)
+        # 3. Fila 3: Título Central PAPELETA DE PAGO
+        ws.row_dimensions[start_r+2].height = 24
+        ws.merge_cells(start_row=start_r+2, start_column=2, end_row=start_r+2, end_column=5)
+        c_tit = ws.cell(row=start_r+2, column=2, value="PAPELETA DE PAGO")
+        c_tit.font = font_title
+        c_tit.alignment = Alignment(horizontal='center', vertical='center')
 
-            # 5. Fila 5: Código y Nombre
-            ws.row_dimensions[start_r+4].height = 18
-            ws.cell(row=start_r+4, column=2, value=f"  CÓDIGO:  {internal_code}").font = font_bold
-            ws.cell(row=start_r+4, column=2).alignment = Alignment(horizontal='left', vertical='center')
-            
-            ws.merge_cells(start_row=start_r+4, start_column=3, end_row=start_r+4, end_column=5)
-            c_name = ws.cell(row=start_r+4, column=3, value=f"NOMBRE:  {full_emp_name}")
-            c_name.font = font_bold_lg
-            c_name.alignment = Alignment(horizontal='left', vertical='center')
+        # 4. Fila 4: Barra de Período y Fecha
+        ws.row_dimensions[start_r+3].height = 19
+        ws.cell(row=start_r+3, column=2, value=f"  MES: {mes_nombre}").font = font_bold
+        ws.cell(row=start_r+3, column=2).alignment = Alignment(horizontal='left', vertical='center')
+        ws.cell(row=start_r+3, column=3, value=f"AÑO: {anio}").font = font_bold
+        ws.cell(row=start_r+3, column=3).alignment = Alignment(horizontal='left', vertical='center')
 
-            # 6. Fila 6: Cargo y C.I.
-            ws.row_dimensions[start_r+5].height = 18
-            ws.merge_cells(start_row=start_r+5, start_column=2, end_row=start_r+5, end_column=3)
-            c_crg = ws.cell(row=start_r+5, column=2, value=f"  CARGO:  {cargo}")
-            c_crg.font = font_regular
-            c_crg.alignment = Alignment(horizontal='left', vertical='center')
+        ws.merge_cells(start_row=start_r+3, start_column=4, end_row=start_r+3, end_column=5)
+        c_fec = ws.cell(row=start_r+3, column=4, value=f"FECHA: {fecha_fin}  ")
+        c_fec.font = font_bold
+        c_fec.alignment = Alignment(horizontal='right', vertical='center')
 
-            ws.merge_cells(start_row=start_r+5, start_column=4, end_row=start_r+5, end_column=5)
-            c_ci = ws.cell(row=start_r+5, column=4, value=f"C.I.:  {ci_ext}")
-            c_ci.font = font_regular
-            c_ci.alignment = Alignment(horizontal='left', vertical='center')
+        for c in range(2, 6):
+            ws.cell(row=start_r+3, column=c).fill = fill_period
+            ws.cell(row=start_r+3, column=c).border = Border(top=border_thin, bottom=border_thin)
 
-            # 7. Fila 7: Fecha de Ingreso y Días Pagados / Saldo IVA
-            ws.row_dimensions[start_r+6].height = 18
-            ws.merge_cells(start_row=start_r+6, start_column=2, end_row=start_r+6, end_column=3)
-            c_fi = ws.cell(row=start_r+6, column=2, value=f"  FECHA INGRESO:  {fecha_ing_dmy}")
-            c_fi.font = font_regular
-            c_fi.alignment = Alignment(horizontal='left', vertical='center')
+        # 5. Fila 5: Código y Nombre
+        ws.row_dimensions[start_r+4].height = 18
+        ws.cell(row=start_r+4, column=2, value=f"  CÓDIGO:  {internal_code}").font = font_bold
+        ws.cell(row=start_r+4, column=2).alignment = Alignment(horizontal='left', vertical='center')
+        
+        ws.merge_cells(start_row=start_r+4, start_column=3, end_row=start_r+4, end_column=5)
+        c_name = ws.cell(row=start_r+4, column=3, value=f"NOMBRE:  {full_emp_name}")
+        c_name.font = font_bold_lg
+        c_name.alignment = Alignment(horizontal='left', vertical='center')
 
-            ws.merge_cells(start_row=start_r+6, start_column=4, end_row=start_r+6, end_column=5)
-            c_dp = ws.cell(row=start_r+6, column=4, value=f"DÍAS PAGADOS: {dias_pagados}   |   SALDO I.V.A.: 0.00")
-            c_dp.font = font_regular
-            c_dp.alignment = Alignment(horizontal='left', vertical='center')
+        # 6. Fila 6: Cargo y C.I.
+        ws.row_dimensions[start_r+5].height = 18
+        ws.merge_cells(start_row=start_r+5, start_column=2, end_row=start_r+5, end_column=3)
+        c_crg = ws.cell(row=start_r+5, column=2, value=f"  CARGO:  {cargo}")
+        c_crg.font = font_regular
+        c_crg.alignment = Alignment(horizontal='left', vertical='center')
 
-            for c in range(2, 6):
-                ws.cell(row=start_r+6, column=c).border = Border(bottom=border_thin)
+        ws.merge_cells(start_row=start_r+5, start_column=4, end_row=start_r+5, end_column=5)
+        c_ci = ws.cell(row=start_r+5, column=4, value=f"C.I.:  {ci_ext}")
+        c_ci.font = font_regular
+        c_ci.alignment = Alignment(horizontal='left', vertical='center')
 
-            # 8. Fila 8: Cabecera Tabla Ingresos / Descuentos
-            ws.row_dimensions[start_r+7].height = 20
-            ws.cell(row=start_r+7, column=2, value="INGRESOS").font = font_bold
-            ws.cell(row=start_r+7, column=2).alignment = Alignment(horizontal='center', vertical='center')
-            ws.cell(row=start_r+7, column=3, value="MONTO BS").font = font_bold
-            ws.cell(row=start_r+7, column=3).alignment = Alignment(horizontal='center', vertical='center')
+        # 7. Fila 7: Fecha de Ingreso y Días Pagados / Saldo IVA
+        ws.row_dimensions[start_r+6].height = 18
+        ws.merge_cells(start_row=start_r+6, start_column=2, end_row=start_r+6, end_column=3)
+        c_fi = ws.cell(row=start_r+6, column=2, value=f"  FECHA INGRESO:  {fecha_ing_dmy}")
+        c_fi.font = font_regular
+        c_fi.alignment = Alignment(horizontal='left', vertical='center')
 
-            ws.cell(row=start_r+7, column=4, value="DESCUENTOS").font = font_bold
-            ws.cell(row=start_r+7, column=4).alignment = Alignment(horizontal='center', vertical='center')
-            ws.cell(row=start_r+7, column=5, value="MONTO BS").font = font_bold
-            ws.cell(row=start_r+7, column=5).alignment = Alignment(horizontal='center', vertical='center')
+        ws.merge_cells(start_row=start_r+6, start_column=4, end_row=start_r+6, end_column=5)
+        c_dp = ws.cell(row=start_r+6, column=4, value=f"DÍAS PAGADOS: {dias_pagados}   |   SALDO I.V.A.: 0.00")
+        c_dp.font = font_regular
+        c_dp.alignment = Alignment(horizontal='left', vertical='center')
 
-            for c in range(2, 6):
-                ws.cell(row=start_r+7, column=c).fill = fill_subhdr
-                ws.cell(row=start_r+7, column=c).border = border_all_thin
+        for c in range(2, 6):
+            ws.cell(row=start_r+6, column=c).border = Border(bottom=border_thin)
 
-            # 9-Filas de Detalle Dinámicas
-            for idx, (ing_nom, ing_val, desc_nom, desc_val) in enumerate(items_detalle):
-                r = start_r + 8 + idx
-                ws.row_dimensions[r].height = 17
+        # 8. Fila 8: Cabecera Tabla Ingresos / Descuentos
+        ws.row_dimensions[start_r+7].height = 20
+        ws.cell(row=start_r+7, column=2, value="INGRESOS").font = font_bold
+        ws.cell(row=start_r+7, column=2).alignment = Alignment(horizontal='center', vertical='center')
+        ws.cell(row=start_r+7, column=3, value="MONTO BS").font = font_bold
+        ws.cell(row=start_r+7, column=3).alignment = Alignment(horizontal='center', vertical='center')
 
-                c_in = ws.cell(row=r, column=2, value=f"  {ing_nom}" if ing_nom else "")
-                c_in.font = font_regular
-                c_in.alignment = Alignment(horizontal='left', vertical='center')
+        ws.cell(row=start_r+7, column=4, value="DESCUENTOS").font = font_bold
+        ws.cell(row=start_r+7, column=4).alignment = Alignment(horizontal='center', vertical='center')
+        ws.cell(row=start_r+7, column=5, value="MONTO BS").font = font_bold
+        ws.cell(row=start_r+7, column=5).alignment = Alignment(horizontal='center', vertical='center')
 
-                c_v1 = ws.cell(row=r, column=3, value=ing_val if ing_val is not None else "")
-                c_v1.font = font_regular
-                if ing_val is not None:
-                    c_v1.number_format = '#,##0.00'
-                c_v1.alignment = Alignment(horizontal='right', vertical='center')
+        for c in range(2, 6):
+            ws.cell(row=start_r+7, column=c).fill = fill_subhdr
+            ws.cell(row=start_r+7, column=c).border = border_all_thin
 
-                c_dn = ws.cell(row=r, column=4, value=f"  {desc_nom}" if desc_nom else "")
-                c_dn.font = font_regular
-                c_dn.alignment = Alignment(horizontal='left', vertical='center')
+        # 9. Filas de Detalle Dinámicas
+        for idx, (ing_nom, ing_val, desc_nom, desc_val) in enumerate(items_detalle):
+            r = start_r + 8 + idx
+            ws.row_dimensions[r].height = 17
 
-                c_v2 = ws.cell(row=r, column=5, value=desc_val if desc_val is not None else "")
-                c_v2.font = font_regular
-                if desc_val is not None:
-                    c_v2.number_format = '#,##0.00'
-                c_v2.alignment = Alignment(horizontal='right', vertical='center')
+            c_in = ws.cell(row=r, column=2, value=f"  {ing_nom}" if ing_nom else "")
+            c_in.font = font_regular
+            c_in.alignment = Alignment(horizontal='left', vertical='center')
 
-                for c in range(2, 6):
-                    ws.cell(row=r, column=c).border = border_all_thin
+            c_v1 = ws.cell(row=r, column=3, value=ing_val if ing_val is not None else "")
+            c_v1.font = font_regular
+            if ing_val is not None:
+                c_v1.number_format = '#,##0.00'
+            c_v1.alignment = Alignment(horizontal='right', vertical='center')
 
-            # Fila TOTALES
-            ws.row_dimensions[r_tot].height = 20
-            ws.cell(row=r_tot, column=2, value="  TOTAL GANADO").font = font_bold
-            ws.cell(row=r_tot, column=2).alignment = Alignment(horizontal='left', vertical='center')
+            c_dn = ws.cell(row=r, column=4, value=f"  {desc_nom}" if desc_nom else "")
+            c_dn.font = font_regular
+            c_dn.alignment = Alignment(horizontal='left', vertical='center')
 
-            c_tg = ws.cell(row=r_tot, column=3, value=total_ganado)
-            c_tg.font = font_bold_lg
-            c_tg.number_format = '#,##0.00'
-            c_tg.alignment = Alignment(horizontal='right', vertical='center')
-
-            ws.cell(row=r_tot, column=4, value="  TOTAL DESCUENTOS").font = font_bold
-            ws.cell(row=r_tot, column=4).alignment = Alignment(horizontal='left', vertical='center')
-
-            c_td = ws.cell(row=r_tot, column=5, value=total_descuentos)
-            c_td.font = font_bold_lg
-            c_td.number_format = '#,##0.00'
-            c_td.alignment = Alignment(horizontal='right', vertical='center')
+            c_v2 = ws.cell(row=r, column=5, value=desc_val if desc_val is not None else "")
+            c_v2.font = font_regular
+            if desc_val is not None:
+                c_v2.number_format = '#,##0.00'
+            c_v2.alignment = Alignment(horizontal='right', vertical='center')
 
             for c in range(2, 6):
-                ws.cell(row=r_tot, column=c).fill = fill_total
-                ws.cell(row=r_tot, column=c).border = border_all_thin
+                ws.cell(row=r, column=c).border = border_all_thin
 
-            # Fila LÍQUIDO PAGABLE
-            ws.row_dimensions[r_liq].height = 26
-            c_lpt = ws.cell(row=r_liq, column=2, value="  LÍQUIDO PAGABLE:")
-            c_lpt.font = Font(name="Arial", size=10.5, bold=True)
-            c_lpt.alignment = Alignment(horizontal='left', vertical='center')
+        # Fila TOTALES
+        ws.row_dimensions[r_tot].height = 20
+        ws.cell(row=r_tot, column=2, value="  TOTAL GANADO").font = font_bold
+        ws.cell(row=r_tot, column=2).alignment = Alignment(horizontal='left', vertical='center')
 
-            c_lp = ws.cell(row=r_liq, column=3, value=liquido)
-            c_lp.font = Font(name="Arial", size=12, bold=True)
-            c_lp.number_format = '#,##0.00'
-            c_lp.alignment = Alignment(horizontal='right', vertical='center')
+        c_tg = ws.cell(row=r_tot, column=3, value=total_ganado)
+        c_tg.font = font_bold_lg
+        c_tg.number_format = '#,##0.00'
+        c_tg.alignment = Alignment(horizontal='right', vertical='center')
 
-            ws.merge_cells(start_row=r_liq, start_column=4, end_row=r_liq, end_column=5)
-            c_lit = ws.cell(row=r_liq, column=4, value=f"  (Son: {literal} con {decimal}/100 Bolivianos)")
-            c_lit.font = Font(name="Arial", size=8.5, italic=True)
-            c_lit.alignment = Alignment(horizontal='left', vertical='center', shrink_to_fit=True)
+        ws.cell(row=r_tot, column=4, value="  TOTAL DESCUENTOS").font = font_bold
+        ws.cell(row=r_tot, column=4).alignment = Alignment(horizontal='left', vertical='center')
 
+        c_td = ws.cell(row=r_tot, column=5, value=total_descuentos)
+        c_td.font = font_bold_lg
+        c_td.number_format = '#,##0.00'
+        c_td.alignment = Alignment(horizontal='right', vertical='center')
+
+        for c in range(2, 6):
+            ws.cell(row=r_tot, column=c).fill = fill_total
+            ws.cell(row=r_tot, column=c).border = border_all_thin
+
+        # Fila LÍQUIDO PAGABLE
+        ws.row_dimensions[r_liq].height = 26
+        c_lpt = ws.cell(row=r_liq, column=2, value="  LÍQUIDO PAGABLE:")
+        c_lpt.font = Font(name="Arial", size=10.5, bold=True)
+        c_lpt.alignment = Alignment(horizontal='left', vertical='center')
+
+        c_lp = ws.cell(row=r_liq, column=3, value=liquido)
+        c_lp.font = Font(name="Arial", size=12, bold=True)
+        c_lp.number_format = '#,##0.00'
+        c_lp.alignment = Alignment(horizontal='right', vertical='center')
+
+        ws.merge_cells(start_row=r_liq, start_column=4, end_row=r_liq, end_column=5)
+        c_lit = ws.cell(row=r_liq, column=4, value=f"  (Son: {literal} con {decimal}/100 Bolivianos)")
+        c_lit.font = Font(name="Arial", size=8.5, italic=True)
+        c_lit.alignment = Alignment(horizontal='left', vertical='center', shrink_to_fit=True)
+
+        for c in range(2, 6):
+            ws.cell(row=r_liq, column=c).fill = fill_liquido
+            ws.cell(row=r_liq, column=c).border = border_all_thin
+
+        # Espacio antes de firmas
+        ws.row_dimensions[r_space].height = 22
+
+        # Líneas de puntos de firmas
+        ws.row_dimensions[r_sig1].height = 18
+        ws.merge_cells(start_row=r_sig1, start_column=2, end_row=r_sig1, end_column=3)
+        c_s1 = ws.cell(row=r_sig1, column=2, value="........................................................................")
+        c_s1.font = Font(name="Arial", size=9)
+        c_s1.alignment = Alignment(horizontal='center', vertical='bottom')
+
+        ws.merge_cells(start_row=r_sig1, start_column=4, end_row=r_sig1, end_column=5)
+        c_s2 = ws.cell(row=r_sig1, column=4, value="........................................................................")
+        c_s2.font = Font(name="Arial", size=9)
+        c_s2.alignment = Alignment(horizontal='center', vertical='bottom')
+
+        # Nombres y Cargos de Firmas
+        ws.row_dimensions[r_sig2].height = 18
+        ws.merge_cells(start_row=r_sig2, start_column=2, end_row=r_sig2, end_column=3)
+        c_t1 = ws.cell(row=r_sig2, column=2, value="Vo. Bo. Contabilidad / Gerencia")
+        c_t1.font = font_bold
+        c_t1.alignment = Alignment(horizontal='center', vertical='center')
+
+        ws.merge_cells(start_row=r_sig2, start_column=4, end_row=r_sig2, end_column=5)
+        c_t2 = ws.cell(row=r_sig2, column=4, value=full_emp_name)
+        c_t2.font = font_bold
+        c_t2.alignment = Alignment(horizontal='center', vertical='center')
+
+        # Espaciador inferior dentro del recuadro
+        ws.row_dimensions[end_r].height = 10
+
+        # Marco exterior en recuadro completo
+        for r in range(start_r, end_r + 1):
             for c in range(2, 6):
-                ws.cell(row=r_liq, column=c).fill = fill_liquido
-                ws.cell(row=r_liq, column=c).border = border_all_thin
+                cell = ws.cell(row=r, column=c)
+                top_b = border_frame_thick if r == start_r else cell.border.top
+                bot_b = border_frame_thick if r == end_r else cell.border.bottom
+                left_b = border_frame_thick if c == 2 else cell.border.left
+                right_b = border_frame_thick if c == 5 else cell.border.right
+                cell.border = Border(top=top_b, bottom=bot_b, left=left_b, right=right_b)
 
-            # Espacio antes de firmas (dentro del recuadro)
-            ws.row_dimensions[r_space].height = 22
+        return end_r
 
-            # Líneas de puntos de firmas (dentro del recuadro)
-            ws.row_dimensions[r_sig1].height = 18
-            ws.merge_cells(start_row=r_sig1, start_column=2, end_row=r_sig1, end_column=3)
-            c_s1 = ws.cell(row=r_sig1, column=2, value="........................................................................")
-            c_s1.font = Font(name="Arial", size=9)
-            c_s1.alignment = Alignment(horizontal='center', vertical='bottom')
+    @staticmethod
+    def generate_payslip(boleta_data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
+        """
+        Genera la Boleta de Pago en Excel con dos boletas idénticas enmarcadas (recuadro grande)
+        en una sola página Carta Vertical (Superior e Inferior) en un archivo organizado multi-hoja por mes
+        (boleta_pago_{empleado}_{empresa}_{anio}.xlsx) y opcionalmente exporta la hoja del mes a PDF.
+        """
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "boletas"))
+        os.makedirs(exports_dir, exist_ok=True)
+        
+        emp_nombres = boleta_data.get('nombres') or ''
+        emp_pat = boleta_data.get('apellido_paterno') or ''
+        emp_mat = boleta_data.get('apellido_materno') or ''
+        full_emp_name = f"{emp_pat} {emp_mat} {emp_nombres}".strip().replace("  ", " ").upper()
+        if not full_emp_name:
+            full_emp_name = str(boleta_data.get('employee_name', '') or '').upper()
+        emp_slug = DocumentService._slugify(full_emp_name) if full_emp_name else "empleado"
 
-            ws.merge_cells(start_row=r_sig1, start_column=4, end_row=r_sig1, end_column=5)
-            c_s2 = ws.cell(row=r_sig1, column=4, value="........................................................................")
-            c_s2.font = Font(name="Arial", size=9)
-            c_s2.alignment = Alignment(horizontal='center', vertical='bottom')
+        empresa = str(boleta_data.get('empresa_nombre', '') or '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
 
-            # Nombres y Cargos de Firmas (dentro del recuadro)
-            ws.row_dimensions[r_sig2].height = 18
-            ws.merge_cells(start_row=r_sig2, start_column=2, end_row=r_sig2, end_column=3)
-            c_t1 = ws.cell(row=r_sig2, column=2, value="Vo. Bo. Contabilidad / Gerencia")
-            c_t1.font = font_bold
-            c_t1.alignment = Alignment(horizontal='center', vertical='center')
+        mes_int = int(boleta_data.get('mes', 0))
+        MESES = {1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO", 7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"}
+        mes_nombre = MESES.get(mes_int, f"MES_{mes_int}")
+        anio = str(boleta_data.get('anio', datetime.now().year))
+        
+        output_xlsx = os.path.join(exports_dir, f"boleta_pago_{emp_slug}_{empresa_slug}_{anio}.xlsx")
 
-            ws.merge_cells(start_row=r_sig2, start_column=4, end_row=r_sig2, end_column=5)
-            c_t2 = ws.cell(row=r_sig2, column=4, value=full_emp_name)
-            c_t2.font = font_bold
-            c_t2.alignment = Alignment(horizontal='center', vertical='center')
-
-            # Espaciador inferior dentro del recuadro
-            ws.row_dimensions[end_r].height = 10
-
-            # APLICAR EL GRAN RECUADRO EXTERIOR (BORDER MEDIUM) A TODO EL BLOQUE (filas start_r hasta end_r, columnas 2 a 5)
-            for r in range(start_r, end_r + 1):
-                for c in range(2, 6):
-                    cell = ws.cell(row=r, column=c)
-                    top_b = border_frame_thick if r == start_r else cell.border.top
-                    bot_b = border_frame_thick if r == end_r else cell.border.bottom
-                    left_b = border_frame_thick if c == 2 else cell.border.left
-                    right_b = border_frame_thick if c == 5 else cell.border.right
-                    cell.border = Border(top=top_b, bottom=bot_b, left=left_b, right=right_b)
-
-            return end_r
+        if os.path.exists(output_xlsx):
+            wb = openpyxl.load_workbook(output_xlsx)
+            if mes_nombre in wb.sheetnames:
+                wb.remove(wb[mes_nombre])
+            ws = wb.create_sheet(title=mes_nombre)
+        else:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = mes_nombre
+        
+        # Configuración de página: Portrait Letter, exactamente 1 página vertical, centrada
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+        ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+        ws.print_options.horizontalCentered = True
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(
+            left=0.35, right=0.35, top=0.8, bottom=0.35, header=0.1, footer=0.1
+        )
+        
+        # Anchos de columna amplios para llenar armónicamente el ancho de la hoja
+        ws.column_dimensions['A'].width = 1.5
+        ws.column_dimensions['B'].width = 33.0
+        ws.column_dimensions['C'].width = 18.0
+        ws.column_dimensions['D'].width = 33.0
+        ws.column_dimensions['E'].width = 18.0
+        ws.column_dimensions['F'].width = 1.5
 
         # 1. Renderizar Boleta Superior (Copia 1 - Empresa)
-        end_r1 = _render_boleta(start_r=1, copia_num=1)
+        end_r1 = DocumentService._render_single_payslip(ws, start_r=1, boleta_data=boleta_data, copia_num=1)
 
         # 2. Separador de Corte
         r_cut = end_r1 + 2
@@ -665,7 +671,7 @@ class DocumentService:
         ws.row_dimensions[r_cut + 1].height = 10
 
         # 3. Renderizar Boleta Inferior (Copia 2 - Empleado)
-        _render_boleta(start_r=r_cut + 2, copia_num=2)
+        DocumentService._render_single_payslip(ws, start_r=r_cut + 2, boleta_data=boleta_data, copia_num=2)
 
         # Ordenar sheets cronológicamente por mes
         MESES_ORDEN = {
@@ -697,6 +703,116 @@ class DocumentService:
             return output_pdf
             
         return saved_xlsx
+
+    @staticmethod
+    def generate_payslips_batch(boletas_list: list[dict], output_format: str = "xlsx", schema_name: str = None, mode: str = "multi_sheet") -> str:
+        """
+        Genera el talonario de boletas de pago para todos los empleados de la planilla.
+        - mode == "multi_sheet": Un libro Excel con una pestaña por empleado (con sus 2 copias: Empresa y Empleado).
+        - mode == "continuous": Una sola hoja con 2 empleados por página listos para corte e impresión masiva.
+        """
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "boletas_batch"))
+        os.makedirs(exports_dir, exist_ok=True)
+
+        if not boletas_list:
+            raise ValueError("No hay boletas para exportar")
+
+        empresa = str(boletas_list[0].get('empresa_nombre', '') or '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
+        mes_int = int(boletas_list[0].get('mes', 1))
+        MESES = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+        mes_nombre = MESES.get(mes_int, f"Mes_{mes_int}")
+        anio = str(boletas_list[0].get('anio', datetime.now().year))
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)  # Quitar hoja por defecto
+
+        if mode == "continuous":
+            ws = wb.create_sheet(title=DocumentService._safe_sheet_title(f"Boletas {mes_nombre}"))
+            ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+            ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+            ws.sheet_properties.pageSetUpPr.fitToPage = True
+            ws.page_setup.fitToWidth = 1
+            ws.page_setup.fitToHeight = 0
+            ws.print_options.horizontalCentered = True
+            ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.35, right=0.35, top=0.8, bottom=0.35, header=0.1, footer=0.1)
+
+            ws.column_dimensions['A'].width = 1.5
+            ws.column_dimensions['B'].width = 33.0
+            ws.column_dimensions['C'].width = 18.0
+            ws.column_dimensions['D'].width = 33.0
+            ws.column_dimensions['E'].width = 18.0
+            ws.column_dimensions['F'].width = 1.5
+
+            curr_r = 1
+            for i in range(0, len(boletas_list), 2):
+                slip1 = boletas_list[i]
+                end_r1 = DocumentService._render_single_payslip(ws, start_r=curr_r, boleta_data=slip1, copia_num=1)
+
+                if i + 1 < len(boletas_list):
+                    slip2 = boletas_list[i + 1]
+                    r_cut = end_r1 + 2
+                    ws.row_dimensions[r_cut - 1].height = 8
+                    ws.row_dimensions[r_cut].height = 16
+                    ws.merge_cells(f'B{r_cut}:E{r_cut}')
+                    ws[f'B{r_cut}'] = "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
+                    ws[f'B{r_cut}'].font = Font(name="Arial", size=8.5, italic=True, color="666666")
+                    ws[f'B{r_cut}'].alignment = Alignment(horizontal='center', vertical='center')
+                    ws.row_dimensions[r_cut + 1].height = 8
+
+                    end_r2 = DocumentService._render_single_payslip(ws, start_r=r_cut + 2, boleta_data=slip2, copia_num=1)
+                    ws.row_breaks.append(Break(id=end_r2 + 1))
+                    curr_r = end_r2 + 3
+                else:
+                    ws.row_breaks.append(Break(id=end_r1 + 1))
+                    curr_r = end_r1 + 3
+
+            file_suffix = "2_por_hoja"
+        else:
+            # mode == "multi_sheet"
+            for idx, slip in enumerate(boletas_list, start=1):
+                code = str(slip.get('internal_code', idx)).strip()
+                emp_name = str(slip.get('apellido_paterno') or slip.get('nombres') or f'EMP_{idx}').strip()
+                sheet_title = DocumentService._safe_sheet_title(f"{code}-{emp_name}")[:31]
+                ws = wb.create_sheet(title=sheet_title)
+
+                ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+                ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+                ws.sheet_properties.pageSetUpPr.fitToPage = True
+                ws.page_setup.fitToWidth = 1
+                ws.page_setup.fitToHeight = 1
+                ws.print_options.horizontalCentered = True
+                ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.35, right=0.35, top=0.8, bottom=0.35, header=0.1, footer=0.1)
+
+                ws.column_dimensions['A'].width = 1.5
+                ws.column_dimensions['B'].width = 33.0
+                ws.column_dimensions['C'].width = 18.0
+                ws.column_dimensions['D'].width = 33.0
+                ws.column_dimensions['E'].width = 18.0
+                ws.column_dimensions['F'].width = 1.5
+
+                end_r1 = DocumentService._render_single_payslip(ws, start_r=1, boleta_data=slip, copia_num=1)
+                r_cut = end_r1 + 2
+                ws.row_dimensions[r_cut - 1].height = 8
+                ws.row_dimensions[r_cut].height = 16
+                ws.merge_cells(f'B{r_cut}:E{r_cut}')
+                ws[f'B{r_cut}'] = "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
+                ws[f'B{r_cut}'].font = Font(name="Arial", size=8.5, italic=True, color="666666")
+                ws[f'B{r_cut}'].alignment = Alignment(horizontal='center', vertical='center')
+                ws.row_dimensions[r_cut + 1].height = 8
+
+                DocumentService._render_single_payslip(ws, start_r=r_cut + 2, boleta_data=slip, copia_num=2)
+
+            file_suffix = "pestanas"
+
+        xlsx_path = os.path.join(exports_dir, f"talonario_boletas_{empresa_slug}_{mes_nombre.lower()}_{anio}_{file_suffix}.xlsx")
+        effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
+
+        if output_format.lower() == "pdf":
+            pdf_path = os.path.join(exports_dir, f"talonario_boletas_{empresa_slug}_{mes_nombre.lower()}_{anio}_{file_suffix}.pdf")
+            return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
+
+        return effective_xlsx
 
     @staticmethod
     def generate_payroll_excel(payroll_data: list[dict], output_format: str = "xlsx", schema_name: str = None) -> str:
@@ -1053,7 +1169,7 @@ class DocumentService:
         ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
         ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
         ws.page_margins = openpyxl.worksheet.page.PageMargins(
-            left=0.25, right=0.25, top=0.35, bottom=0.35, header=0.1, footer=0.1
+            left=0.25, right=0.25, top=0.8, bottom=0.35, header=0.1, footer=0.1
         )
 
         # Ordenar sheets cronológicamente por mes
@@ -1394,7 +1510,7 @@ class DocumentService:
         section = doc.sections[0]
         section.page_width = Inches(8.5)
         section.page_height = Inches(11.0)
-        section.top_margin = Inches(0.35)
+        section.top_margin = Inches(0.8)
         section.bottom_margin = Inches(0.35)
         section.left_margin = Inches(0.5)
         section.right_margin = Inches(0.5)
@@ -1769,7 +1885,7 @@ class DocumentService:
         ws.page_setup.fitToHeight = 1
         ws.page_margins.left = 0.35
         ws.page_margins.right = 0.35
-        ws.page_margins.top = 0.4
+        ws.page_margins.top = 0.8
         ws.page_margins.bottom = 0.4
         ws.page_margins.header = 0.2
         ws.page_margins.footer = 0.2
@@ -1823,13 +1939,85 @@ class DocumentService:
         ws.row_dimensions[2].height = 5
         curr_row = 3
 
-        # Dividir secciones: Cuadrantes 1 a 4 (Nómina, Patronales, Beneficios, Arancel OVT)
-        # y Asientos 5 a 7 (Pagos efectivos en banco / caja)
+        # Dividir secciones: Cuadrantes 1 a 4 y Asientos de Pago 5 a 7
         payroll_sections = [s for s in sheet_data.sections if not s.is_payment]
         payment_sections = [s for s in sheet_data.sections if s.is_payment]
 
-        # 4. CUADRANTES 1 A 4: TABLA CONTINUA TRADICIONAL DE DEVENGAMIENTO Y PROVISIONES (TAL COMO ESTABA ANTES)
-        if payroll_sections:
+        # En la exportación a Excel, unificar Cuadrante 2 (Patronal) y Cuadrante 3 (Beneficios)
+        # en una sola sección combinada sin perder la descripción de cuentas ni subcuentas
+        export_payroll_sections = []
+        sec_patronal = None
+        sec_beneficios = None
+
+        for s in payroll_sections:
+            if s.id == "seccion_2_patronal":
+                sec_patronal = s
+            elif s.id == "seccion_3_beneficios":
+                sec_beneficios = s
+            elif s.id == "seccion_1_planilla":
+                export_payroll_sections.append(s)
+            elif s.id == "seccion_4_min_trabajo":
+                if sec_patronal or sec_beneficios:
+                    combined_items = []
+                    if sec_patronal:
+                        combined_items.extend([it for it in sec_patronal.items if it.debe > 0])
+                    if sec_beneficios:
+                        combined_items.extend([it for it in sec_beneficios.items if it.debe > 0])
+                    if sec_patronal:
+                        combined_items.extend([it for it in sec_patronal.items if it.haber > 0])
+                    if sec_beneficios:
+                        combined_items.extend([it for it in sec_beneficios.items if it.haber > 0])
+
+                    sub_d = round((sec_patronal.subtotal_debe if sec_patronal else 0.0) + (sec_beneficios.subtotal_debe if sec_beneficios else 0.0), 2)
+                    sub_h = round((sec_patronal.subtotal_haber if sec_patronal else 0.0) + (sec_beneficios.subtotal_haber if sec_beneficios else 0.0), 2)
+
+                    combined_sec = AccountingSection(
+                        id="seccion_2_3_cargas_beneficios",
+                        title="Cargas Sociales y Beneficios Sociales (Previsiones y Provisiones)",
+                        voucher_type="Comprobante de Traspaso",
+                        fecha=sec_patronal.fecha if sec_patronal else None,
+                        is_payment=False,
+                        glosa=None,
+                        items=combined_items,
+                        subtotal_debe=sub_d,
+                        subtotal_haber=sub_h
+                    )
+                    export_payroll_sections.append(combined_sec)
+                    sec_patronal = None
+                    sec_beneficios = None
+                export_payroll_sections.append(s)
+            else:
+                export_payroll_sections.append(s)
+
+        if sec_patronal or sec_beneficios:
+            combined_items = []
+            if sec_patronal:
+                combined_items.extend([it for it in sec_patronal.items if it.debe > 0])
+            if sec_beneficios:
+                combined_items.extend([it for it in sec_beneficios.items if it.debe > 0])
+            if sec_patronal:
+                combined_items.extend([it for it in sec_patronal.items if it.haber > 0])
+            if sec_beneficios:
+                combined_items.extend([it for it in sec_beneficios.items if it.haber > 0])
+
+            sub_d = round((sec_patronal.subtotal_debe if sec_patronal else 0.0) + (sec_beneficios.subtotal_debe if sec_beneficios else 0.0), 2)
+            sub_h = round((sec_patronal.subtotal_haber if sec_patronal else 0.0) + (sec_beneficios.subtotal_haber if sec_beneficios else 0.0), 2)
+
+            combined_sec = AccountingSection(
+                id="seccion_2_3_cargas_beneficios",
+                title="Cargas Sociales y Beneficios Sociales (Previsiones y Provisiones)",
+                voucher_type="Comprobante de Traspaso",
+                fecha=sec_patronal.fecha if sec_patronal else None,
+                is_payment=False,
+                glosa=None,
+                items=combined_items,
+                subtotal_debe=sub_d,
+                subtotal_haber=sub_h
+            )
+            export_payroll_sections.append(combined_sec)
+
+        # 4. CUADRANTES 1 A 4: TABLA CONTINUA TRADICIONAL DE DEVENGAMIENTO Y PROVISIONES
+        if export_payroll_sections:
             # Fila de Cabeceras: DETALLE DE CUENTAS | DEBE | HABER
             ws.row_dimensions[curr_row].height = 18
             ws.merge_cells(f"A{curr_row}:B{curr_row}")
@@ -1859,7 +2047,7 @@ class DocumentService:
             c_hab_hdr.border = Border(top=thin_black, bottom=thin_black, left=thin_black, right=thin_black)
             curr_row += 1
 
-            for section in payroll_sections:
+            for section in export_payroll_sections:
                 for item in section.items:
                     if item.debe == 0 and item.haber == 0:
                         continue
@@ -2196,7 +2384,7 @@ class DocumentService:
         ws.page_setup.fitToHeight = 0
         ws.page_margins.left = 0.3
         ws.page_margins.right = 0.3
-        ws.page_margins.top = 0.4
+        ws.page_margins.top = 0.8
         ws.page_margins.bottom = 0.4
 
         # 2. Tipografía y Estilos Visuales
@@ -2319,11 +2507,42 @@ class DocumentService:
 
         curr_row = 3
 
-        # Obtener secciones de referencia ordenadas (secciones 1 a 7)
+        # En la exportación comparativa anual a Excel, combinar Cuadrante 2 y Cuadrante 3
+        for m in range(1, 13):
+            m_sheet = sheets_by_month[m]
+            sec2 = next((s for s in m_sheet.sections if s.id == "seccion_2_patronal"), None)
+            sec3 = next((s for s in m_sheet.sections if s.id == "seccion_3_beneficios"), None)
+            if sec2 or sec3:
+                comb_items = []
+                if sec2:
+                    comb_items.extend([it for it in sec2.items if it.debe > 0])
+                if sec3:
+                    comb_items.extend([it for it in sec3.items if it.debe > 0])
+                if sec2:
+                    comb_items.extend([it for it in sec2.items if it.haber > 0])
+                if sec3:
+                    comb_items.extend([it for it in sec3.items if it.haber > 0])
+
+                sub_d = round((sec2.subtotal_debe if sec2 else 0.0) + (sec3.subtotal_debe if sec3 else 0.0), 2)
+                sub_h = round((sec2.subtotal_haber if sec2 else 0.0) + (sec3.subtotal_haber if sec3 else 0.0), 2)
+
+                comb_sec = AccountingSection(
+                    id="seccion_2_3_cargas_beneficios",
+                    title="Cargas Sociales y Beneficios Sociales (Previsiones y Provisiones)",
+                    voucher_type="Comprobante de Traspaso",
+                    fecha=sec2.fecha if sec2 else None,
+                    is_payment=False,
+                    glosa=None,
+                    items=comb_items,
+                    subtotal_debe=sub_d,
+                    subtotal_haber=sub_h
+                )
+                m_sheet.sections.append(comb_sec)
+
+        # Obtener secciones de referencia ordenadas (secciones combinadas)
         section_ids = [
             "seccion_1_planilla",
-            "seccion_2_patronal",
-            "seccion_3_beneficios",
+            "seccion_2_3_cargas_beneficios",
             "seccion_4_min_trabajo",
             "seccion_5_pago_gestora",
             "seccion_6_pago_caja",
@@ -2811,23 +3030,23 @@ class DocumentService:
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 0
         ws.print_options.horizontalCentered = True
-        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.25, right=0.25, top=0.3, bottom=0.3)
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.25, right=0.25, top=0.8, bottom=0.3)
 
-        # Configurar anchos de columna
+        # Configurar anchos de columna (B..E = 65, F..I = 54, J..M = 65)
         col_widths = {
             'A': 2.0,   # Margen
             'B': 5.0,   # No
-            'C': 34.0,  # NOMBRES Y APELLIDOS / CARGO
+            'C': 32.0,  # NOMBRES Y APELLIDOS / CARGO
             'D': 15.0,  # TOTAL GANADO
             'E': 13.0,  # CNS 10%
             'F': 13.0,  # AFP's 1,71%
-            'G': 12.0,  # FONVI 2%
+            'G': 13.0,  # FONVI 2%
             'H': 13.0,  # APS 3.5%
             'I': 15.0,  # TOTAL APORTES
-            'J': 15.0,  # PROVISON AGUINALDO
-            'K': 15.0,  # PROVISON INDEMNIZ
+            'J': 15.0,  # PROVISIÓN AGUINALDO
+            'K': 15.0,  # PROVISIÓN INDEMNIZACIÓN
             'L': 15.0,  # TOTAL PROVISIONES
-            'M': 17.0,  # TOTAL CARGA PATRONAL
+            'M': 20.0,  # TOTAL CARGA PATRONAL
             'N': 2.0    # Margen
         }
         for col_let, width in col_widths.items():
@@ -2882,15 +3101,15 @@ class DocumentService:
         ws['B5'].alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[5].height = 22
 
-        ws.merge_cells('B6:G6')
-        ws['B6'] = "(Expresado en Bolivianos)"
-        ws['B6'].font = Font(name="Arial", size=10, bold=True)
-        ws['B6'].alignment = Alignment(horizontal="center", vertical="center")
+        ws.merge_cells('F6:I6')
+        ws['F6'] = "(Expresado en Bolivianos)"
+        ws['F6'].font = Font(name="Arial", size=10, bold=True)
+        ws['F6'].alignment = Alignment(horizontal="center", vertical="center")
 
-        ws.merge_cells('H6:M6')
-        ws['H6'] = f"CORRESPONDIENTE AL MES DE {mes_nombre.upper()} DE {anio}"
-        ws['H6'].font = Font(name="Arial", size=9.5, bold=True)
-        ws['H6'].alignment = Alignment(horizontal="right", vertical="center")
+        ws.merge_cells('J6:M6')
+        ws['J6'] = f"CORRESPONDIENTE AL MES DE {mes_nombre.upper()} DE {anio}"
+        ws['J6'].font = Font(name="Arial", size=9.5, bold=True)
+        ws['J6'].alignment = Alignment(horizontal="right", vertical="center")
         ws.row_dimensions[6].height = 18
 
         # Encabezados de tabla
@@ -2984,33 +3203,56 @@ class DocumentService:
         for col_c in ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']:
             ws[f"{col_c}{current_row}"].border = double_bottom
 
-        # Bloque de Firmas al pie
+        # Bloque de Firmas al pie (Simétrico, separado con espacios y línea entre datos y título)
         rep_legal = str(patronal_data.get('representante_legal') or patronal_data.get('empleador_nombre') or empresa).upper()
         rep_ci = str(patronal_data.get('ci_representante') or nit)
 
-        r_sig = current_row + 3
-        ws.merge_cells(f'C{r_sig}:E{r_sig}')
-        ws.merge_cells(f'G{r_sig}:I{r_sig}')
-        ws.merge_cells(f'K{r_sig}:L{r_sig}')
-        for col_l in ['C', 'D', 'E', 'G', 'H', 'I', 'K', 'L']:
-            ws[f'{col_l}{r_sig}'].border = Border(top=Side(style='thin', color='000000'))
-        
-        ws[f'C{r_sig}'] = rep_legal
-        ws[f'C{r_sig}'].font = Font(name="Arial", size=8.5, bold=True)
-        ws[f'C{r_sig}'].alignment = Alignment(horizontal="center", vertical="top")
+        r_space = current_row + 2
+        ws.row_dimensions[r_space].height = 28  # Espacio holgado para la firma manual
 
+        r_sig = current_row + 3
+        ws.row_dimensions[r_sig].height = 22
+        ws.row_dimensions[r_sig + 1].height = 18
+
+        thin_black_line = Border(bottom=Side(style='thin', color='000000'))
+
+        # Bloque 1: C:E (Representante Legal)
+        ws.merge_cells(f'C{r_sig}:E{r_sig}')
+        ws[f'C{r_sig}'] = rep_legal
+        ws[f'C{r_sig}'].font = Font(name="Arial", size=9, bold=True)
+        ws[f'C{r_sig}'].alignment = Alignment(horizontal="center", vertical="bottom")
+        for col_l in ['C', 'D', 'E']:
+            ws[f'{col_l}{r_sig}'].border = thin_black_line
+
+        ws.merge_cells(f'C{r_sig+1}:E{r_sig+1}')
         ws[f'C{r_sig+1}'] = "NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL"
         ws[f'C{r_sig+1}'].font = Font(name="Arial", size=7.5, bold=True)
         ws[f'C{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
 
-        ws[f'G{r_sig}'] = rep_ci
-        ws[f'G{r_sig}'].font = Font(name="Arial", size=8.5, bold=True)
-        ws[f'G{r_sig}'].alignment = Alignment(horizontal="center", vertical="top")
+        # Columna F: Separador en blanco (sin bordes)
 
+        # Bloque 2: G:I (Documento de Identidad)
+        ws.merge_cells(f'G{r_sig}:I{r_sig}')
+        ws[f'G{r_sig}'] = rep_ci
+        ws[f'G{r_sig}'].font = Font(name="Arial", size=9, bold=True)
+        ws[f'G{r_sig}'].alignment = Alignment(horizontal="center", vertical="bottom")
+        for col_l in ['G', 'H', 'I']:
+            ws[f'{col_l}{r_sig}'].border = thin_black_line
+
+        ws.merge_cells(f'G{r_sig+1}:I{r_sig+1}')
         ws[f'G{r_sig+1}'] = "N° DE DOCUMENTO DE IDENTIDAD"
         ws[f'G{r_sig+1}'].font = Font(name="Arial", size=7.5, bold=True)
         ws[f'G{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
 
+        # Columna J: Separador en blanco (sin bordes)
+
+        # Bloque 3: K:M (Firma)
+        ws.merge_cells(f'K{r_sig}:M{r_sig}')
+        ws[f'K{r_sig}'] = ""
+        for col_l in ['K', 'L', 'M']:
+            ws[f'{col_l}{r_sig}'].border = thin_black_line
+
+        ws.merge_cells(f'K{r_sig+1}:M{r_sig+1}')
         ws[f'K{r_sig+1}'] = "FIRMA"
         ws[f'K{r_sig+1}'].font = Font(name="Arial", size=7.5, bold=True)
         ws[f'K{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
@@ -3051,7 +3293,7 @@ class DocumentService:
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 0
         ws.print_options.horizontalCentered = True
-        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.2, right=0.2, top=0.3, bottom=0.3)
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.2, right=0.2, top=0.8, bottom=0.3)
 
         # Configurar anchos de columna (B hasta T = 19 cols)
         col_widths = {
@@ -3210,7 +3452,8 @@ class DocumentService:
             ws[f"F{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"F{current_row}"].font = font_td
 
-            ws[f"G{current_row}"] = str(item.get('employee_sexo') or 'M').upper()
+            raw_sex = str(item.get('employee_sexo') or 'M').strip().upper()
+            ws[f"G{current_row}"] = 'F' if raw_sex in ['F', 'V', 'FEMENINO', 'MUJER'] else 'M'
             ws[f"G{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"G{current_row}"].font = font_td
 
@@ -3255,7 +3498,7 @@ class DocumentService:
         ws[f"B{current_row}"].fill = fill_totales
         ws[f"B{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
 
-        totals_cols = ['J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S']
+        totals_cols = ['J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'S']
         for col_l in totals_cols:
             c = ws[f"{col_l}{current_row}"]
             if slips:
@@ -3266,6 +3509,10 @@ class DocumentService:
             c.font = font_totales
             c.fill = fill_totales
             c.alignment = Alignment(horizontal="right", vertical="center")
+
+        # Dejar meses trabajados en blanco en totales (no totalizable)
+        ws[f"R{current_row}"] = ""
+        ws[f"R{current_row}"].fill = fill_totales
 
         ws[f"T{current_row}"].fill = fill_totales
         for col_c in ['B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']:
@@ -3523,7 +3770,7 @@ class DocumentService:
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 1
         ws.print_options.horizontalCentered = True
-        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.35, bottom=0.35)
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.8, bottom=0.35)
 
         ws.column_dimensions['A'].width = 2.0
         ws.column_dimensions['B'].width = 16.0
@@ -3552,33 +3799,34 @@ class DocumentService:
         return effective_xlsx
 
     @staticmethod
-    def generate_aguinaldo_payslips_batch(boletas_list: list[dict], output_format: str = "xlsx", schema_name: str = None) -> str:
+    def generate_aguinaldo_payslips_batch(boletas_list: list[dict], output_format: str = "xlsx", schema_name: str = None, mode: str = "multi_sheet") -> str:
         """
         Genera el talonario completo de papeletas de aguinaldo de todos los empleados de la empresa.
-        Cada empleado cuenta con su propia hoja conteniendo 2 copias idénticas (Copia Empleador y Copia Empleado).
+        - mode == "multi_sheet": Cada empleado cuenta con su propia hoja conteniendo 2 copias idénticas (Copia Empleador y Copia Empleado).
+        - mode == "continuous": En una sola hoja continua, 2 empleados por página con corte entre ellos para impresión masiva.
         """
         exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "boletas_aguinaldo"))
         os.makedirs(exports_dir, exist_ok=True)
+
+        if not boletas_list:
+            raise ValueError("No hay boletas de aguinaldo para exportar")
 
         empresa = str(boletas_list[0].get('empresa_nombre', '') if boletas_list else '').upper()
         empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
         anio = str(boletas_list[0].get('anio', datetime.now().year) if boletas_list else datetime.now().year)
 
         wb = openpyxl.Workbook()
-        wb.remove(wb.active) # Eliminar hoja por defecto
+        wb.remove(wb.active)  # Eliminar hoja por defecto
 
-        # Cada empleado en su propia hoja, con 2 copias (Copia Empresa y Copia Empleado) en la misma página Carta
-        for idx, slip in enumerate(boletas_list, start=1):
-            sheet_title = DocumentService._safe_sheet_title(f"Hoja {idx}")
-            ws = wb.create_sheet(title=sheet_title)
-
+        if mode == "continuous":
+            ws = wb.create_sheet(title=DocumentService._safe_sheet_title(f"Aguinaldo {anio}"))
             ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
             ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
             ws.sheet_properties.pageSetUpPr.fitToPage = True
             ws.page_setup.fitToWidth = 1
-            ws.page_setup.fitToHeight = 1
+            ws.page_setup.fitToHeight = 0
             ws.print_options.horizontalCentered = True
-            ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.35, bottom=0.35)
+            ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.8, bottom=0.35)
 
             ws.column_dimensions['A'].width = 2.0
             ws.column_dimensions['B'].width = 16.0
@@ -3587,25 +3835,73 @@ class DocumentService:
             ws.column_dimensions['E'].width = 26.0
             ws.column_dimensions['F'].width = 14.0
 
-            # Copia 1 (Superior)
-            DocumentService._render_single_aguinaldo_papeleta(ws, start_row=2, slip_data=slip, index_num=idx)
+            curr_r = 2
+            for i in range(0, len(boletas_list), 2):
+                slip1 = boletas_list[i]
+                DocumentService._render_single_aguinaldo_papeleta(ws, start_row=curr_r, slip_data=slip1, index_num=i+1)
 
-            # Separador / Guía de corte entre ambas copias del mismo empleado
-            ws.row_dimensions[21].height = 16.0
-            ws.merge_cells('B21:F21')
-            ws['B21'] = "- - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - -"
-            ws['B21'].font = Font(name="Arial", size=8.5, italic=True, color="666666")
-            ws['B21'].alignment = Alignment(horizontal='center', vertical='center')
-            ws.row_dimensions[22].height = 10.0
+                if i + 1 < len(boletas_list):
+                    slip2 = boletas_list[i + 1]
+                    r_cut = curr_r + 19
+                    ws.row_dimensions[r_cut].height = 16.0
+                    ws.merge_cells(f'B{r_cut}:F{r_cut}')
+                    ws[f'B{r_cut}'] = "- - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - -"
+                    ws[f'B{r_cut}'].font = Font(name="Arial", size=8.5, italic=True, color="666666")
+                    ws[f'B{r_cut}'].alignment = Alignment(horizontal='center', vertical='center')
+                    ws.row_dimensions[r_cut + 1].height = 10.0
 
-            # Copia 2 (Inferior - del mismo empleado)
-            DocumentService._render_single_aguinaldo_papeleta(ws, start_row=23, slip_data=slip, index_num=idx)
+                    DocumentService._render_single_aguinaldo_papeleta(ws, start_row=r_cut + 2, slip_data=slip2, index_num=i+2)
+                    ws.row_breaks.append(Break(id=r_cut + 21))
+                    curr_r = r_cut + 23
+                else:
+                    ws.row_breaks.append(Break(id=curr_r + 19))
+                    curr_r = curr_r + 21
 
-        xlsx_path = os.path.join(exports_dir, f"talonario_aguinaldos_{empresa_slug}_{anio}.xlsx")
+            file_suffix = "2_por_hoja"
+        else:
+            # mode == "multi_sheet"
+            for idx, slip in enumerate(boletas_list, start=1):
+                code = str(slip.get('internal_code', idx)).strip()
+                emp_name = str(slip.get('nombre_completo') or f'EMP_{idx}').strip()
+                sheet_title = DocumentService._safe_sheet_title(f"{code}-{emp_name}")[:31]
+                ws = wb.create_sheet(title=sheet_title)
+
+                ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+                ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+                ws.sheet_properties.pageSetUpPr.fitToPage = True
+                ws.page_setup.fitToWidth = 1
+                ws.page_setup.fitToHeight = 1
+                ws.print_options.horizontalCentered = True
+                ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.8, bottom=0.35)
+
+                ws.column_dimensions['A'].width = 2.0
+                ws.column_dimensions['B'].width = 16.0
+                ws.column_dimensions['C'].width = 16.0
+                ws.column_dimensions['D'].width = 14.0
+                ws.column_dimensions['E'].width = 26.0
+                ws.column_dimensions['F'].width = 14.0
+
+                # Copia 1 (Superior)
+                DocumentService._render_single_aguinaldo_papeleta(ws, start_row=2, slip_data=slip, index_num=idx)
+
+                # Separador / Guía de corte entre ambas copias del mismo empleado
+                ws.row_dimensions[21].height = 16.0
+                ws.merge_cells('B21:F21')
+                ws['B21'] = "- - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - -"
+                ws['B21'].font = Font(name="Arial", size=8.5, italic=True, color="666666")
+                ws['B21'].alignment = Alignment(horizontal='center', vertical='center')
+                ws.row_dimensions[22].height = 10.0
+
+                # Copia 2 (Inferior - del mismo empleado)
+                DocumentService._render_single_aguinaldo_papeleta(ws, start_row=23, slip_data=slip, index_num=idx)
+
+            file_suffix = "pestanas"
+
+        xlsx_path = os.path.join(exports_dir, f"talonario_aguinaldos_{empresa_slug}_{anio}_{file_suffix}.xlsx")
         effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
 
         if output_format.lower() == "pdf":
-            pdf_path = os.path.join(exports_dir, f"talonario_aguinaldos_{empresa_slug}_{anio}.pdf")
+            pdf_path = os.path.join(exports_dir, f"talonario_aguinaldos_{empresa_slug}_{anio}_{file_suffix}.pdf")
             return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
 
         return effective_xlsx

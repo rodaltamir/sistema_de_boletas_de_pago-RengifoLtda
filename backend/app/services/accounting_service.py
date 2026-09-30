@@ -23,7 +23,8 @@ from app.schemas.accounting import (
     GestoraPaymentData,
     CajaPaymentData,
     MinTrabajoPaymentData,
-    PaymentExtraItem
+    PaymentExtraItem,
+    PendingSettlementPayment
 )
 
 MONTH_NAMES = [
@@ -32,6 +33,118 @@ MONTH_NAMES = [
 ]
 
 class AccountingService:
+
+    @staticmethod
+    def _get_pending_balances_for_month(
+        session: Session,
+        current_month: int,
+        current_year: int
+    ) -> tuple[List[PendingSettlementPayment], List[PendingSettlementPayment]]:
+        """
+        Busca todos los importes restantes (pagos parciales / diferidos) de meses anteriores
+        que aún no han sido liquidados/pagados en meses intermedios.
+        """
+        records = session.query(AccountingRecord).filter(
+            (AccountingRecord.year < current_year) |
+            ((AccountingRecord.year == current_year) & (AccountingRecord.month <= current_month))
+        ).order_by(AccountingRecord.year.asc(), AccountingRecord.month.asc()).all()
+
+        settled_gestora = set()
+        settled_caja = set()
+        orig_gestora = {}
+        orig_caja = {}
+        curr_saved_gestora_map = {}
+        curr_saved_caja_map = {}
+
+        for rec in records:
+            if not rec.data_json:
+                continue
+            try:
+                data = json.loads(rec.data_json)
+                rec_m = rec.month
+                rec_y = rec.year
+
+                g_pay = data.get("gestora_payment") or {}
+                imp_g = float(g_pay.get("importe_restante") or 0.0)
+                if imp_g > 0 and (rec_y < current_year or (rec_y == current_year and rec_m < current_month)):
+                    desc_ret = float(g_pay.get("descuento_retenciones") or 0.0)
+                    desc_pat = float(g_pay.get("descuento_patronal") or 0.0)
+                    orig_gestora[(rec_m, rec_y)] = PendingSettlementPayment(
+                        id=f"g_{rec_m}_{rec_y}",
+                        month_origen=rec_m,
+                        year_origen=rec_y,
+                        entidad="gestora",
+                        monto_restante=round(imp_g, 2),
+                        monto_retenciones=round(desc_ret, 2),
+                        monto_patronal=round(desc_pat, 2),
+                        interes_mora=0.0,
+                        pagar_en_este_mes=False
+                    )
+
+                c_pay = data.get("caja_payment") or {}
+                imp_c = float(c_pay.get("importe_restante") or 0.0)
+                if imp_c > 0 and (rec_y < current_year or (rec_y == current_year and rec_m < current_month)):
+                    orig_caja[(rec_m, rec_y)] = PendingSettlementPayment(
+                        id=f"c_{rec_m}_{rec_y}",
+                        month_origen=rec_m,
+                        year_origen=rec_y,
+                        entidad="caja",
+                        monto_restante=round(imp_c, 2),
+                        monto_retenciones=0.0,
+                        monto_patronal=0.0,
+                        interes_mora=0.0,
+                        pagar_en_este_mes=False
+                    )
+
+                # Revisar si se liquidó en meses anteriores
+                if rec_y < current_year or (rec_y == current_year and rec_m < current_month):
+                    for ant in g_pay.get("pagos_restantes_anteriores", []) or []:
+                        is_pag = ant.get("pagar_en_este_mes") if isinstance(ant, dict) else getattr(ant, "pagar_en_este_mes", False)
+                        if is_pag:
+                            mo = ant.get("month_origen") if isinstance(ant, dict) else getattr(ant, "month_origen", None)
+                            yo = ant.get("year_origen") if isinstance(ant, dict) else getattr(ant, "year_origen", None)
+                            if mo and yo:
+                                settled_gestora.add((int(mo), int(yo)))
+                    for ant in c_pay.get("pagos_restantes_anteriores", []) or []:
+                        is_pag = ant.get("pagar_en_este_mes") if isinstance(ant, dict) else getattr(ant, "pagar_en_este_mes", False)
+                        if is_pag:
+                            mo = ant.get("month_origen") if isinstance(ant, dict) else getattr(ant, "month_origen", None)
+                            yo = ant.get("year_origen") if isinstance(ant, dict) else getattr(ant, "year_origen", None)
+                            if mo and yo:
+                                settled_caja.add((int(mo), int(yo)))
+                elif rec_m == current_month and rec_y == current_year:
+                    for ant in g_pay.get("pagos_restantes_anteriores", []) or []:
+                        mo = ant.get("month_origen") if isinstance(ant, dict) else getattr(ant, "month_origen", None)
+                        yo = ant.get("year_origen") if isinstance(ant, dict) else getattr(ant, "year_origen", None)
+                        if mo and yo:
+                            curr_saved_gestora_map[(int(mo), int(yo))] = ant
+                    for ant in c_pay.get("pagos_restantes_anteriores", []) or []:
+                        mo = ant.get("month_origen") if isinstance(ant, dict) else getattr(ant, "month_origen", None)
+                        yo = ant.get("year_origen") if isinstance(ant, dict) else getattr(ant, "year_origen", None)
+                        if mo and yo:
+                            curr_saved_caja_map[(int(mo), int(yo))] = ant
+            except Exception:
+                pass
+
+        pending_gestora = []
+        for key, p in orig_gestora.items():
+            if key not in settled_gestora:
+                if key in curr_saved_gestora_map:
+                    saved = curr_saved_gestora_map[key]
+                    p.pagar_en_este_mes = bool(saved.get("pagar_en_este_mes") if isinstance(saved, dict) else getattr(saved, "pagar_en_este_mes", False))
+                    p.interes_mora = float(saved.get("interes_mora") if isinstance(saved, dict) else getattr(saved, "interes_mora", 0.0) or 0.0)
+                pending_gestora.append(p)
+
+        pending_caja = []
+        for key, p in orig_caja.items():
+            if key not in settled_caja:
+                if key in curr_saved_caja_map:
+                    saved = curr_saved_caja_map[key]
+                    p.pagar_en_este_mes = bool(saved.get("pagar_en_este_mes") if isinstance(saved, dict) else getattr(saved, "pagar_en_este_mes", False))
+                    p.interes_mora = float(saved.get("interes_mora") if isinstance(saved, dict) else getattr(saved, "interes_mora", 0.0) or 0.0)
+                pending_caja.append(p)
+
+        return pending_gestora, pending_caja
 
     @staticmethod
     def get_or_calculate_sheet(
@@ -52,6 +165,9 @@ class AccountingService:
         last_day = calendar.monthrange(year, month)[1]
         end_of_month = date(year, month, last_day)
         is_locked_by_date = today > end_of_month
+
+        # Obtener saldos pendientes de meses anteriores no liquidados
+        pending_g, pending_c = AccountingService._get_pending_balances_for_month(tenant_session, month, year)
 
         # 1. Si no forzamos recalcular, verificar si ya existe registro guardado en accounting_records
         if not force_recalculate:
@@ -103,7 +219,9 @@ class AccountingService:
                             payroll_id=sheet.payroll_id,
                             is_locked_by_date=is_locked_by_date,
                             is_manually_unlocked=sheet.is_manually_unlocked,
-                            is_customized=sheet.is_customized
+                            is_customized=sheet.is_customized,
+                            saldos_pendientes_gestora=pending_g,
+                            saldos_pendientes_caja=pending_c
                         )
                     else:
                         # Sincronizar departamentos si se agregaron nuevos en la base de datos
@@ -132,7 +250,9 @@ class AccountingService:
                         payroll_id=sheet.payroll_id,
                         is_locked_by_date=is_locked_by_date,
                         is_manually_unlocked=sheet.is_manually_unlocked,
-                        is_customized=sheet.is_customized
+                        is_customized=sheet.is_customized,
+                        saldos_pendientes_gestora=pending_g,
+                        saldos_pendientes_caja=pending_c
                     )
                     return sheet
                 except Exception as e:
@@ -273,6 +393,7 @@ class AccountingService:
             ajustes=[]
         )
 
+        pending_g, pending_c = AccountingService._get_pending_balances_for_month(session, month, year)
         return AccountingService.build_full_sheet(
             month=month,
             year=year,
@@ -285,7 +406,9 @@ class AccountingService:
             payroll_id=payroll.id,
             is_locked_by_date=is_locked_by_date,
             is_manually_unlocked=False,
-            is_customized=False
+            is_customized=False,
+            saldos_pendientes_gestora=pending_g,
+            saldos_pendientes_caja=pending_c
         )
 
     @staticmethod
@@ -301,8 +424,26 @@ class AccountingService:
         payroll_id: Optional[int] = None,
         is_locked_by_date: bool = False,
         is_manually_unlocked: bool = False,
-        is_customized: bool = False
+        is_customized: bool = False,
+        saldos_pendientes_gestora: Optional[List[PendingSettlementPayment]] = None,
+        saldos_pendientes_caja: Optional[List[PendingSettlementPayment]] = None
     ) -> AccountingSheetData:
+        saldos_pendientes_gestora = saldos_pendientes_gestora or []
+        saldos_pendientes_caja = saldos_pendientes_caja or []
+
+        # Si no hay pagos anteriores definidos pero sí saldos pendientes descubiertos, inicializarlos
+        if not getattr(gestora_payment, 'pagos_restantes_anteriores', None) and saldos_pendientes_gestora:
+            gestora_payment.pagos_restantes_anteriores = [
+                p if isinstance(p, PendingSettlementPayment) else PendingSettlementPayment(**p)
+                for p in saldos_pendientes_gestora
+            ]
+
+        if not getattr(caja_payment, 'pagos_restantes_anteriores', None) and saldos_pendientes_caja:
+            caja_payment.pagos_restantes_anteriores = [
+                p if isinstance(p, PendingSettlementPayment) else PendingSettlementPayment(**p)
+                for p in saldos_pendientes_caja
+            ]
+
         # Total ganado devengado del cuadrante 1
         if devengamiento.departamentos:
             tot_ganado = round(sum(d.sueldos + d.bono_antiguedad for d in devengamiento.departamentos), 2)
@@ -355,29 +496,98 @@ class AccountingService:
         # Cuadrante 4: Ministerio de Trabajo
         arancel_min_trabajo = round(devengamiento.arancel_min_trabajo if devengamiento.arancel_min_trabajo is not None else 27.00, 2)
 
-        # Cuadrante 5: Asiento de Pago Gestora
-        items_gestora = [
-            AccountingEntryItem(cuenta="Retenciones Laborales por Pagar", debe=ret_laboral, haber=0.0),
-            AccountingEntryItem(cuenta="Ap. Patronal Gestora Publica por Pagar", debe=patronal_gestora, haber=0.0)
-        ]
+        # Cuadrante 5: Asiento de Pago Gestora con cálculo de importes restantes y saldos anteriores
+        tot_base_gestora = round(ret_laboral + patronal_gestora, 2)
+        imp_restante_g = min(max(float(getattr(gestora_payment, 'importe_restante', 0.0) or 0.0), 0.0), tot_base_gestora)
+
+        if tot_base_gestora > 0 and imp_restante_g > 0:
+            pct_ret = ret_laboral / tot_base_gestora
+            desc_ret = round(imp_restante_g * pct_ret, 2)
+            desc_pat = round(imp_restante_g - desc_ret, 2)
+            gestora_payment.descuento_retenciones = desc_ret
+            gestora_payment.descuento_patronal = desc_pat
+            ret_a_pagar = round(ret_laboral - desc_ret, 2)
+            pat_a_pagar = round(patronal_gestora - desc_pat, 2)
+        else:
+            gestora_payment.descuento_retenciones = 0.0
+            gestora_payment.descuento_patronal = 0.0
+            ret_a_pagar = ret_laboral
+            pat_a_pagar = patronal_gestora
+
+        items_gestora = []
+        if ret_a_pagar > 0:
+            items_gestora.append(
+                AccountingEntryItem(cuenta="Retenciones Laborales por Pagar", debe=ret_a_pagar, haber=0.0)
+            )
+        if pat_a_pagar > 0:
+            items_gestora.append(
+                AccountingEntryItem(cuenta="Ap. Patronal Gestora Publica por Pagar", debe=pat_a_pagar, haber=0.0)
+            )
+
         sum_intereses_gestora = 0.0
         extras_g_conceptos = []
-        for extra in gestora_payment.intereses:
-            m = round(extra.monto, 2)
-            if m > 0:
-                sum_intereses_gestora += m
+        for extra in (gestora_payment.intereses or []):
+            m_val = round(extra.monto, 2)
+            if m_val > 0:
+                sum_intereses_gestora += m_val
                 tipo_desc = "Multa" if extra.tipo == "multa" else ("Actualización" if extra.tipo == "actualizacion" else "Interés")
                 nombre_cuenta = extra.concepto.strip() if extra.concepto and extra.concepto.strip() else f"{tipo_desc} Gestora Pública"
                 items_gestora.append(
                     AccountingEntryItem(
                         cuenta=nombre_cuenta,
-                        debe=m,
+                        debe=m_val,
                         haber=0.0,
                         tag="Gasto Financiero"
                     )
                 )
-                extras_g_conceptos.append(extra.concepto.strip() if extra.concepto and extra.concepto.strip() else f"{tipo_desc} Bs. {m:,.2f}")
-        total_pago_gestora = round(ret_laboral + patronal_gestora + sum_intereses_gestora, 2)
+                extras_g_conceptos.append(extra.concepto.strip() if extra.concepto and extra.concepto.strip() else f"{tipo_desc} Bs. {m_val:,.2f}")
+
+        # Saldos pendientes de meses anteriores liquidados en este mes
+        sum_anteriores_gestora = 0.0
+        for ant in (getattr(gestora_payment, 'pagos_restantes_anteriores', []) or []):
+            is_pagar = getattr(ant, 'pagar_en_este_mes', False) if isinstance(ant, dict) is False else ant.get('pagar_en_este_mes', False)
+            if is_pagar:
+                m_orig = getattr(ant, 'month_origen', 1) if isinstance(ant, dict) is False else ant.get('month_origen', 1)
+                y_orig = getattr(ant, 'year_origen', year) if isinstance(ant, dict) is False else ant.get('year_origen', year)
+                m_nom = MONTH_NAMES[m_orig - 1].capitalize()
+                m_ret = getattr(ant, 'monto_retenciones', 0.0) if isinstance(ant, dict) is False else ant.get('monto_retenciones', 0.0)
+                m_pat = getattr(ant, 'monto_patronal', 0.0) if isinstance(ant, dict) is False else ant.get('monto_patronal', 0.0)
+                int_mora = getattr(ant, 'interes_mora', 0.0) if isinstance(ant, dict) is False else ant.get('interes_mora', 0.0)
+
+                if m_ret > 0:
+                    items_gestora.append(
+                        AccountingEntryItem(
+                            cuenta="Retenciones Laborales por Pagar",
+                            debe=round(m_ret, 2),
+                            haber=0.0,
+                            subcuentas=[f"Saldo diferido {m_nom} {y_orig}"]
+                        )
+                    )
+                    sum_anteriores_gestora += round(m_ret, 2)
+                if m_pat > 0:
+                    items_gestora.append(
+                        AccountingEntryItem(
+                            cuenta="Ap. Patronal Gestora Publica por Pagar",
+                            debe=round(m_pat, 2),
+                            haber=0.0,
+                            subcuentas=[f"Saldo diferido {m_nom} {y_orig}"]
+                        )
+                    )
+                    sum_anteriores_gestora += round(m_pat, 2)
+                if int_mora > 0:
+                    items_gestora.append(
+                        AccountingEntryItem(
+                            cuenta="Interés por Mora Gestora Pública",
+                            debe=round(int_mora, 2),
+                            haber=0.0,
+                            tag="Gasto Financiero",
+                            subcuentas=[f"Mora saldo {m_nom} {y_orig}"]
+                        )
+                    )
+                    sum_anteriores_gestora += round(int_mora, 2)
+                    extras_g_conceptos.append(f"Mora saldo diferido {m_nom} {y_orig} Bs. {int_mora:,.2f}")
+
+        total_pago_gestora = round(ret_a_pagar + pat_a_pagar + sum_intereses_gestora + sum_anteriores_gestora, 2)
         items_gestora.append(
             AccountingEntryItem(cuenta=caja_banco_name, debe=0.0, haber=total_pago_gestora)
         )
@@ -388,28 +598,69 @@ class AccountingService:
         if gestora_payment.nro_transaccion:
             label_gestora += f" - N° {gestora_payment.nro_transaccion}"
 
-        # Cuadrante 6: Asiento de Pago Caja de Salud
-        items_caja = [
-            AccountingEntryItem(cuenta=f"{caja_activa} por Pagar", debe=patronal_caja, haber=0.0)
-        ]
+        # Cuadrante 6: Asiento de Pago Caja de Salud con cálculo de importes restantes y saldos anteriores
+        imp_restante_c = min(max(float(getattr(caja_payment, 'importe_restante', 0.0) or 0.0), 0.0), patronal_caja)
+        caja_a_pagar = round(patronal_caja - imp_restante_c, 2)
+
+        items_caja = []
+        if caja_a_pagar > 0:
+            items_caja.append(
+                AccountingEntryItem(cuenta=f"{caja_activa} por Pagar", debe=caja_a_pagar, haber=0.0)
+            )
+
         sum_ajustes_caja = 0.0
         extras_c_conceptos = []
-        for extra in caja_payment.ajustes:
-            m = round(extra.monto, 2)
-            if m > 0:
-                sum_ajustes_caja += m
+        for extra in (caja_payment.ajustes or []):
+            m_val = round(extra.monto, 2)
+            if m_val > 0:
+                sum_ajustes_caja += m_val
                 tipo_label = "Actualización UFV" if extra.tipo == "actualizacion" else "Interés"
                 nombre_cuenta = extra.concepto.strip() if extra.concepto and extra.concepto.strip() else f"{tipo_label} {caja_activa}"
                 items_caja.append(
                     AccountingEntryItem(
                         cuenta=nombre_cuenta,
-                        debe=m,
+                        debe=m_val,
                         haber=0.0,
                         tag="Gasto Operativo"
                     )
                 )
-                extras_c_conceptos.append(extra.concepto.strip() if extra.concepto and extra.concepto.strip() else f"{tipo_label} Bs. {m:,.2f}")
-        total_pago_caja = round(patronal_caja + sum_ajustes_caja, 2)
+                extras_c_conceptos.append(extra.concepto.strip() if extra.concepto and extra.concepto.strip() else f"{tipo_label} Bs. {m_val:,.2f}")
+
+        # Saldos pendientes de meses anteriores liquidados en este mes
+        sum_anteriores_caja = 0.0
+        for ant in (getattr(caja_payment, 'pagos_restantes_anteriores', []) or []):
+            is_pagar = getattr(ant, 'pagar_en_este_mes', False) if isinstance(ant, dict) is False else ant.get('pagar_en_este_mes', False)
+            if is_pagar:
+                m_orig = getattr(ant, 'month_origen', 1) if isinstance(ant, dict) is False else ant.get('month_origen', 1)
+                y_orig = getattr(ant, 'year_origen', year) if isinstance(ant, dict) is False else ant.get('year_origen', year)
+                m_nom = MONTH_NAMES[m_orig - 1].capitalize()
+                m_rest = getattr(ant, 'monto_restante', 0.0) if isinstance(ant, dict) is False else ant.get('monto_restante', 0.0)
+                int_mora = getattr(ant, 'interes_mora', 0.0) if isinstance(ant, dict) is False else ant.get('interes_mora', 0.0)
+
+                if m_rest > 0:
+                    items_caja.append(
+                        AccountingEntryItem(
+                            cuenta=f"{caja_activa} por Pagar",
+                            debe=round(m_rest, 2),
+                            haber=0.0,
+                            subcuentas=[f"Saldo diferido {m_nom} {y_orig}"]
+                        )
+                    )
+                    sum_anteriores_caja += round(m_rest, 2)
+                if int_mora > 0:
+                    items_caja.append(
+                        AccountingEntryItem(
+                            cuenta=f"Interés y Actualización {caja_activa}",
+                            debe=round(int_mora, 2),
+                            haber=0.0,
+                            tag="Gasto Financiero",
+                            subcuentas=[f"Mora saldo {m_nom} {y_orig}"]
+                        )
+                    )
+                    sum_anteriores_caja += round(int_mora, 2)
+                    extras_c_conceptos.append(f"Mora saldo diferido {m_nom} {y_orig} Bs. {int_mora:,.2f}")
+
+        total_pago_caja = round(caja_a_pagar + sum_ajustes_caja + sum_anteriores_caja, 2)
         items_caja.append(
             AccountingEntryItem(cuenta=caja_banco_name, debe=0.0, haber=total_pago_caja)
         )
@@ -471,24 +722,25 @@ class AccountingService:
         fecha_caja = _format_date(caja_payment.fecha, closing_date_str)
         fecha_mt = _format_date(min_trabajo_payment.fecha, closing_date_str)
 
-        # Glosas descriptivas por asiento (Únicamente para asientos de pago si cuentan con fecha, nro de documento o descripción de intereses)
         month_str = MONTH_NAMES[month - 1].upper()
 
-        has_gestora_data = bool(gestora_payment.fecha or gestora_payment.nro_transaccion or extras_g_conceptos)
+        has_gestora_data = bool(gestora_payment.fecha or gestora_payment.nro_transaccion or extras_g_conceptos or imp_restante_g > 0 or sum_anteriores_gestora > 0)
         if has_gestora_data:
             doc_gestora = f", según Documento/Transacción N° {gestora_payment.nro_transaccion}" if gestora_payment.nro_transaccion else ""
             desc_gestora = f", incluyendo {', '.join(extras_g_conceptos)}" if extras_g_conceptos else ""
             fec_gestora = f", de fecha {fecha_gestora}" if fecha_gestora else ""
-            glosa_gestora = f"Glosa: Por el pago de retenciones laborales y aportes a la Gestora Pública correspondiente al mes de {month_str} de {year}{doc_gestora}{desc_gestora}{fec_gestora}."
+            rest_gestora = f" (quedando un saldo pendiente diferido de Bs. {imp_restante_g:,.2f})" if imp_restante_g > 0 else ""
+            glosa_gestora = f"Glosa: Por el pago de retenciones laborales y aportes a la Gestora Pública correspondiente al mes de {month_str} de {year}{doc_gestora}{desc_gestora}{rest_gestora}{fec_gestora}."
         else:
             glosa_gestora = None
 
-        has_caja_data = bool(caja_payment.fecha or caja_payment.nro_transaccion or extras_c_conceptos)
+        has_caja_data = bool(caja_payment.fecha or caja_payment.nro_transaccion or extras_c_conceptos or imp_restante_c > 0 or sum_anteriores_caja > 0)
         if has_caja_data:
             doc_caja = f", según Documento/Transacción N° {caja_payment.nro_transaccion}" if caja_payment.nro_transaccion else ""
             desc_caja = f", incluyendo {', '.join(extras_c_conceptos)}" if extras_c_conceptos else ""
             fec_caja = f", de fecha {fecha_caja}" if fecha_caja else ""
-            glosa_caja = f"Glosa: Por el pago de aporte patronal de salud ({caja_activa}) correspondiente al mes de {month_str} de {year}{doc_caja}{desc_caja}{fec_caja}."
+            rest_caja = f" (quedando un saldo pendiente diferido de Bs. {imp_restante_c:,.2f})" if imp_restante_c > 0 else ""
+            glosa_caja = f"Glosa: Por el pago de aporte patronal de salud ({caja_activa}) correspondiente al mes de {month_str} de {year}{doc_caja}{desc_caja}{rest_caja}{fec_caja}."
         else:
             glosa_caja = None
 
@@ -657,7 +909,9 @@ class AccountingService:
             payroll_id=payroll_id,
             is_customized=is_customized,
             is_locked_by_date=is_locked_by_date,
-            is_manually_unlocked=is_manually_unlocked
+            is_manually_unlocked=is_manually_unlocked,
+            saldos_pendientes_gestora=saldos_pendientes_gestora,
+            saldos_pendientes_caja=saldos_pendientes_caja
         )
 
     @staticmethod
@@ -690,6 +944,7 @@ class AccountingService:
         caj = CajaPaymentData(caja_tipo=caja_name, fecha=today_str)
         mt = MinTrabajoPaymentData(fecha=today_str)
 
+        pending_g, pending_c = AccountingService._get_pending_balances_for_month(session, month, year)
         return AccountingService.build_full_sheet(
             month=month,
             year=year,
@@ -702,7 +957,9 @@ class AccountingService:
             payroll_id=None,
             is_locked_by_date=is_locked_by_date,
             is_manually_unlocked=False,
-            is_customized=False
+            is_customized=False,
+            saldos_pendientes_gestora=pending_g,
+            saldos_pendientes_caja=pending_c
         )
 
     @staticmethod
@@ -712,6 +969,7 @@ class AccountingService:
         year: int,
         sheet_data: AccountingSheetData
     ) -> AccountingRecord:
+        pending_g, pending_c = AccountingService._get_pending_balances_for_month(session, month, year)
         sheet_data = AccountingService.build_full_sheet(
             month=month,
             year=year,
@@ -724,7 +982,9 @@ class AccountingService:
             payroll_id=sheet_data.payroll_id,
             is_locked_by_date=sheet_data.is_locked_by_date,
             is_manually_unlocked=sheet_data.is_manually_unlocked,
-            is_customized=True
+            is_customized=True,
+            saldos_pendientes_gestora=pending_g,
+            saldos_pendientes_caja=pending_c
         )
 
         json_str = sheet_data.model_dump_json()

@@ -68,6 +68,7 @@ interface PayrollData {
   is_closed: boolean;
   tenant_name?: string;
   tenant_nro_patronal?: string;
+  tenant_nit?: string;
   payslips: Payslip[];
 }
 
@@ -357,8 +358,8 @@ function BoletasPageContent() {
   const getLeteral = (val: number) => {
     const entero = Math.floor(val);
     const centavos = Math.round((val - entero) * 100);
-    const textoEntero = numeroALetras(entero).trim();
-    return `${textoEntero} ${centavos.toString().padStart(2, '0')}/100 Bolivianos`;
+    const textoEntero = numeroALetras(entero).trim().toUpperCase();
+    return `${textoEntero} con ${centavos.toString().padStart(2, '0')}/100 Bolivianos`;
   };
 
   const formatDate = (dateStr?: string) => {
@@ -454,9 +455,15 @@ function BoletasPageContent() {
     window.open(url, '_blank');
   };
 
-  const handleExportAguinaldoBatch = (format: 'pdf' | 'excel') => {
+  const handleExportAguinaldoBatch = (format: 'pdf' | 'excel', mode: 'continuous' | 'multi_sheet' = 'multi_sheet') => {
     if (!tenantSchema) return;
-    const url = `${getApiUrl()}/api/tenants/${tenantSchema}/aguinaldos/${aguinaldoYear}/papeletas/export/${format}`;
+    const url = `${getApiUrl()}/api/tenants/${tenantSchema}/aguinaldos/${aguinaldoYear}/papeletas/export/batch/${mode}/${format}`;
+    window.open(url, '_blank');
+  };
+
+  const handleExportMonthlyBatch = (mode: 'continuous' | 'multi_sheet', format: 'excel' | 'pdf') => {
+    if (!tenantSchema || !month || !year) return;
+    const url = `${getApiUrl()}/api/tenants/${tenantSchema}/payrolls/${month}/${year}/payslips/export/batch/${mode}/${format}`;
     window.open(url, '_blank');
   };
 
@@ -594,6 +601,39 @@ function BoletasPageContent() {
               </div>
             )}
           </div>
+
+          {/* Barra de Exportaciones Masivas de Boletas del Mes */}
+          {payroll && (
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200">
+              <div className="flex items-center gap-2 text-xs md:text-sm font-bold text-slate-700">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span>Exportaciones Masivas de Boletas de Pago:</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => handleExportMonthlyBatch("continuous", "excel")}
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-sm transition"
+                  title="Exportar todas las boletas del mes en formato general listo para corte e impresión"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Exportación General de Boletas
+                </button>
+                <button
+                  onClick={() => handleExportMonthlyBatch("multi_sheet", "excel")}
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-xl shadow-sm transition"
+                  title="Exportar todas en un Excel con 1 pestaña por empleado (con sus 2 copias)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Pestaña por Empleado (Excel)
+                </button>
+                <button
+                  onClick={() => handleExportMonthlyBatch("continuous", "pdf")}
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-sm transition"
+                  title="Exportar todas las boletas del mes en un archivo PDF continuo listo para imprimir"
+                >
+                  <FileText className="w-3.5 h-3.5" /> PDF Masivo
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Tabla de Boletas */}
           {payroll && (
@@ -737,18 +777,27 @@ function BoletasPageContent() {
               />
             </div>
             
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button 
-                onClick={() => handleExportAguinaldoBatch("pdf")}
-                className="flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white font-bold text-sm rounded-xl hover:bg-red-700 shadow-sm transition"
+                onClick={() => handleExportAguinaldoBatch("excel", "continuous")}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition"
+                title="Exportar todas las papeletas de aguinaldo en formato general listo para impresión"
               >
-                <FileText className="w-4 h-4" /> Exportar Todas a PDF (2 por hoja)
+                <FileSpreadsheet className="w-3.5 h-3.5" /> Exportación General de Boletas
               </button>
               <button 
-                onClick={() => handleExportAguinaldoBatch("excel")}
-                className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white font-bold text-sm rounded-xl hover:bg-green-700 shadow-sm transition"
+                onClick={() => handleExportAguinaldoBatch("excel", "multi_sheet")}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs rounded-xl shadow-sm transition"
+                title="Exportar todas en un Excel con 1 pestaña por empleado (con sus 2 copias)"
               >
-                <FileSpreadsheet className="w-4 h-4" /> Exportar Todas a Excel
+                <FileSpreadsheet className="w-3.5 h-3.5" /> Pestaña por Empleado (Excel)
+              </button>
+              <button 
+                onClick={() => handleExportAguinaldoBatch("pdf", "continuous")}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-sm transition"
+                title="Exportar todas las papeletas de aguinaldo en PDF continuo para imprimir"
+              >
+                <FileText className="w-3.5 h-3.5" /> PDF Masivo
               </button>
             </div>
           </div>
@@ -967,44 +1016,91 @@ function BoletasPageContent() {
         {viewMode === 'boleta' && selectedPayslip && payroll && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setViewMode(null)} />
-             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col">
+             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
                 <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                  <h3 className="font-bold text-slate-800">Previsualización de Boleta</h3>
-                  <button onClick={() => setViewMode(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-teal-600" />
+                    <h3 className="font-bold text-slate-800">Previsualización de Boleta de Pago</h3>
+                  </div>
+                  <button onClick={() => setViewMode(null)} className="text-slate-400 hover:text-slate-600 transition p-1 rounded-lg hover:bg-slate-200">
+                    <X className="w-5 h-5"/>
+                  </button>
                 </div>
                 
-                <div className="p-6 overflow-y-auto max-h-[75vh]">
-                   <div className="w-full bg-white border border-black p-4 font-sans text-xs text-black">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <p className="font-bold text-sm uppercase">{payroll.tenant_name || "EMPRESA"}</p>
-                          <p>N° Patronal: {payroll.tenant_nro_patronal || "---"}</p>
+                <div className="p-6 overflow-y-auto max-h-[80vh] bg-slate-100 flex justify-center">
+                   {/* Boleta Card estilo Excel (Réplica visual exacta) */}
+                   <div className="w-full max-w-2xl bg-white border border-slate-600 shadow-md font-sans text-xs text-slate-900 select-none">
+                      
+                      {/* 1. Empresa y N° de Copia */}
+                      <div className="p-4 pb-2">
+                        <div className="flex justify-between items-start">
+                          <span className="font-bold text-sm text-slate-900 uppercase tracking-wide">
+                            {payroll.tenant_name || "EMPRESA"}
+                          </span>
+                          <span className="font-bold text-sm text-[#002060]">
+                            N°: {selectedPayslip.employee_code || selectedPayslip.employee_id}
+                          </span>
                         </div>
-                        <div className="border border-black px-2 py-1 flex items-center gap-2">
-                          <span className="font-bold">N°:</span>
-                          <span className="font-bold">{selectedPayslip.employee_code || selectedPayslip.employee_id}</span>
+                        <div className="text-[11px] text-slate-600 mt-0.5">
+                          N° Patronal: {payroll.tenant_nro_patronal || "---"} &nbsp;&nbsp;|&nbsp;&nbsp; NIT: {payroll.tenant_nit || "---"}
                         </div>
                       </div>
 
-                      <h2 className="text-center text-xl font-bold underline mb-4">PAPELETA DE PAGO</h2>
-                      
-                      <div className="flex justify-between mb-4 border-b border-black pb-2 font-bold">
-                        <span>MES {MONTHS[payroll.month-1]}</span>
-                        <span>AÑO {payroll.year}</span>
-                        <span>FECHA {(() => {
+                      {/* 2. Título Central PAPELETA DE PAGO */}
+                      <div className="text-center font-bold text-base tracking-widest text-[#002060] py-1 border-t border-slate-200">
+                        PAPELETA DE PAGO
+                      </div>
+
+                      {/* 3. Barra Período y Fecha */}
+                      <div className="bg-[#F2F4F8] border-y border-slate-300 px-4 py-1.5 flex justify-between items-center text-xs font-bold text-slate-800">
+                        <span>MES: {MONTHS[payroll.month-1].toUpperCase()}</span>
+                        <span>AÑO: {payroll.year}</span>
+                        <span>FECHA: {(() => {
                           const lastDay = new Date(payroll.year, payroll.month, 0).getDate();
                           return `${String(lastDay).padStart(2, '0')}/${String(payroll.month).padStart(2, '0')}/${payroll.year}`;
                         })()}</span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 mb-4 font-bold">
-                        <div>CODIGO : <span className="font-normal">{selectedPayslip.employee_code || selectedPayslip.employee_id}</span></div>
-                        <div>NOMBRE : <span className="font-normal uppercase">{selectedPayslip.employee_name}</span></div>
-                        <div>CARGO : <span className="font-normal uppercase">{selectedPayslip.employee_cargo}</span></div>
-                        <div>FECHA INGRESO : <span className="font-normal">{formatDate(selectedPayslip.employee_fecha_ingreso)}</span></div>
-                        <div className="col-span-2 text-right">SALDO I.V.A. : <span className="font-normal">0.00</span></div>
+                      {/* 4. Bloque Información del Empleado */}
+                      <div className="px-4 py-1.5 text-xs text-slate-800 space-y-1">
+                        <div className="flex border-b border-slate-200 py-1">
+                          <div className="w-1/3">
+                            <span className="font-bold">CÓDIGO:</span> &nbsp;
+                            <span className="font-bold">{selectedPayslip.employee_code || selectedPayslip.employee_id}</span>
+                          </div>
+                          <div className="w-2/3">
+                            <span className="font-bold">NOMBRE:</span> &nbsp;
+                            <span className="font-bold uppercase">{selectedPayslip.employee_name}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex border-b border-slate-200 py-1">
+                          <div className="w-1/2">
+                            <span className="font-bold">CARGO:</span> &nbsp;
+                            <span className="font-normal uppercase">{selectedPayslip.employee_cargo || "---"}</span>
+                          </div>
+                          <div className="w-1/2">
+                            <span className="font-bold">C.I.:</span> &nbsp;
+                            <span className="font-normal">{selectedPayslip.employee_ci || "---"}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex py-1">
+                          <div className="w-1/2">
+                            <span className="font-bold">FECHA INGRESO:</span> &nbsp;
+                            <span className="font-normal">{formatDate(selectedPayslip.employee_fecha_ingreso)}</span>
+                          </div>
+                          <div className="w-1/2">
+                            <span className="font-bold">DÍAS PAGADOS:</span> &nbsp;
+                            <span className="font-normal">{selectedPayslip.dias_pagados || 30}</span>
+                            <span className="mx-2 font-normal text-slate-300">|</span>
+                            <span className="font-bold">SALDO I.V.A.:</span> &nbsp;
+                            <span className="font-normal">0.00</span>
+                          </div>
+                        </div>
                       </div>
 
+                      {/* 5. Tabla de Ingresos y Descuentos */}
                       {(() => {
                         const hb = Number(selectedPayslip.haber_basico || 0);
                         const ba = Number(selectedPayslip.bono_antiguedad || 0);
@@ -1025,7 +1121,7 @@ function BoletasPageContent() {
 
                         const itemsIngresos: { label: string; val: number }[] = [
                           { label: "Sueldo Básico", val: hb },
-                          ...(ba > 0 ? [{ label: "Bono de Antigüedad", val: ba }] : []),
+                          { label: "Bono de Antigüedad", val: ba },
                           ...(bp > 0 ? [{ label: "Bono de Producción", val: bp }] : []),
                           ...(sf > 0 ? [{ label: "Subsidio de Frontera", val: sf }] : []),
                           ...(he > 0 ? [{ label: "Trabajo Extraordinario", val: he }] : []),
@@ -1035,60 +1131,98 @@ function BoletasPageContent() {
                         ];
 
                         const itemsDescuentos: { label: string; val: number }[] = [
-                          ...(gestoraPub > 0 ? [{ label: "Aporte Gestora Pública", val: gestoraPub }] : []),
-                          ...(apSolidario > 0 ? [{ label: "Aporte Solidario Asegurado", val: apSolidario }] : []),
+                          { label: "Aporte Gestora Pública", val: gestoraPub },
+                          { label: "Aporte Solidario Asegurado", val: apSolidario },
                           ...(rcIva > 0 ? [{ label: "R.C. - I.V.A.", val: rcIva }] : []),
                           ...(ant > 0 ? [{ label: "Anticipo", val: ant }] : []),
                           ...(oDesc > 0 ? [{ label: "Otros Descuentos", val: oDesc }] : []),
                         ];
 
+                        const numRows = Math.max(itemsIngresos.length, itemsDescuentos.length, 2);
+                        const pairedRows = [];
+                        for (let i = 0; i < numRows; i++) {
+                          pairedRows.push({
+                            ing: itemsIngresos[i] || null,
+                            desc: itemsDescuentos[i] || null,
+                          });
+                        }
+
                         return (
-                          <div className="border border-black flex mb-4">
-                            <div className="w-1/2 border-r border-black flex flex-col">
-                              <div className="border-b border-black text-center font-bold p-1 bg-gray-50">INGRESOS</div>
-                              <div className="p-2 space-y-1 flex-1">
-                                {itemsIngresos.map((it, idx) => (
-                                  <div key={idx} className="flex justify-between">
-                                    <span>{it.label}</span>
-                                    <span>{formatBs(it.val)}</span>
-                                  </div>
-                                ))}
+                          <div className="border-t border-slate-400">
+                            {/* Cabecera Tabla */}
+                            <div className="bg-[#E4E8EE] border-b border-slate-300 flex text-xs font-bold text-slate-800">
+                              <div className="w-[35%] py-1.5 px-3 text-center border-r border-slate-300">INGRESOS</div>
+                              <div className="w-[15%] py-1.5 px-2 text-center border-r border-slate-400">MONTO BS</div>
+                              <div className="w-[35%] py-1.5 px-3 text-center border-r border-slate-300">DESCUENTOS</div>
+                              <div className="w-[15%] py-1.5 px-2 text-center">MONTO BS</div>
+                            </div>
+
+                            {/* Filas de Detalle Dinámicas */}
+                            {pairedRows.map((row, idx) => (
+                              <div key={idx} className="flex border-b border-slate-200 text-xs py-1">
+                                <div className="w-[35%] px-3 text-left text-slate-800">
+                                  {row.ing?.label || ""}
+                                </div>
+                                <div className="w-[15%] px-2 text-right font-medium text-slate-900 border-r border-slate-400">
+                                  {row.ing ? formatBs(row.ing.val) : ""}
+                                </div>
+                                <div className="w-[35%] px-3 text-left text-slate-800">
+                                  {row.desc?.label || ""}
+                                </div>
+                                <div className="w-[15%] px-2 text-right font-medium text-slate-900">
+                                  {row.desc ? formatBs(row.desc.val) : ""}
+                                </div>
+                              </div>
+                            ))}
+
+                            {/* Fila TOTALES */}
+                            <div className="bg-[#EBEFF4] border-b border-slate-400 flex text-xs font-bold text-slate-900 py-1.5">
+                              <div className="w-[35%] px-3 text-left">TOTAL GANADO</div>
+                              <div className="w-[15%] px-2 text-right font-bold border-r border-slate-400">
+                                {formatBs(selectedPayslip.total_ganado)}
+                              </div>
+                              <div className="w-[35%] px-3 text-left">TOTAL DESCUENTOS</div>
+                              <div className="w-[15%] px-2 text-right font-bold">
+                                {formatBs(selectedPayslip.total_descuentos)}
                               </div>
                             </div>
-                            <div className="w-1/2 flex flex-col">
-                              <div className="border-b border-black text-center font-bold p-1 bg-gray-50">DESCUENTOS</div>
-                              <div className="p-2 space-y-1 flex-1">
-                                {itemsDescuentos.map((it, idx) => (
-                                  <div key={idx} className="flex justify-between">
-                                    <span>{it.label}</span>
-                                    <span>{formatBs(it.val)}</span>
-                                  </div>
-                                ))}
+
+                            {/* Fila LÍQUIDO PAGABLE */}
+                            <div className="bg-[#DEE5ED] border-b border-slate-400 flex items-center text-xs py-2 px-3">
+                              <div className="font-bold text-xs text-slate-900 tracking-wide shrink-0">
+                                LÍQUIDO PAGABLE:
+                              </div>
+                              <div className="font-black text-sm text-slate-900 px-4 border-r border-slate-400 shrink-0">
+                                {formatBs(selectedPayslip.liquido_pagable)}
+                              </div>
+                              <div className="italic text-[11px] text-slate-700 pl-3 truncate">
+                                (Son: {getLeteral(selectedPayslip.liquido_pagable)})
                               </div>
                             </div>
                           </div>
                         );
                       })()}
 
-                      <div className="flex font-bold border border-black mb-4 bg-gray-100/50">
-                        <div className="w-1/2 p-2 flex justify-between border-r border-black">
-                          <span>TOTAL GANADO</span><span>{formatBs(selectedPayslip.total_ganado)}</span>
+                      {/* 6. Firmas al Pie */}
+                      <div className="pt-10 pb-4 px-6 flex justify-between items-center text-center">
+                        <div className="w-56 flex flex-col items-center">
+                          <div className="text-slate-400 text-xs tracking-widest select-none">
+                            ........................................................................
+                          </div>
+                          <div className="font-bold text-xs text-slate-900 mt-1">
+                            Vo. Bo. Contabilidad / Gerencia
+                          </div>
                         </div>
-                        <div className="w-1/2 p-2 flex justify-between">
-                          <span>TOTAL DESCUENTOS</span><span>{formatBs(selectedPayslip.total_descuentos)}</span>
+                        <div className="w-56 flex flex-col items-center">
+                          <div className="text-slate-400 text-xs tracking-widest select-none">
+                            ........................................................................
+                          </div>
+                          <div className="font-bold text-xs text-slate-900 mt-1 uppercase truncate max-w-[220px]">
+                            {selectedPayslip.employee_name}
+                          </div>
                         </div>
                       </div>
 
-                      <div className="flex border border-black p-2 font-bold mb-16">
-                        <span className="w-48 shrink-0">LIQUIDO PAGABLE:</span>
-                        <span className="text-lg w-32 shrink-0 border-r border-black">{formatBs(selectedPayslip.liquido_pagable)}</span>
-                        <span className="pl-4 font-normal italic w-full uppercase">*** {getLeteral(selectedPayslip.liquido_pagable)} ***</span>
-                      </div>
-
-                      <div className="flex justify-between mt-12 px-8 text-center">
-                        <div className="border-t border-dashed border-black w-64 pt-1">Verificado Contabilidad/Gerencia</div>
-                        <div className="border-t border-dashed border-black w-64 pt-1 uppercase">{selectedPayslip.employee_name}</div>
-                      </div>
                    </div>
                 </div>
 

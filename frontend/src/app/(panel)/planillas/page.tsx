@@ -1474,7 +1474,7 @@ function PlanillasPageContent() {
                           Number(aguinaldoData.totals.otros_bonos)
                         )}</td>
                         <td className="p-3.5 text-right text-teal-300 font-black whitespace-nowrap">{formatBs(aguinaldoData.totals.promedio_total_ganado)}</td>
-                        <td className="p-3.5 text-center font-black whitespace-nowrap">{aguinaldoData.totals.meses_trabajados}</td>
+                        <td className="p-3.5 text-center font-black whitespace-nowrap"></td>
                         <td className="p-3.5 text-right text-emerald-400 font-black text-sm whitespace-nowrap">{formatBs(aguinaldoData.totals.total_aguinaldo)}</td>
                         <td></td>
                       </tr>

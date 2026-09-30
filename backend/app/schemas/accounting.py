@@ -26,16 +26,33 @@ class PaymentExtraItem(BaseModel):
     concepto: str = ""
     monto: float = 0.0
 
+class PendingSettlementPayment(BaseModel):
+    id: Optional[str] = None
+    month_origen: int
+    year_origen: int
+    entidad: str = "gestora"  # "gestora" | "caja"
+    monto_restante: float = 0.0
+    monto_retenciones: float = 0.0  # Para gestora: parte proporcional de retenciones
+    monto_patronal: float = 0.0     # Para gestora: parte proporcional de patronal
+    interes_mora: float = 0.0       # Interés o recargo específico ingresado para liquidar este saldo
+    pagar_en_este_mes: bool = False
+
 class GestoraPaymentData(BaseModel):
     fecha: Optional[str] = ""
     nro_transaccion: Optional[str] = ""
     intereses: List[PaymentExtraItem] = Field(default_factory=list)
+    importe_restante: float = 0.0
+    descuento_retenciones: float = 0.0
+    descuento_patronal: float = 0.0
+    pagos_restantes_anteriores: List[PendingSettlementPayment] = Field(default_factory=list)
 
 class CajaPaymentData(BaseModel):
     caja_tipo: str = "Caja Petrolera de Salud"  # "Caja Petrolera de Salud" | "Caja Nacional de Salud"
     fecha: Optional[str] = ""
     nro_transaccion: Optional[str] = ""
     ajustes: List[PaymentExtraItem] = Field(default_factory=list)  # intereses y actualizaciones
+    importe_restante: float = 0.0
+    pagos_restantes_anteriores: List[PendingSettlementPayment] = Field(default_factory=list)
 
 class MinTrabajoPaymentData(BaseModel):
     fecha: Optional[str] = ""
@@ -86,6 +103,8 @@ class AccountingSheetData(BaseModel):
     is_customized: bool = False
     is_locked_by_date: bool = False
     is_manually_unlocked: bool = False
+    saldos_pendientes_gestora: List[PendingSettlementPayment] = Field(default_factory=list)
+    saldos_pendientes_caja: List[PendingSettlementPayment] = Field(default_factory=list)
 
 class AccountingSheetSaveRequest(BaseModel):
     month: int
