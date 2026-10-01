@@ -31,16 +31,26 @@ class PendingSettlementPayment(BaseModel):
     month_origen: int
     year_origen: int
     entidad: str = "gestora"  # "gestora" | "caja"
+    concepto: Optional[str] = ""
     monto_restante: float = 0.0
     monto_retenciones: float = 0.0  # Para gestora: parte proporcional de retenciones
     monto_patronal: float = 0.0     # Para gestora: parte proporcional de patronal
     interes_mora: float = 0.0       # Interés o recargo específico ingresado para liquidar este saldo
     pagar_en_este_mes: bool = False
 
+class ImporteRestanteItem(BaseModel):
+    id: Optional[str] = None
+    concepto: Optional[str] = ""
+    monto: float = 0.0
+    activo: bool = True
+    descuento_retenciones: float = 0.0
+    descuento_patronal: float = 0.0
+
 class GestoraPaymentData(BaseModel):
     fecha: Optional[str] = ""
     nro_transaccion: Optional[str] = ""
     intereses: List[PaymentExtraItem] = Field(default_factory=list)
+    importes_restantes: List[ImporteRestanteItem] = Field(default_factory=list)
     importe_restante: float = 0.0
     descuento_retenciones: float = 0.0
     descuento_patronal: float = 0.0
@@ -51,6 +61,7 @@ class CajaPaymentData(BaseModel):
     fecha: Optional[str] = ""
     nro_transaccion: Optional[str] = ""
     ajustes: List[PaymentExtraItem] = Field(default_factory=list)  # intereses y actualizaciones
+    importes_restantes: List[ImporteRestanteItem] = Field(default_factory=list)
     importe_restante: float = 0.0
     pagos_restantes_anteriores: List[PendingSettlementPayment] = Field(default_factory=list)
 

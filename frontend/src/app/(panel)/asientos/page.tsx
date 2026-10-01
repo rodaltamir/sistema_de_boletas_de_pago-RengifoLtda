@@ -149,6 +149,7 @@ interface PendingSettlementPayment {
   month_origen: number;
   year_origen: number;
   entidad: string;
+  concepto?: string;
   monto_restante: number;
   monto_retenciones?: number;
   monto_patronal?: number;
@@ -156,10 +157,20 @@ interface PendingSettlementPayment {
   pagar_en_este_mes: boolean;
 }
 
+interface ImporteRestanteItem {
+  id?: string;
+  concepto?: string;
+  monto: number;
+  activo?: boolean;
+  descuento_retenciones?: number;
+  descuento_patronal?: number;
+}
+
 interface GestoraPaymentData {
   fecha?: string;
   nro_transaccion?: string;
   intereses: PaymentExtraItem[];
+  importes_restantes?: ImporteRestanteItem[];
   importe_restante?: number;
   descuento_retenciones?: number;
   descuento_patronal?: number;
@@ -171,6 +182,7 @@ interface CajaPaymentData {
   fecha?: string;
   nro_transaccion?: string;
   ajustes: PaymentExtraItem[];
+  importes_restantes?: ImporteRestanteItem[];
   importe_restante?: number;
   pagos_restantes_anteriores?: PendingSettlementPayment[];
 }
@@ -349,6 +361,7 @@ function AsientosPageContent() {
     fecha: new Date().toISOString().split("T")[0],
     nro_transaccion: "",
     intereses: [],
+    importes_restantes: [{ id: "ir_g_1", concepto: "", monto: 0, activo: true }],
     importe_restante: 0,
     descuento_retenciones: 0,
     descuento_patronal: 0,
@@ -360,6 +373,7 @@ function AsientosPageContent() {
     fecha: new Date().toISOString().split("T")[0],
     nro_transaccion: "",
     ajustes: [],
+    importes_restantes: [{ id: "ir_c_1", concepto: "", monto: 0, activo: true }],
     importe_restante: 0,
     pagos_restantes_anteriores: []
   });
@@ -462,8 +476,21 @@ function AsientosPageContent() {
         const pendingGestora = data.gestora_payment.pagos_restantes_anteriores && data.gestora_payment.pagos_restantes_anteriores.length > 0
           ? data.gestora_payment.pagos_restantes_anteriores
           : (data.saldos_pendientes_gestora || []);
+
+        let loadedItemsG: ImporteRestanteItem[] = data.gestora_payment.importes_restantes && data.gestora_payment.importes_restantes.length > 0
+          ? [...data.gestora_payment.importes_restantes]
+          : [];
+        if (loadedItemsG.length === 0) {
+          if (data.gestora_payment.importe_restante && data.gestora_payment.importe_restante > 0) {
+            loadedItemsG = [{ id: "ir_g_1", concepto: "", monto: data.gestora_payment.importe_restante, activo: true }];
+          } else {
+            loadedItemsG = [{ id: "ir_g_1", concepto: "", monto: 0, activo: true }];
+          }
+        }
+
         setGestoraPayment({
           ...data.gestora_payment,
+          importes_restantes: loadedItemsG,
           importe_restante: data.gestora_payment.importe_restante ?? 0,
           descuento_retenciones: data.gestora_payment.descuento_retenciones ?? 0,
           descuento_patronal: data.gestora_payment.descuento_patronal ?? 0,
@@ -475,6 +502,7 @@ function AsientosPageContent() {
           fecha: new Date().toISOString().split("T")[0],
           nro_transaccion: "",
           intereses: [],
+          importes_restantes: [{ id: "ir_g_1", concepto: "", monto: 0, activo: true }],
           importe_restante: 0,
           descuento_retenciones: 0,
           descuento_patronal: 0,
@@ -486,9 +514,22 @@ function AsientosPageContent() {
         const pendingCaja = data.caja_payment.pagos_restantes_anteriores && data.caja_payment.pagos_restantes_anteriores.length > 0
           ? data.caja_payment.pagos_restantes_anteriores
           : (data.saldos_pendientes_caja || []);
+
+        let loadedItemsC: ImporteRestanteItem[] = data.caja_payment.importes_restantes && data.caja_payment.importes_restantes.length > 0
+          ? [...data.caja_payment.importes_restantes]
+          : [];
+        if (loadedItemsC.length === 0) {
+          if (data.caja_payment.importe_restante && data.caja_payment.importe_restante > 0) {
+            loadedItemsC = [{ id: "ir_c_1", concepto: "", monto: data.caja_payment.importe_restante, activo: true }];
+          } else {
+            loadedItemsC = [{ id: "ir_c_1", concepto: "", monto: 0, activo: true }];
+          }
+        }
+
         setCajaPayment({
           ...data.caja_payment,
           caja_tipo: data.caja_payment.caja_tipo || defaultCajaName,
+          importes_restantes: loadedItemsC,
           importe_restante: data.caja_payment.importe_restante ?? 0,
           pagos_restantes_anteriores: pendingCaja,
           ajustes: data.caja_payment.ajustes || []
@@ -499,6 +540,7 @@ function AsientosPageContent() {
           fecha: new Date().toISOString().split("T")[0],
           nro_transaccion: "",
           ajustes: [],
+          importes_restantes: [{ id: "ir_c_1", concepto: "", monto: 0, activo: true }],
           importe_restante: 0,
           pagos_restantes_anteriores: data.saldos_pendientes_caja || []
         });
@@ -686,43 +728,68 @@ function AsientosPageContent() {
 
   // 5. Totales de Asientos de Pago
 
-  // Gestora - Desglose proporcional de deducciones por importe restante
+  // Gestora - Desglose proporcional de deducciones por importes restantes (soporte multi-item)
   const gestoraDeduccionCalc = useMemo(() => {
     const baseRet = Number(devengamiento.retenciones_ley) || 0;
     const basePat = patronalGestora;
     const totBase = baseRet + basePat;
-    const impRestante = Number(gestoraPayment.importe_restante) || 0;
 
     let pctRet = 0;
     let pctPat = 0;
-    let descRet = 0;
-    let descPat = 0;
-
     if (totBase > 0) {
       pctRet = (baseRet / totBase) * 100;
       pctPat = (basePat / totBase) * 100;
-      descRet = Math.round(impRestante * (baseRet / totBase) * 100) / 100;
-      descPat = Math.round((impRestante - descRet) * 100) / 100;
     }
 
-    const netoRet = Math.max(0, Math.round((baseRet - descRet) * 100) / 100);
-    const netoPat = Math.max(0, Math.round((basePat - descPat) * 100) / 100);
+    let totalImpRestante = 0;
+    let totalDescRet = 0;
+    let totalDescPat = 0;
+
+    const items = (gestoraPayment.importes_restantes || []).map((item) => {
+      const isActivo = item.activo !== false;
+      const m = Number(item.monto) || 0;
+      let dRet = 0;
+      let dPat = 0;
+      if (isActivo && m > 0 && totBase > 0) {
+        dRet = Math.round(m * (baseRet / totBase) * 100) / 100;
+        dPat = Math.round((m - dRet) * 100) / 100;
+        totalImpRestante += m;
+        totalDescRet += dRet;
+        totalDescPat += dPat;
+      }
+      return {
+        ...item,
+        descRet: dRet,
+        descPat: dPat
+      };
+    });
+
+    totalDescRet = Math.round(totalDescRet * 100) / 100;
+    totalDescPat = Math.round(totalDescPat * 100) / 100;
+    totalImpRestante = Math.round(totalImpRestante * 100) / 100;
+
+    const netoRet = Math.max(0, Math.round((baseRet - totalDescRet) * 100) / 100);
+    const netoPat = Math.max(0, Math.round((basePat - totalDescPat) * 100) / 100);
     const baseEfectiva = Number((netoRet + netoPat).toFixed(2));
 
     return {
       baseRet,
       basePat,
       totBase,
-      impRestante,
       pctRet,
       pctPat,
-      descRet,
-      descPat,
+      items,
+      totalImpRestante,
+      totalDescRet,
+      totalDescPat,
+      descRet: totalDescRet,
+      descPat: totalDescPat,
+      impRestante: totalImpRestante,
       netoRet,
       netoPat,
       baseEfectiva
     };
-  }, [devengamiento.retenciones_ley, patronalGestora, gestoraPayment.importe_restante]);
+  }, [devengamiento.retenciones_ley, patronalGestora, gestoraPayment.importes_restantes]);
 
   // Suma de saldos pendientes de meses anteriores seleccionados para liquidar en Gestora
   const sumPriorGestora = useMemo(() => {
@@ -739,17 +806,33 @@ function AsientosPageContent() {
     return Number((gestoraDeduccionCalc.baseEfectiva + sumInteresesGestora + sumPriorGestora).toFixed(2));
   }, [gestoraDeduccionCalc.baseEfectiva, sumInteresesGestora, sumPriorGestora]);
 
-  // Caja de Salud - Deducción por importe restante
+  // Caja de Salud - Deducción por importes restantes (soporte multi-item)
   const cajaDeduccionCalc = useMemo(() => {
     const baseSalud = patronalCaja;
-    const impRestante = Number(cajaPayment.importe_restante) || 0;
-    const netoSalud = Math.max(0, Math.round((baseSalud - impRestante) * 100) / 100);
+    let totalImpRestante = 0;
+
+    const items = (cajaPayment.importes_restantes || []).map((item) => {
+      const isActivo = item.activo !== false;
+      const m = Number(item.monto) || 0;
+      if (isActivo && m > 0) {
+        totalImpRestante += m;
+      }
+      return {
+        ...item,
+        descSalud: isActivo ? m : 0
+      };
+    });
+
+    totalImpRestante = Math.round(totalImpRestante * 100) / 100;
+    const netoSalud = Math.max(0, Math.round((baseSalud - totalImpRestante) * 100) / 100);
     return {
       baseSalud,
-      impRestante,
+      items,
+      totalImpRestante,
+      impRestante: totalImpRestante,
       netoSalud
     };
-  }, [patronalCaja, cajaPayment.importe_restante]);
+  }, [patronalCaja, cajaPayment.importes_restantes]);
 
   // Suma de saldos pendientes de meses anteriores seleccionados para liquidar en Caja
   const sumPriorCaja = useMemo(() => {
@@ -916,10 +999,30 @@ function AsientosPageContent() {
         },
         gestora_payment: {
           ...gestoraPayment,
-          descuento_retenciones: gestoraDeduccionCalc.descRet,
-          descuento_patronal: gestoraDeduccionCalc.descPat
+          importes_restantes: (gestoraPayment.importes_restantes || []).map(item => {
+            const isActivo = item.activo !== false;
+            const m = Number(item.monto) || 0;
+            let dRet = 0;
+            let dPat = 0;
+            if (isActivo && m > 0 && gestoraDeduccionCalc.totBase > 0) {
+              dRet = Math.round(m * (gestoraDeduccionCalc.baseRet / gestoraDeduccionCalc.totBase) * 100) / 100;
+              dPat = Math.round((m - dRet) * 100) / 100;
+            }
+            return {
+              ...item,
+              descuento_retenciones: dRet,
+              descuento_patronal: dPat
+            };
+          }),
+          importe_restante: gestoraDeduccionCalc.totalImpRestante,
+          descuento_retenciones: gestoraDeduccionCalc.totalDescRet,
+          descuento_patronal: gestoraDeduccionCalc.totalDescPat
         },
-        caja_payment: cajaPayment,
+        caja_payment: {
+          ...cajaPayment,
+          importes_restantes: (cajaPayment.importes_restantes || []).map(item => ({ ...item })),
+          importe_restante: cajaDeduccionCalc.totalImpRestante
+        },
         min_trabajo_payment: minTrabajoPayment,
         is_manually_unlocked: isManuallyUnlocked
       };
@@ -942,8 +1045,13 @@ function AsientosPageContent() {
       setSheetData(updatedSheet);
 
       if (updatedSheet.gestora_payment) {
+        let loadedItemsG: ImporteRestanteItem[] = updatedSheet.gestora_payment.importes_restantes && updatedSheet.gestora_payment.importes_restantes.length > 0
+          ? [...updatedSheet.gestora_payment.importes_restantes]
+          : [{ id: "ir_g_1", concepto: "", monto: updatedSheet.gestora_payment.importe_restante || 0, activo: true }];
+
         setGestoraPayment({
           ...updatedSheet.gestora_payment,
+          importes_restantes: loadedItemsG,
           importe_restante: updatedSheet.gestora_payment.importe_restante ?? 0,
           descuento_retenciones: updatedSheet.gestora_payment.descuento_retenciones ?? 0,
           descuento_patronal: updatedSheet.gestora_payment.descuento_patronal ?? 0,
@@ -952,9 +1060,14 @@ function AsientosPageContent() {
         });
       }
       if (updatedSheet.caja_payment) {
+        let loadedItemsC: ImporteRestanteItem[] = updatedSheet.caja_payment.importes_restantes && updatedSheet.caja_payment.importes_restantes.length > 0
+          ? [...updatedSheet.caja_payment.importes_restantes]
+          : [{ id: "ir_c_1", concepto: "", monto: updatedSheet.caja_payment.importe_restante || 0, activo: true }];
+
         setCajaPayment({
           ...updatedSheet.caja_payment,
           caja_tipo: updatedSheet.caja_payment.caja_tipo || "Caja Petrolera de Salud",
+          importes_restantes: loadedItemsC,
           importe_restante: updatedSheet.caja_payment.importe_restante ?? 0,
           pagos_restantes_anteriores: updatedSheet.caja_payment.pagos_restantes_anteriores || updatedSheet.saldos_pendientes_caja || [],
           ajustes: updatedSheet.caja_payment.ajustes || []
@@ -1008,8 +1121,13 @@ function AsientosPageContent() {
       setSheetData(data);
       if (data.devengamiento) setDevengamiento(data.devengamiento);
       if (data.gestora_payment) {
+        let loadedItemsG: ImporteRestanteItem[] = data.gestora_payment.importes_restantes && data.gestora_payment.importes_restantes.length > 0
+          ? [...data.gestora_payment.importes_restantes]
+          : [{ id: "ir_g_1", concepto: "", monto: data.gestora_payment.importe_restante || 0, activo: true }];
+
         setGestoraPayment({
           ...data.gestora_payment,
+          importes_restantes: loadedItemsG,
           importe_restante: data.gestora_payment.importe_restante ?? 0,
           descuento_retenciones: data.gestora_payment.descuento_retenciones ?? 0,
           descuento_patronal: data.gestora_payment.descuento_patronal ?? 0,
@@ -1018,9 +1136,14 @@ function AsientosPageContent() {
         });
       }
       if (data.caja_payment) {
+        let loadedItemsC: ImporteRestanteItem[] = data.caja_payment.importes_restantes && data.caja_payment.importes_restantes.length > 0
+          ? [...data.caja_payment.importes_restantes]
+          : [{ id: "ir_c_1", concepto: "", monto: data.caja_payment.importe_restante || 0, activo: true }];
+
         setCajaPayment({
           ...data.caja_payment,
           caja_tipo: data.caja_payment.caja_tipo || "Caja Petrolera de Salud",
+          importes_restantes: loadedItemsC,
           importe_restante: data.caja_payment.importe_restante ?? 0,
           pagos_restantes_anteriores: data.caja_payment.pagos_restantes_anteriores || data.saldos_pendientes_caja || [],
           ajustes: data.caja_payment.ajustes || []
@@ -1081,8 +1204,13 @@ function AsientosPageContent() {
       setSheetData(data);
       if (data.devengamiento) setDevengamiento(data.devengamiento);
       if (data.gestora_payment) {
+        let loadedItemsG: ImporteRestanteItem[] = data.gestora_payment.importes_restantes && data.gestora_payment.importes_restantes.length > 0
+          ? [...data.gestora_payment.importes_restantes]
+          : [{ id: "ir_g_1", concepto: "", monto: data.gestora_payment.importe_restante || 0, activo: true }];
+
         setGestoraPayment({
           ...data.gestora_payment,
+          importes_restantes: loadedItemsG,
           importe_restante: data.gestora_payment.importe_restante ?? 0,
           descuento_retenciones: data.gestora_payment.descuento_retenciones ?? 0,
           descuento_patronal: data.gestora_payment.descuento_patronal ?? 0,
@@ -1091,9 +1219,14 @@ function AsientosPageContent() {
         });
       }
       if (data.caja_payment) {
+        let loadedItemsC: ImporteRestanteItem[] = data.caja_payment.importes_restantes && data.caja_payment.importes_restantes.length > 0
+          ? [...data.caja_payment.importes_restantes]
+          : [{ id: "ir_c_1", concepto: "", monto: data.caja_payment.importe_restante || 0, activo: true }];
+
         setCajaPayment({
           ...data.caja_payment,
           caja_tipo: data.caja_payment.caja_tipo || "Caja Petrolera de Salud",
+          importes_restantes: loadedItemsC,
           importe_restante: data.caja_payment.importe_restante ?? 0,
           pagos_restantes_anteriores: data.caja_payment.pagos_restantes_anteriores || data.saldos_pendientes_caja || [],
           ajustes: data.caja_payment.ajustes || []
@@ -1212,6 +1345,33 @@ function AsientosPageContent() {
     setGestoraPayment({ ...gestoraPayment, pagos_restantes_anteriores: list });
   };
 
+  // Métodos para lista dinámica de Importes Restantes (Gestora Pública)
+  const addImporteRestanteGestora = () => {
+    const list = [...(gestoraPayment.importes_restantes || [])];
+    list.push({
+      id: `ir_g_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      concepto: "",
+      monto: 0,
+      activo: true
+    });
+    setGestoraPayment({ ...gestoraPayment, importes_restantes: list });
+  };
+
+  const removeImporteRestanteGestora = (index: number) => {
+    let list = [...(gestoraPayment.importes_restantes || [])];
+    list.splice(index, 1);
+    if (list.length === 0) {
+      list = [{ id: `ir_g_${Date.now()}`, concepto: "", monto: 0, activo: true }];
+    }
+    setGestoraPayment({ ...gestoraPayment, importes_restantes: list });
+  };
+
+  const updateImporteRestanteGestora = (index: number, field: keyof ImporteRestanteItem, value: any) => {
+    const list = [...(gestoraPayment.importes_restantes || [])];
+    list[index] = { ...list[index], [field]: value };
+    setGestoraPayment({ ...gestoraPayment, importes_restantes: list });
+  };
+
   // Métodos para lista dinámica de Gestora (Selector tipo + monto, sin descripción)
   const addInteresGestora = () => {
     setGestoraPayment({
@@ -1246,6 +1406,33 @@ function AsientosPageContent() {
     const list = [...(cajaPayment.pagos_restantes_anteriores || [])];
     list[index] = { ...list[index], interes_mora: mora };
     setCajaPayment({ ...cajaPayment, pagos_restantes_anteriores: list });
+  };
+
+  // Métodos para lista dinámica de Importes Restantes (Caja de Salud)
+  const addImporteRestanteCaja = () => {
+    const list = [...(cajaPayment.importes_restantes || [])];
+    list.push({
+      id: `ir_c_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      concepto: "",
+      monto: 0,
+      activo: true
+    });
+    setCajaPayment({ ...cajaPayment, importes_restantes: list });
+  };
+
+  const removeImporteRestanteCaja = (index: number) => {
+    let list = [...(cajaPayment.importes_restantes || [])];
+    list.splice(index, 1);
+    if (list.length === 0) {
+      list = [{ id: `ir_c_${Date.now()}`, concepto: "", monto: 0, activo: true }];
+    }
+    setCajaPayment({ ...cajaPayment, importes_restantes: list });
+  };
+
+  const updateImporteRestanteCaja = (index: number, field: keyof ImporteRestanteItem, value: any) => {
+    const list = [...(cajaPayment.importes_restantes || [])];
+    list[index] = { ...list[index], [field]: value };
+    setCajaPayment({ ...cajaPayment, importes_restantes: list });
   };
 
   // Métodos para lista dinámica de Caja (Selector 2 tipos + monto, sin descripción)
@@ -2019,9 +2206,9 @@ function AsientosPageContent() {
                 </div>
               </div>
 
-              {/* FILA DE IMPORTES RESTANTES (DEDUCCIÓN DE SALDO DIFERIDO GESTORA) */}
-              <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              {/* FILA(S) DE IMPORTES RESTANTES (DEDUCCIÓN DE SALDO DIFERIDO GESTORA) */}
+              <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/70 pb-2.5">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
                       <Scale className="w-4 h-4" />
@@ -2035,29 +2222,167 @@ function AsientosPageContent() {
                       </p>
                     </div>
                   </div>
-                  <div className="w-full sm:w-56">
-                    <div className="relative">
-                      <span className="absolute left-3 top-2 text-xs text-amber-700 font-bold">Bs.</span>
-                      <NumericInput
-                        value={gestoraPayment.importe_restante}
-                        onChange={(val) => setGestoraPayment({ ...gestoraPayment, importe_restante: val })}
-                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-amber-300 rounded-lg text-xs md:text-sm font-bold text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={addImporteRestanteGestora}
+                    className="self-start sm:self-auto flex items-center gap-1.5 text-xs px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg font-bold border border-amber-300 transition shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Agregar Importe Restante
+                  </button>
                 </div>
 
-                {/* Desglose proporcional de distribución */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-                  <div className="p-2.5 bg-white rounded-lg border border-amber-200 text-xs space-y-1">
+                {/* Filas dinámicas alineadas con las 4 columnas superiores */}
+                <div className="space-y-3">
+                  {gestoraDeduccionCalc.items.map((item, idx) => {
+                    const isChecked = item.activo !== false;
+                    const hasMonto = Number(item.monto) > 0;
+                    return (
+                      <div
+                        key={item.id || idx}
+                        className={`p-3.5 rounded-xl border transition-all space-y-3 ${
+                          isChecked && hasMonto
+                            ? "bg-white border-amber-300 shadow-xs"
+                            : isChecked
+                            ? "bg-white/80 border-slate-200"
+                            : "bg-slate-50/70 border-slate-200 opacity-60"
+                        }`}
+                      >
+                        {/* Cabecera del Item: Checkbox + Título + Campo Descripción + Botón Eliminar */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-amber-100">
+                          <div className="flex items-center gap-2.5">
+                            <input
+                              type="checkbox"
+                              id={`ir-gestora-check-${idx}`}
+                              checked={isChecked}
+                              onChange={(e) => updateImporteRestanteGestora(idx, "activo", e.target.checked)}
+                              className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
+                            />
+                            <label
+                              htmlFor={`ir-gestora-check-${idx}`}
+                              className="text-xs font-bold text-slate-800 cursor-pointer flex items-center gap-1.5 select-none"
+                            >
+                              <span>Importes Restantes</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-extrabold">
+                                #{idx + 1}
+                              </span>
+                            </label>
+                            {isChecked ? (
+                              <span className="text-[10px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full font-semibold">
+                                Diferimiento Activo
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">
+                                Inactivo (no deduce)
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-1 sm:max-w-md">
+                            <div className="relative flex-1">
+                              <input
+                                type="text"
+                                value={item.concepto || ""}
+                                disabled={!isChecked}
+                                onChange={(e) => updateImporteRestanteGestora(idx, "concepto", e.target.value)}
+                                placeholder="Descripción / Glosa (ej. Diferimiento cuota 1, acuerdo...)"
+                                className="w-full px-3 py-1.5 bg-amber-50/40 border border-amber-200 rounded-lg text-xs font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:bg-slate-100 disabled:text-slate-400"
+                              />
+                            </div>
+                            {gestoraDeduccionCalc.items.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeImporteRestanteGestora(idx)}
+                                className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+                                title="Eliminar este importe restante"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Fila de 4 columnas perfectamente alineadas */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
+                          {/* Columna 1: Estado / Resumen */}
+                          <div className="p-2.5 bg-slate-50/80 rounded-lg border border-slate-200 text-xs">
+                            <span className="text-[10px] font-semibold text-slate-500 block uppercase tracking-wider">Estado Reducción:</span>
+                            <span className="font-bold text-slate-700 flex items-center gap-1.5 mt-0.5">
+                              <span className={`w-2 h-2 rounded-full ${isChecked && hasMonto ? "bg-amber-500" : isChecked ? "bg-amber-300" : "bg-slate-300"}`} />
+                              {isChecked && hasMonto ? "Deducción aplicada" : isChecked ? "Listo para monto" : "Desactivado"}
+                            </span>
+                          </div>
+
+                          {/* Columna 2: Total a reducir (Input) */}
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-slate-500 block">Total a reducir:</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-2 text-xs text-amber-700 font-bold">Bs.</span>
+                              <NumericInput
+                                value={item.monto}
+                                disabled={!isChecked}
+                                onChange={(val) => updateImporteRestanteGestora(idx, "monto", val)}
+                                className="w-full pl-9 pr-3 py-1.5 bg-white border border-amber-300 rounded-lg text-xs md:text-sm font-bold text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs disabled:bg-slate-100 disabled:text-slate-400"
+                                placeholder="0.00"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Columna 3: Deducción en Retenciones */}
+                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                            <div className="flex items-center justify-between text-slate-600 text-[11px] mb-0.5">
+                              <span className="font-semibold">Retenciones ({gestoraDeduccionCalc.pctRet.toFixed(2)}%):</span>
+                            </div>
+                            <div className="font-mono text-xs font-bold">
+                              {isChecked && hasMonto ? (
+                                <span className="text-red-600">
+                                  - Bs. {item.descRet.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-normal">Bs. 0.00</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Columna 4: Deducción en Patronal Gestora */}
+                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                            <div className="flex items-center justify-between text-slate-600 text-[11px] mb-0.5">
+                              <span className="font-semibold">Patronal Gestora ({gestoraDeduccionCalc.pctPat.toFixed(2)}%):</span>
+                            </div>
+                            <div className="font-mono text-xs font-bold">
+                              {isChecked && hasMonto ? (
+                                <span className="text-red-600">
+                                  - Bs. {item.descPat.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-normal">Bs. 0.00</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Banner Informativo de Dinámica de Diferimiento */}
+                <div className="p-2.5 bg-amber-100/60 rounded-lg border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
+                  <span className="text-base">💡</span>
+                  <span>
+                    <b>Información del Saldo:</b> Los montos diferidos en esta sección se acumularán automáticamente como <b>Saldos Pendientes</b> en los meses posteriores, donde dispondrá de un checklist para liquidarlos en el mes que elija.
+                  </span>
+                </div>
+
+                {/* Desglose / Resumen de distribución y Total Base Efectiva */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                  <div className="p-3 bg-white rounded-xl border border-amber-200 text-xs space-y-1">
                     <div className="flex items-center justify-between text-slate-600">
                       <span className="font-semibold">Retenciones Laborales:</span>
-                      <span className="font-bold text-amber-700">{gestoraDeduccionCalc.pctRet.toFixed(2)}%</span>
+                      <span className="font-bold text-amber-800">{gestoraDeduccionCalc.pctRet.toFixed(2)}%</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-500 text-[11px]">
-                      <span>Deducción calculada:</span>
-                      <span className="font-mono text-red-600 font-semibold">- Bs. {gestoraDeduccionCalc.descRet.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span>Total Deducido:</span>
+                      <span className="font-mono text-red-600 font-semibold">- Bs. {gestoraDeduccionCalc.totalDescRet.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex items-center justify-between border-t border-slate-100 pt-1 font-bold text-slate-800">
                       <span>Neto a Cancelar:</span>
@@ -2065,14 +2390,14 @@ function AsientosPageContent() {
                     </div>
                   </div>
 
-                  <div className="p-2.5 bg-white rounded-lg border border-amber-200 text-xs space-y-1">
+                  <div className="p-3 bg-white rounded-xl border border-amber-200 text-xs space-y-1">
                     <div className="flex items-center justify-between text-slate-600">
                       <span className="font-semibold">Patronal Gestora:</span>
-                      <span className="font-bold text-amber-700">{gestoraDeduccionCalc.pctPat.toFixed(2)}%</span>
+                      <span className="font-bold text-amber-800">{gestoraDeduccionCalc.pctPat.toFixed(2)}%</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-500 text-[11px]">
-                      <span>Deducción calculada:</span>
-                      <span className="font-mono text-red-600 font-semibold">- Bs. {gestoraDeduccionCalc.descPat.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span>Total Deducido:</span>
+                      <span className="font-mono text-red-600 font-semibold">- Bs. {gestoraDeduccionCalc.totalDescPat.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex items-center justify-between border-t border-slate-100 pt-1 font-bold text-slate-800">
                       <span>Neto a Cancelar:</span>
@@ -2080,15 +2405,15 @@ function AsientosPageContent() {
                     </div>
                   </div>
 
-                  <div className="p-2.5 bg-amber-100/60 rounded-lg border border-amber-300 text-xs space-y-1 flex flex-col justify-between">
+                  <div className="p-3 bg-gradient-to-br from-amber-50 to-amber-100/80 rounded-xl border border-amber-300 text-xs space-y-1.5 flex flex-col justify-between">
                     <div className="flex items-center justify-between font-bold text-amber-950">
                       <span>Total Base Efectiva:</span>
-                      <span className="font-mono text-sm">Bs. {gestoraDeduccionCalc.baseEfectiva.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono text-base text-amber-900">Bs. {gestoraDeduccionCalc.baseEfectiva.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
                     </div>
-                    <p className="text-[10px] text-amber-800 leading-tight">
-                      {gestoraDeduccionCalc.impRestante > 0
-                        ? `Se difiere un saldo de Bs. ${gestoraDeduccionCalc.impRestante.toFixed(2)} para regularización en meses posteriores.`
-                        : "Sin saldo diferido. Se cancela la totalidad de las bases devengadas."}
+                    <p className="text-[11px] text-amber-800/90 leading-tight">
+                      {gestoraDeduccionCalc.totalImpRestante > 0
+                        ? `Se difiere un saldo total de Bs. ${gestoraDeduccionCalc.totalImpRestante.toFixed(2)} para regularización en meses posteriores.`
+                        : "Sin saldo diferido. Se cancela el 100% de las bases devengadas."}
                     </p>
                   </div>
                 </div>
@@ -2097,85 +2422,117 @@ function AsientosPageContent() {
               {/* SALDOS PENDIENTES DE MESES ANTERIORES (GESTORA PÚBLICA) */}
               {Boolean(gestoraPayment.pagos_restantes_anteriores && gestoraPayment.pagos_restantes_anteriores.length > 0) && (
                 <div className="p-4 rounded-xl bg-blue-50/80 border border-blue-200 space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-blue-200/60 pb-2">
                     <div className="flex items-center gap-2">
-                      <History className="w-4 h-4 text-blue-700" />
-                      <h4 className="text-xs font-bold text-blue-950 uppercase tracking-wide">
-                        Saldos Pendientes de Meses Anteriores ({gestoraPayment.pagos_restantes_anteriores?.length})
-                      </h4>
+                      <div className="p-1.5 bg-blue-100 text-blue-800 rounded-lg">
+                        <History className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-blue-950 uppercase tracking-wide">
+                          Saldos Pendientes de Meses Anteriores ({gestoraPayment.pagos_restantes_anteriores?.length})
+                        </h4>
+                        <p className="text-[11px] text-blue-800/80">
+                          Checklist de regularización: Seleccione qué saldo diferido desea cancelar y liquidar en este mes.
+                        </p>
+                      </div>
                     </div>
-                    <span className="text-[11px] text-blue-700 font-medium">
-                      Marque el casillero para liquidar el saldo en el pago de este mes
-                    </span>
+                    <div className="text-right">
+                      <span className="text-[10px] text-blue-600 block uppercase font-semibold">Total a Liquidar este mes:</span>
+                      <span className="text-xs font-mono font-black text-blue-950">
+                        + Bs. {sumPriorGestora.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {(gestoraPayment.pagos_restantes_anteriores || []).map((saldo, sIdx) => {
                       const mName = MONTHS.find(m => m.id === saldo.month_origen)?.name || `Mes ${saldo.month_origen}`;
                       const subtotalSaldo = Number(((Number(saldo.monto_restante) || 0) + (Number(saldo.interes_mora) || 0)).toFixed(2));
+                      const isSelected = Boolean(saldo.pagar_en_este_mes);
+
                       return (
                         <div
                           key={saldo.id || sIdx}
-                          className={`p-3 rounded-lg border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                            saldo.pagar_en_este_mes
+                          className={`p-3.5 rounded-xl border transition-all ${
+                            isSelected
                               ? "bg-white border-blue-500 shadow-xs ring-1 ring-blue-400"
                               : "bg-white/70 border-slate-200 opacity-80"
                           }`}
                         >
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="checkbox"
-                              id={`gestora-saldo-${sIdx}`}
-                              checked={Boolean(saldo.pagar_en_este_mes)}
-                              onChange={() => togglePriorGestora(sIdx)}
-                              className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                            />
-                            <div>
-                              <label htmlFor={`gestora-saldo-${sIdx}`} className="text-xs font-bold text-slate-800 cursor-pointer flex items-center gap-2">
-                                <span>{mName} {saldo.year_origen}</span>
-                                {saldo.pagar_en_este_mes ? (
-                                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">
-                                    A liquidar este mes
-                                  </span>
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            {/* Checkbox + Info Origen + Descripción */}
+                            <div className="flex items-start gap-3 flex-1">
+                              <input
+                                type="checkbox"
+                                id={`gestora-saldo-${sIdx}`}
+                                checked={isSelected}
+                                onChange={() => togglePriorGestora(sIdx)}
+                                className="w-5 h-5 mt-0.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                              />
+                              <div className="space-y-1.5 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <label htmlFor={`gestora-saldo-${sIdx}`} className="text-xs font-bold text-slate-900 cursor-pointer flex items-center gap-2">
+                                    <span>Saldo Origen: {mName} {saldo.year_origen}</span>
+                                  </label>
+                                  {isSelected ? (
+                                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                      <Check className="w-3 h-3" /> Se sumará al pago de este mes (+ Bs. {subtotalSaldo.toFixed(2)})
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+                                      Pendiente (No se sumará este mes)
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Descripción / Motivo original si existe */}
+                                {saldo.concepto ? (
+                                  <div className="text-[11px] text-slate-700 bg-amber-50/70 border border-amber-200/70 px-2.5 py-1 rounded-md">
+                                    <span className="font-semibold text-amber-900">Motivo diferido: </span>
+                                    <span>{saldo.concepto}</span>
+                                  </div>
                                 ) : (
-                                  <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold">
-                                    Pendiente
-                                  </span>
+                                  <div className="text-[11px] text-slate-400 italic">
+                                    Sin descripción registrada al diferir.
+                                  </div>
                                 )}
-                              </label>
-                              <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                                <span>Saldo capital: <b className="text-slate-700">Bs. {Number(saldo.monto_restante).toLocaleString("es-BO", { minimumFractionDigits: 2 })}</b></span>
-                                {((Number(saldo.monto_retenciones) || 0) > 0 || (Number(saldo.monto_patronal) || 0) > 0) && (
-                                  <span className="text-slate-400">
-                                    (Retenciones: Bs. {Number(saldo.monto_retenciones || 0).toFixed(2)} | Patronal: Bs. {Number(saldo.monto_patronal || 0).toFixed(2)})
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
 
-                          <div className="flex items-center gap-3 self-end sm:self-auto">
-                            <div className="flex items-center gap-1.5">
-                              <label className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
-                                Interés / Mora:
-                              </label>
-                              <div className="relative w-28">
-                                <span className="absolute left-2.5 top-1.5 text-[11px] text-slate-400 font-bold">Bs.</span>
-                                <NumericInput
-                                  value={saldo.interes_mora}
-                                  disabled={!saldo.pagar_en_este_mes}
-                                  onChange={(val) => updatePriorGestoraMora(sIdx, val)}
-                                  className="w-full pl-8 pr-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-blue-500 disabled:bg-slate-100"
-                                  placeholder="0.00"
-                                />
+                                {/* Desglose de Retenciones y Patronal */}
+                                <div className="text-[11px] text-slate-500 flex items-center gap-2 flex-wrap">
+                                  <span>Saldo capital: <b className="text-slate-800">Bs. {Number(saldo.monto_restante).toLocaleString("es-BO", { minimumFractionDigits: 2 })}</b></span>
+                                  {((Number(saldo.monto_retenciones) || 0) > 0 || (Number(saldo.monto_patronal) || 0) > 0) && (
+                                    <span className="text-slate-400">
+                                      (Retenciones: Bs. {Number(saldo.monto_retenciones || 0).toFixed(2)} | Patronal: Bs. {Number(saldo.monto_patronal || 0).toFixed(2)})
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
 
-                            <div className="text-right min-w-[100px]">
-                              <span className="text-[10px] text-slate-400 block font-semibold">Subtotal:</span>
-                              <span className={`text-xs font-mono font-black ${saldo.pagar_en_este_mes ? "text-blue-900" : "text-slate-500"}`}>
-                                Bs. {subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
-                              </span>
+                            {/* Interés / Mora y Subtotal */}
+                            <div className="flex items-center gap-4 self-end md:self-auto border-t md:border-t-0 pt-2 md:pt-0 border-slate-100 w-full md:w-auto justify-between md:justify-end">
+                              <div className="flex items-center gap-1.5">
+                                <label className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
+                                  Interés / Mora:
+                                </label>
+                                <div className="relative w-28">
+                                  <span className="absolute left-2.5 top-1.5 text-[11px] text-slate-400 font-bold">Bs.</span>
+                                  <NumericInput
+                                    value={saldo.interes_mora}
+                                    disabled={!isSelected}
+                                    onChange={(val) => updatePriorGestoraMora(sIdx, val)}
+                                    className="w-full pl-8 pr-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-blue-500 disabled:bg-slate-100"
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="text-right min-w-[110px]">
+                                <span className="text-[10px] text-slate-400 block font-semibold uppercase">Total Liquidar:</span>
+                                <span className={`text-xs font-mono font-black ${isSelected ? "text-emerald-700 text-sm" : "text-slate-400"}`}>
+                                  {isSelected ? `+ Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}` : `Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}`}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -2314,9 +2671,9 @@ function AsientosPageContent() {
                 </div>
               </div>
 
-              {/* FILA DE IMPORTES RESTANTES (DEDUCCIÓN DE SALDO DIFERIDO CAJA) */}
-              <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              {/* FILA(S) DE IMPORTES RESTANTES (DEDUCCIÓN DE SALDO DIFERIDO CAJA) */}
+              <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200/80 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/70 pb-2.5">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
                       <Scale className="w-4 h-4" />
@@ -2330,28 +2687,151 @@ function AsientosPageContent() {
                       </p>
                     </div>
                   </div>
-                  <div className="w-full sm:w-56">
-                    <div className="relative">
-                      <span className="absolute left-3 top-2 text-xs text-amber-700 font-bold">Bs.</span>
-                      <NumericInput
-                        value={cajaPayment.importe_restante}
-                        onChange={(val) => setCajaPayment({ ...cajaPayment, importe_restante: val })}
-                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-amber-300 rounded-lg text-xs md:text-sm font-bold text-amber-950 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={addImporteRestanteCaja}
+                    className="self-start sm:self-auto flex items-center gap-1.5 text-xs px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg font-bold border border-amber-300 transition shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Agregar Importe Restante
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                  <div className="p-2.5 bg-white rounded-lg border border-amber-200 text-xs space-y-1">
+                {/* Filas dinámicas alineadas con las 3 columnas superiores */}
+                <div className="space-y-3">
+                  {cajaDeduccionCalc.items.map((item, idx) => {
+                    const isChecked = item.activo !== false;
+                    const hasMonto = Number(item.monto) > 0;
+                    return (
+                      <div
+                        key={item.id || idx}
+                        className={`p-3.5 rounded-xl border transition-all space-y-3 ${
+                          isChecked && hasMonto
+                            ? "bg-white border-amber-300 shadow-xs"
+                            : isChecked
+                            ? "bg-white/80 border-slate-200"
+                            : "bg-slate-50/70 border-slate-200 opacity-60"
+                        }`}
+                      >
+                        {/* Cabecera del Item: Checkbox + Título + Campo Descripción + Botón Eliminar */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-amber-100">
+                          <div className="flex items-center gap-2.5">
+                            <input
+                              type="checkbox"
+                              id={`ir-caja-check-${idx}`}
+                              checked={isChecked}
+                              onChange={(e) => updateImporteRestanteCaja(idx, "activo", e.target.checked)}
+                              className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                            />
+                            <label
+                              htmlFor={`ir-caja-check-${idx}`}
+                              className="text-xs font-bold text-slate-800 cursor-pointer flex items-center gap-1.5 select-none"
+                            >
+                              <span>Importes Restantes</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-extrabold">
+                                #{idx + 1}
+                              </span>
+                            </label>
+                            {isChecked ? (
+                              <span className="text-[10px] bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full font-semibold">
+                                Diferimiento Activo
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">
+                                Inactivo (no deduce)
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-1 sm:max-w-md">
+                            <div className="relative flex-1">
+                              <input
+                                type="text"
+                                value={item.concepto || ""}
+                                disabled={!isChecked}
+                                onChange={(e) => updateImporteRestanteCaja(idx, "concepto", e.target.value)}
+                                placeholder="Descripción / Glosa (ej. Pago diferido mes X, acuerdo...)"
+                                className="w-full px-3 py-1.5 bg-amber-50/40 border border-amber-200 rounded-lg text-xs font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-400"
+                              />
+                            </div>
+                            {cajaDeduccionCalc.items.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeImporteRestanteCaja(idx)}
+                                className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+                                title="Eliminar este importe restante"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Fila de 3 columnas perfectamente alineadas */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-center">
+                          {/* Columna 1: Estado / Resumen */}
+                          <div className="p-2.5 bg-slate-50/80 rounded-lg border border-slate-200 text-xs">
+                            <span className="text-[10px] font-semibold text-slate-500 block uppercase tracking-wider">Estado Reducción:</span>
+                            <span className="font-bold text-slate-700 flex items-center gap-1.5 mt-0.5">
+                              <span className={`w-2 h-2 rounded-full ${isChecked && hasMonto ? "bg-emerald-500" : isChecked ? "bg-emerald-300" : "bg-slate-300"}`} />
+                              {isChecked && hasMonto ? "Deducción aplicada" : isChecked ? "Listo para monto" : "Desactivado"}
+                            </span>
+                          </div>
+
+                          {/* Columna 2: Total a reducir (Input) */}
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-slate-500 block">Total a reducir:</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-2 text-xs text-amber-700 font-bold">Bs.</span>
+                              <NumericInput
+                                value={item.monto}
+                                disabled={!isChecked}
+                                onChange={(val) => updateImporteRestanteCaja(idx, "monto", val)}
+                                className="w-full pl-9 pr-3 py-1.5 bg-white border border-amber-300 rounded-lg text-xs md:text-sm font-bold text-amber-950 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs disabled:bg-slate-100 disabled:text-slate-400"
+                                placeholder="0.00"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Columna 3: Deducción en Aporte Salud */}
+                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                            <div className="flex items-center justify-between text-slate-600 text-[11px] mb-0.5">
+                              <span className="font-semibold">Aporte Salud (100%):</span>
+                            </div>
+                            <div className="font-mono text-xs font-bold">
+                              {isChecked && hasMonto ? (
+                                <span className="text-red-600">
+                                  - Bs. {Number(item.monto).toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-normal">Bs. 0.00</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Banner Informativo de Dinámica de Diferimiento */}
+                <div className="p-2.5 bg-amber-100/60 rounded-lg border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
+                  <span className="text-base">💡</span>
+                  <span>
+                    <b>Información del Saldo:</b> Los montos diferidos de la Caja de Salud se acumularán automáticamente como <b>Saldos Pendientes</b> en los meses posteriores, donde dispondrá de un checklist para liquidarlos en el mes que elija.
+                  </span>
+                </div>
+
+                {/* Desglose / Resumen Caja */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                  <div className="p-3 bg-white rounded-xl border border-amber-200 text-xs space-y-1">
                     <div className="flex items-center justify-between text-slate-600">
                       <span className="font-semibold">Base Aporte Salud:</span>
                       <span className="font-mono font-bold text-slate-800">Bs. {cajaDeduccionCalc.baseSalud.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-500 text-[11px]">
-                      <span>Deducción (Saldo diferido):</span>
-                      <span className="font-mono text-red-600 font-semibold">- Bs. {cajaDeduccionCalc.impRestante.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span>Total Deducido (Saldo diferido):</span>
+                      <span className="font-mono text-red-600 font-semibold">- Bs. {cajaDeduccionCalc.totalImpRestante.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex items-center justify-between border-t border-slate-100 pt-1 font-bold text-slate-800">
                       <span>Neto a Cancelar Este Mes:</span>
@@ -2359,15 +2839,15 @@ function AsientosPageContent() {
                     </div>
                   </div>
 
-                  <div className="p-2.5 bg-amber-100/60 rounded-lg border border-amber-300 text-xs space-y-1 flex flex-col justify-between">
+                  <div className="p-3 bg-gradient-to-br from-amber-50 to-amber-100/80 rounded-xl border border-amber-300 text-xs space-y-1.5 flex flex-col justify-between">
                     <div className="flex items-center justify-between font-bold text-amber-950">
-                      <span>Estado del Periodo:</span>
-                      <span className="font-mono text-xs font-semibold">{cajaDeduccionCalc.impRestante > 0 ? "Pago Parcial Diferido" : "Pago Completo"}</span>
+                      <span>Total Base Efectiva Caja:</span>
+                      <span className="font-mono text-base text-amber-900">Bs. {cajaDeduccionCalc.netoSalud.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
                     </div>
-                    <p className="text-[10px] text-amber-800 leading-tight">
-                      {cajaDeduccionCalc.impRestante > 0
-                        ? `Se difiere un saldo de Bs. ${cajaDeduccionCalc.impRestante.toFixed(2)} para su regularización en meses posteriores.`
-                        : "Sin saldo diferido. Se cancela la totalidad del aporte devengado."}
+                    <p className="text-[11px] text-amber-800/90 leading-tight">
+                      {cajaDeduccionCalc.totalImpRestante > 0
+                        ? `Se difiere un saldo total de Bs. ${cajaDeduccionCalc.totalImpRestante.toFixed(2)} para su regularización en meses posteriores.`
+                        : "Sin saldo diferido. Se cancela el 100% del aporte devengado."}
                     </p>
                   </div>
                 </div>
@@ -2376,80 +2856,111 @@ function AsientosPageContent() {
               {/* SALDOS PENDIENTES DE MESES ANTERIORES (CAJA DE SALUD) */}
               {Boolean(cajaPayment.pagos_restantes_anteriores && cajaPayment.pagos_restantes_anteriores.length > 0) && (
                 <div className="p-4 rounded-xl bg-teal-50/80 border border-teal-200 space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-200/60 pb-2">
                     <div className="flex items-center gap-2">
-                      <History className="w-4 h-4 text-teal-700" />
-                      <h4 className="text-xs font-bold text-teal-950 uppercase tracking-wide">
-                        Saldos Pendientes de Meses Anteriores ({cajaPayment.pagos_restantes_anteriores?.length})
-                      </h4>
+                      <div className="p-1.5 bg-teal-100 text-teal-800 rounded-lg">
+                        <History className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-teal-950 uppercase tracking-wide">
+                          Saldos Pendientes de Meses Anteriores ({cajaPayment.pagos_restantes_anteriores?.length})
+                        </h4>
+                        <p className="text-[11px] text-teal-800/80">
+                          Checklist de regularización: Seleccione qué saldo diferido desea cancelar y liquidar en este mes.
+                        </p>
+                      </div>
                     </div>
-                    <span className="text-[11px] text-teal-700 font-medium">
-                      Marque el casillero para liquidar el saldo en el pago de este mes
-                    </span>
+                    <div className="text-right">
+                      <span className="text-[10px] text-teal-600 block uppercase font-semibold">Total a Liquidar este mes:</span>
+                      <span className="text-xs font-mono font-black text-teal-950">
+                        + Bs. {sumPriorCaja.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {(cajaPayment.pagos_restantes_anteriores || []).map((saldo, sIdx) => {
                       const mName = MONTHS.find(m => m.id === saldo.month_origen)?.name || `Mes ${saldo.month_origen}`;
                       const subtotalSaldo = Number(((Number(saldo.monto_restante) || 0) + (Number(saldo.interes_mora) || 0)).toFixed(2));
+                      const isSelected = Boolean(saldo.pagar_en_este_mes);
+
                       return (
                         <div
                           key={saldo.id || sIdx}
-                          className={`p-3 rounded-lg border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                            saldo.pagar_en_este_mes
+                          className={`p-3.5 rounded-xl border transition-all ${
+                            isSelected
                               ? "bg-white border-teal-500 shadow-xs ring-1 ring-teal-400"
                               : "bg-white/70 border-slate-200 opacity-80"
                           }`}
                         >
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="checkbox"
-                              id={`caja-saldo-${sIdx}`}
-                              checked={Boolean(saldo.pagar_en_este_mes)}
-                              onChange={() => togglePriorCaja(sIdx)}
-                              className="w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer"
-                            />
-                            <div>
-                              <label htmlFor={`caja-saldo-${sIdx}`} className="text-xs font-bold text-slate-800 cursor-pointer flex items-center gap-2">
-                                <span>{mName} {saldo.year_origen}</span>
-                                {saldo.pagar_en_este_mes ? (
-                                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">
-                                    A liquidar este mes
-                                  </span>
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            {/* Checkbox + Info Origen + Descripción */}
+                            <div className="flex items-start gap-3 flex-1">
+                              <input
+                                type="checkbox"
+                                id={`caja-saldo-${sIdx}`}
+                                checked={isSelected}
+                                onChange={() => togglePriorCaja(sIdx)}
+                                className="w-5 h-5 mt-0.5 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer"
+                              />
+                              <div className="space-y-1.5 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <label htmlFor={`caja-saldo-${sIdx}`} className="text-xs font-bold text-slate-900 cursor-pointer flex items-center gap-2">
+                                    <span>Saldo Origen: {mName} {saldo.year_origen}</span>
+                                  </label>
+                                  {isSelected ? (
+                                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                      <Check className="w-3 h-3" /> Se sumará al pago de este mes (+ Bs. {subtotalSaldo.toFixed(2)})
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+                                      Pendiente (No se sumará este mes)
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Descripción / Motivo original si existe */}
+                                {saldo.concepto ? (
+                                  <div className="text-[11px] text-slate-700 bg-teal-50/70 border border-teal-200/70 px-2.5 py-1 rounded-md">
+                                    <span className="font-semibold text-teal-900">Motivo diferido: </span>
+                                    <span>{saldo.concepto}</span>
+                                  </div>
                                 ) : (
-                                  <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold">
-                                    Pendiente
-                                  </span>
+                                  <div className="text-[11px] text-slate-400 italic">
+                                    Sin descripción registrada al diferir.
+                                  </div>
                                 )}
-                              </label>
-                              <div className="text-[11px] text-slate-500">
-                                <span>Saldo capital: <b className="text-slate-700">Bs. {Number(saldo.monto_restante).toLocaleString("es-BO", { minimumFractionDigits: 2 })}</b></span>
-                              </div>
-                            </div>
-                          </div>
 
-                          <div className="flex items-center gap-3 self-end sm:self-auto">
-                            <div className="flex items-center gap-1.5">
-                              <label className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
-                                Interés / Actualización:
-                              </label>
-                              <div className="relative w-28">
-                                <span className="absolute left-2.5 top-1.5 text-[11px] text-slate-400 font-bold">Bs.</span>
-                                <NumericInput
-                                  value={saldo.interes_mora}
-                                  disabled={!saldo.pagar_en_este_mes}
-                                  onChange={(val) => updatePriorCajaMora(sIdx, val)}
-                                  className="w-full pl-8 pr-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-teal-500 disabled:bg-slate-100"
-                                  placeholder="0.00"
-                                />
+                                <div className="text-[11px] text-slate-500">
+                                  <span>Saldo capital: <b className="text-slate-800">Bs. {Number(saldo.monto_restante).toLocaleString("es-BO", { minimumFractionDigits: 2 })}</b></span>
+                                </div>
                               </div>
                             </div>
 
-                            <div className="text-right min-w-[100px]">
-                              <span className="text-[10px] text-slate-400 block font-semibold">Subtotal:</span>
-                              <span className={`text-xs font-mono font-black ${saldo.pagar_en_este_mes ? "text-teal-900" : "text-slate-500"}`}>
-                                Bs. {subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
-                              </span>
+                            {/* Interés / Actualización y Subtotal */}
+                            <div className="flex items-center gap-4 self-end md:self-auto border-t md:border-t-0 pt-2 md:pt-0 border-slate-100 w-full md:w-auto justify-between md:justify-end">
+                              <div className="flex items-center gap-1.5">
+                                <label className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
+                                  Interés / Actualización:
+                                </label>
+                                <div className="relative w-28">
+                                  <span className="absolute left-2.5 top-1.5 text-[11px] text-slate-400 font-bold">Bs.</span>
+                                  <NumericInput
+                                    value={saldo.interes_mora}
+                                    disabled={!isSelected}
+                                    onChange={(val) => updatePriorCajaMora(sIdx, val)}
+                                    className="w-full pl-8 pr-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-teal-500 disabled:bg-slate-100"
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="text-right min-w-[110px]">
+                                <span className="text-[10px] text-slate-400 block font-semibold uppercase">Total Liquidar:</span>
+                                <span className={`text-xs font-mono font-black ${isSelected ? "text-emerald-700 text-sm" : "text-slate-400"}`}>
+                                  {isSelected ? `+ Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}` : `Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}`}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>

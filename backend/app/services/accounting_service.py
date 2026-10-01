@@ -65,36 +65,93 @@ class AccountingService:
                 rec_y = rec.year
 
                 g_pay = data.get("gestora_payment") or {}
-                imp_g = float(g_pay.get("importe_restante") or 0.0)
-                if imp_g > 0 and (rec_y < current_year or (rec_y == current_year and rec_m < current_month)):
-                    desc_ret = float(g_pay.get("descuento_retenciones") or 0.0)
-                    desc_pat = float(g_pay.get("descuento_patronal") or 0.0)
-                    orig_gestora[(rec_m, rec_y)] = PendingSettlementPayment(
-                        id=f"g_{rec_m}_{rec_y}",
-                        month_origen=rec_m,
-                        year_origen=rec_y,
-                        entidad="gestora",
-                        monto_restante=round(imp_g, 2),
-                        monto_retenciones=round(desc_ret, 2),
-                        monto_patronal=round(desc_pat, 2),
-                        interes_mora=0.0,
-                        pagar_en_este_mes=False
-                    )
+                imp_items_g = g_pay.get("importes_restantes") or []
+                has_items_g = False
+                if imp_items_g:
+                    for idx, it in enumerate(imp_items_g):
+                        is_act = it.get("activo", True) if isinstance(it, dict) else getattr(it, "activo", True)
+                        m_val = float(it.get("monto", 0.0) if isinstance(it, dict) else getattr(it, "monto", 0.0) or 0.0)
+                        if is_act and m_val > 0 and (rec_y < current_year or (rec_y == current_year and rec_m < current_month)):
+                            has_items_g = True
+                            it_id = str(it.get("id") if isinstance(it, dict) else getattr(it, "id", None) or f"it_{idx}")
+                            c_desc = str(it.get("concepto") if isinstance(it, dict) else getattr(it, "concepto", "") or "")
+                            d_ret = float(it.get("descuento_retenciones", 0.0) if isinstance(it, dict) else getattr(it, "descuento_retenciones", 0.0) or 0.0)
+                            d_pat = float(it.get("descuento_patronal", 0.0) if isinstance(it, dict) else getattr(it, "descuento_patronal", 0.0) or 0.0)
+                            key = f"g_{rec_m}_{rec_y}_{it_id}"
+                            orig_gestora[key] = PendingSettlementPayment(
+                                id=key,
+                                month_origen=rec_m,
+                                year_origen=rec_y,
+                                entidad="gestora",
+                                concepto=c_desc,
+                                monto_restante=round(m_val, 2),
+                                monto_retenciones=round(d_ret, 2),
+                                monto_patronal=round(d_pat, 2),
+                                interes_mora=0.0,
+                                pagar_en_este_mes=False
+                            )
 
+                if not has_items_g:
+                    imp_g = float(g_pay.get("importe_restante") or 0.0)
+                    if imp_g > 0 and (rec_y < current_year or (rec_y == current_year and rec_m < current_month)):
+                        desc_ret = float(g_pay.get("descuento_retenciones") or 0.0)
+                        desc_pat = float(g_pay.get("descuento_patronal") or 0.0)
+                        key = f"g_{rec_m}_{rec_y}"
+                        orig_gestora[key] = PendingSettlementPayment(
+                            id=key,
+                            month_origen=rec_m,
+                            year_origen=rec_y,
+                            entidad="gestora",
+                            concepto="Saldo diferido",
+                            monto_restante=round(imp_g, 2),
+                            monto_retenciones=round(desc_ret, 2),
+                            monto_patronal=round(desc_pat, 2),
+                            interes_mora=0.0,
+                            pagar_en_este_mes=False
+                        )
+
+                # Items de caja de salud
                 c_pay = data.get("caja_payment") or {}
-                imp_c = float(c_pay.get("importe_restante") or 0.0)
-                if imp_c > 0 and (rec_y < current_year or (rec_y == current_year and rec_m < current_month)):
-                    orig_caja[(rec_m, rec_y)] = PendingSettlementPayment(
-                        id=f"c_{rec_m}_{rec_y}",
-                        month_origen=rec_m,
-                        year_origen=rec_y,
-                        entidad="caja",
-                        monto_restante=round(imp_c, 2),
-                        monto_retenciones=0.0,
-                        monto_patronal=0.0,
-                        interes_mora=0.0,
-                        pagar_en_este_mes=False
-                    )
+                imp_items_c = c_pay.get("importes_restantes") or []
+                has_items_c = False
+                if imp_items_c:
+                    for idx, it in enumerate(imp_items_c):
+                        is_act = it.get("activo", True) if isinstance(it, dict) else getattr(it, "activo", True)
+                        m_val = float(it.get("monto", 0.0) if isinstance(it, dict) else getattr(it, "monto", 0.0) or 0.0)
+                        if is_act and m_val > 0 and (rec_y < current_year or (rec_y == current_year and rec_m < current_month)):
+                            has_items_c = True
+                            it_id = str(it.get("id") if isinstance(it, dict) else getattr(it, "id", None) or f"it_{idx}")
+                            c_desc = str(it.get("concepto") if isinstance(it, dict) else getattr(it, "concepto", "") or "")
+                            key = f"c_{rec_m}_{rec_y}_{it_id}"
+                            orig_caja[key] = PendingSettlementPayment(
+                                id=key,
+                                month_origen=rec_m,
+                                year_origen=rec_y,
+                                entidad="caja",
+                                concepto=c_desc,
+                                monto_restante=round(m_val, 2),
+                                monto_retenciones=0.0,
+                                monto_patronal=0.0,
+                                interes_mora=0.0,
+                                pagar_en_este_mes=False
+                            )
+
+                if not has_items_c:
+                    imp_c = float(c_pay.get("importe_restante") or 0.0)
+                    if imp_c > 0 and (rec_y < current_year or (rec_y == current_year and rec_m < current_month)):
+                        key = f"c_{rec_m}_{rec_y}"
+                        orig_caja[key] = PendingSettlementPayment(
+                            id=key,
+                            month_origen=rec_m,
+                            year_origen=rec_y,
+                            entidad="caja",
+                            concepto="Saldo diferido",
+                            monto_restante=round(imp_c, 2),
+                            monto_retenciones=0.0,
+                            monto_patronal=0.0,
+                            interes_mora=0.0,
+                            pagar_en_este_mes=False
+                        )
 
                 # Revisar si se liquidó en meses anteriores
                 if rec_y < current_year or (rec_y == current_year and rec_m < current_month):
@@ -103,43 +160,57 @@ class AccountingService:
                         if is_pag:
                             mo = ant.get("month_origen") if isinstance(ant, dict) else getattr(ant, "month_origen", None)
                             yo = ant.get("year_origen") if isinstance(ant, dict) else getattr(ant, "year_origen", None)
+                            ant_id = ant.get("id") if isinstance(ant, dict) else getattr(ant, "id", None)
+                            if ant_id:
+                                settled_gestora.add(str(ant_id))
                             if mo and yo:
-                                settled_gestora.add((int(mo), int(yo)))
+                                settled_gestora.add(f"g_{mo}_{yo}")
                     for ant in c_pay.get("pagos_restantes_anteriores", []) or []:
                         is_pag = ant.get("pagar_en_este_mes") if isinstance(ant, dict) else getattr(ant, "pagar_en_este_mes", False)
                         if is_pag:
                             mo = ant.get("month_origen") if isinstance(ant, dict) else getattr(ant, "month_origen", None)
                             yo = ant.get("year_origen") if isinstance(ant, dict) else getattr(ant, "year_origen", None)
+                            ant_id = ant.get("id") if isinstance(ant, dict) else getattr(ant, "id", None)
+                            if ant_id:
+                                settled_caja.add(str(ant_id))
                             if mo and yo:
-                                settled_caja.add((int(mo), int(yo)))
+                                settled_caja.add(f"c_{mo}_{yo}")
                 elif rec_m == current_month and rec_y == current_year:
                     for ant in g_pay.get("pagos_restantes_anteriores", []) or []:
                         mo = ant.get("month_origen") if isinstance(ant, dict) else getattr(ant, "month_origen", None)
                         yo = ant.get("year_origen") if isinstance(ant, dict) else getattr(ant, "year_origen", None)
+                        ant_id = ant.get("id") if isinstance(ant, dict) else getattr(ant, "id", None)
+                        if ant_id:
+                            curr_saved_gestora_map[str(ant_id)] = ant
                         if mo and yo:
-                            curr_saved_gestora_map[(int(mo), int(yo))] = ant
+                            curr_saved_gestora_map[f"g_{mo}_{yo}"] = ant
                     for ant in c_pay.get("pagos_restantes_anteriores", []) or []:
                         mo = ant.get("month_origen") if isinstance(ant, dict) else getattr(ant, "month_origen", None)
                         yo = ant.get("year_origen") if isinstance(ant, dict) else getattr(ant, "year_origen", None)
+                        ant_id = ant.get("id") if isinstance(ant, dict) else getattr(ant, "id", None)
+                        if ant_id:
+                            curr_saved_caja_map[str(ant_id)] = ant
                         if mo and yo:
-                            curr_saved_caja_map[(int(mo), int(yo))] = ant
+                            curr_saved_caja_map[f"c_{mo}_{yo}"] = ant
             except Exception:
                 pass
 
         pending_gestora = []
         for key, p in orig_gestora.items():
-            if key not in settled_gestora:
-                if key in curr_saved_gestora_map:
-                    saved = curr_saved_gestora_map[key]
+            base_legacy_key = f"g_{p.month_origen}_{p.year_origen}"
+            if p.id not in settled_gestora and base_legacy_key not in settled_gestora:
+                saved = curr_saved_gestora_map.get(p.id) or curr_saved_gestora_map.get(base_legacy_key)
+                if saved:
                     p.pagar_en_este_mes = bool(saved.get("pagar_en_este_mes") if isinstance(saved, dict) else getattr(saved, "pagar_en_este_mes", False))
                     p.interes_mora = float(saved.get("interes_mora") if isinstance(saved, dict) else getattr(saved, "interes_mora", 0.0) or 0.0)
                 pending_gestora.append(p)
 
         pending_caja = []
         for key, p in orig_caja.items():
-            if key not in settled_caja:
-                if key in curr_saved_caja_map:
-                    saved = curr_saved_caja_map[key]
+            base_legacy_key = f"c_{p.month_origen}_{p.year_origen}"
+            if p.id not in settled_caja and base_legacy_key not in settled_caja:
+                saved = curr_saved_caja_map.get(p.id) or curr_saved_caja_map.get(base_legacy_key)
+                if saved:
                     p.pagar_en_este_mes = bool(saved.get("pagar_en_este_mes") if isinstance(saved, dict) else getattr(saved, "pagar_en_este_mes", False))
                     p.interes_mora = float(saved.get("interes_mora") if isinstance(saved, dict) else getattr(saved, "interes_mora", 0.0) or 0.0)
                 pending_caja.append(p)
@@ -498,16 +569,37 @@ class AccountingService:
 
         # Cuadrante 5: Asiento de Pago Gestora con cálculo de importes restantes y saldos anteriores
         tot_base_gestora = round(ret_laboral + patronal_gestora, 2)
-        imp_restante_g = min(max(float(getattr(gestora_payment, 'importe_restante', 0.0) or 0.0), 0.0), tot_base_gestora)
+        imp_items_g = getattr(gestora_payment, 'importes_restantes', []) or []
+        if imp_items_g:
+            active_sum_g = sum(float(it.monto if hasattr(it, 'monto') else it.get('monto', 0.0) or 0.0)
+                               for it in imp_items_g
+                               if (it.activo if hasattr(it, 'activo') else it.get('activo', True)))
+            imp_restante_g = min(max(round(active_sum_g, 2), 0.0), tot_base_gestora)
+            gestora_payment.importe_restante = imp_restante_g
+        else:
+            imp_restante_g = min(max(float(getattr(gestora_payment, 'importe_restante', 0.0) or 0.0), 0.0), tot_base_gestora)
 
         if tot_base_gestora > 0 and imp_restante_g > 0:
             pct_ret = ret_laboral / tot_base_gestora
+            pct_pat = patronal_gestora / tot_base_gestora
             desc_ret = round(imp_restante_g * pct_ret, 2)
             desc_pat = round(imp_restante_g - desc_ret, 2)
             gestora_payment.descuento_retenciones = desc_ret
             gestora_payment.descuento_patronal = desc_pat
             ret_a_pagar = round(ret_laboral - desc_ret, 2)
             pat_a_pagar = round(patronal_gestora - desc_pat, 2)
+            for it in imp_items_g:
+                m_it = float(it.monto if hasattr(it, 'monto') else it.get('monto', 0.0) or 0.0)
+                is_act = it.activo if hasattr(it, 'activo') else it.get('activo', True)
+                if is_act and m_it > 0:
+                    d_r = round(m_it * pct_ret, 2)
+                    d_p = round(m_it - d_r, 2)
+                    if hasattr(it, 'descuento_retenciones'):
+                        it.descuento_retenciones = d_r
+                        it.descuento_patronal = d_p
+                    elif isinstance(it, dict):
+                        it['descuento_retenciones'] = d_r
+                        it['descuento_patronal'] = d_p
         else:
             gestora_payment.descuento_retenciones = 0.0
             gestora_payment.descuento_patronal = 0.0
@@ -550,6 +642,10 @@ class AccountingService:
                 m_orig = getattr(ant, 'month_origen', 1) if isinstance(ant, dict) is False else ant.get('month_origen', 1)
                 y_orig = getattr(ant, 'year_origen', year) if isinstance(ant, dict) is False else ant.get('year_origen', year)
                 m_nom = MONTH_NAMES[m_orig - 1].capitalize()
+                c_desc = (getattr(ant, 'concepto', '') if isinstance(ant, dict) is False else ant.get('concepto', '')) or ''
+                sub_label_g = f"Saldo diferido {m_nom} {y_orig}"
+                if c_desc.strip():
+                    sub_label_g += f" ({c_desc.strip()})"
                 m_ret = getattr(ant, 'monto_retenciones', 0.0) if isinstance(ant, dict) is False else ant.get('monto_retenciones', 0.0)
                 m_pat = getattr(ant, 'monto_patronal', 0.0) if isinstance(ant, dict) is False else ant.get('monto_patronal', 0.0)
                 int_mora = getattr(ant, 'interes_mora', 0.0) if isinstance(ant, dict) is False else ant.get('interes_mora', 0.0)
@@ -560,7 +656,7 @@ class AccountingService:
                             cuenta="Retenciones Laborales por Pagar",
                             debe=round(m_ret, 2),
                             haber=0.0,
-                            subcuentas=[f"Saldo diferido {m_nom} {y_orig}"]
+                            subcuentas=[sub_label_g]
                         )
                     )
                     sum_anteriores_gestora += round(m_ret, 2)
@@ -570,7 +666,7 @@ class AccountingService:
                             cuenta="Ap. Patronal Gestora Publica por Pagar",
                             debe=round(m_pat, 2),
                             haber=0.0,
-                            subcuentas=[f"Saldo diferido {m_nom} {y_orig}"]
+                            subcuentas=[sub_label_g]
                         )
                     )
                     sum_anteriores_gestora += round(m_pat, 2)
@@ -599,7 +695,15 @@ class AccountingService:
             label_gestora += f" - N° {gestora_payment.nro_transaccion}"
 
         # Cuadrante 6: Asiento de Pago Caja de Salud con cálculo de importes restantes y saldos anteriores
-        imp_restante_c = min(max(float(getattr(caja_payment, 'importe_restante', 0.0) or 0.0), 0.0), patronal_caja)
+        imp_items_c = getattr(caja_payment, 'importes_restantes', []) or []
+        if imp_items_c:
+            active_sum_c = sum(float(it.monto if hasattr(it, 'monto') else it.get('monto', 0.0) or 0.0)
+                               for it in imp_items_c
+                               if (it.activo if hasattr(it, 'activo') else it.get('activo', True)))
+            imp_restante_c = min(max(round(active_sum_c, 2), 0.0), patronal_caja)
+            caja_payment.importe_restante = imp_restante_c
+        else:
+            imp_restante_c = min(max(float(getattr(caja_payment, 'importe_restante', 0.0) or 0.0), 0.0), patronal_caja)
         caja_a_pagar = round(patronal_caja - imp_restante_c, 2)
 
         items_caja = []
@@ -634,6 +738,10 @@ class AccountingService:
                 m_orig = getattr(ant, 'month_origen', 1) if isinstance(ant, dict) is False else ant.get('month_origen', 1)
                 y_orig = getattr(ant, 'year_origen', year) if isinstance(ant, dict) is False else ant.get('year_origen', year)
                 m_nom = MONTH_NAMES[m_orig - 1].capitalize()
+                c_desc = (getattr(ant, 'concepto', '') if isinstance(ant, dict) is False else ant.get('concepto', '')) or ''
+                sub_label_c = f"Saldo diferido {m_nom} {y_orig}"
+                if c_desc.strip():
+                    sub_label_c += f" ({c_desc.strip()})"
                 m_rest = getattr(ant, 'monto_restante', 0.0) if isinstance(ant, dict) is False else ant.get('monto_restante', 0.0)
                 int_mora = getattr(ant, 'interes_mora', 0.0) if isinstance(ant, dict) is False else ant.get('interes_mora', 0.0)
 
@@ -643,7 +751,7 @@ class AccountingService:
                             cuenta=f"{caja_activa} por Pagar",
                             debe=round(m_rest, 2),
                             haber=0.0,
-                            subcuentas=[f"Saldo diferido {m_nom} {y_orig}"]
+                            subcuentas=[sub_label_c]
                         )
                     )
                     sum_anteriores_caja += round(m_rest, 2)
