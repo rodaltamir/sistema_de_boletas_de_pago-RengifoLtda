@@ -3906,3 +3906,346 @@ class DocumentService:
 
         return effective_xlsx
 
+    @staticmethod
+    def generate_employees_excel(employees_data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
+        """
+        Genera la Nómina Oficial de Empleados en Excel y opcionalmente a PDF con el formato estandarizado institucional.
+        Incluye encabezado del empleador, holgura de 2 cm (top=0.8 in) para anillado/impresión,
+        columnas completas con fechas de ingreso y de salida (vacía si activo), haber básico,
+        totales y firmas.
+        """
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "empleados"))
+        os.makedirs(exports_dir, exist_ok=True)
+
+        empresa = str(employees_data.get('empresa_nombre', '') or '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
+        nit = str(employees_data.get('nit') or "")
+        nro_patronal = str(employees_data.get('numero_patronal') or "")
+        rep_legal = str(employees_data.get('representante_legal') or empresa).upper()
+        rep_ci = str(employees_data.get('ci_representante') or nit)
+        now_dt = datetime.now()
+        fecha_rep = now_dt.strftime("%d/%m/%Y")
+        anio = now_dt.year
+
+        all_employees = employees_data.get('employees', [])
+        filter_status = str(employees_data.get('filter_status', 'todos')).lower()
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        def _render_employee_sheet(ws, title_sheet: str, emps_list: list, sub_label: str = ""):
+            ws.title = DocumentService._safe_sheet_title(title_sheet)
+            ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+            ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+            ws.sheet_properties.pageSetUpPr.fitToPage = True
+            ws.page_setup.fitToWidth = 1
+            ws.page_setup.fitToHeight = 0
+            ws.print_options.horizontalCentered = True
+            # Margen superior 0.8 pulgadas (~2.03 cm) para anillado e impresión
+            ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.2, right=0.2, top=0.8, bottom=0.3)
+
+            col_widths = {
+                'A': 1.5,
+                'B': 4.5,   # N°
+                'C': 9.5,   # CÓDIGO
+                'D': 14.5,  # CARNET DE IDENTIDAD
+                'E': 30.0,  # APELLIDOS Y NOMBRES
+                'F': 6.5,   # SEXO (F/M)
+                'G': 12.0,  # FECHA DE NACIMIENTO
+                'H': 12.0,  # NACIONALIDAD
+                'I': 22.0,  # CARGO / OCUPACIÓN
+                'J': 18.0,  # DEPARTAMENTO / ÁREA
+                'K': 12.5,  # FECHA DE INGRESO
+                'L': 12.5,  # FECHA DE RETIRO
+                'M': 14.5,  # HABER BÁSICO (Bs.)
+                'N': 11.5   # ESTADO
+            }
+            for col_let, width in col_widths.items():
+                ws.column_dimensions[col_let].width = width
+
+            font_h_bold = Font(name="Arial", size=8.5, bold=True)
+            font_h_val = Font(name="Arial", size=8.5)
+            font_title_main = Font(name="Arial", size=11, bold=True)
+            font_th = Font(name="Arial", size=7.5, bold=True)
+            font_td = Font(name="Arial", size=7.5)
+            font_td_bold = Font(name="Arial", size=7.5, bold=True)
+            font_totales = Font(name="Arial", size=8, bold=True)
+
+            fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+            fill_totales = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+
+            thin_side = Side(style='thin', color='808080')
+            border_cell = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+            double_bottom = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style='double', color='000000'))
+            border_underline_header = Border(bottom=Side(style='thin', color='000000'))
+
+            # Encabezado institucional
+            ws.merge_cells('B2:D2')
+            ws['B2'] = "NOMBRE O RAZÓN SOCIAL"
+            ws['B2'].font = font_h_bold
+            ws.merge_cells('E2:H2')
+            ws['E2'] = empresa
+            ws['E2'].font = font_h_bold
+            for c_col in ['E', 'F', 'G', 'H']:
+                ws[f"{c_col}2"].border = border_underline_header
+
+            ws.merge_cells('B3:D3')
+            ws['B3'] = "N° EMPLEADOR MINISTERIO DE TRABAJO"
+            ws['B3'].font = font_h_bold
+            ws.merge_cells('E3:G3')
+            ws['E3'] = nit
+            ws['E3'].font = font_h_val
+            for c_col in ['E', 'F', 'G']:
+                ws[f"{c_col}3"].border = border_underline_header
+
+            ws.merge_cells('B4:D4')
+            ws['B4'] = "N° DE NIT"
+            ws['B4'].font = font_h_bold
+            ws.merge_cells('E4:G4')
+            ws['E4'] = nit
+            ws['E4'].font = font_h_val
+            for c_col in ['E', 'F', 'G']:
+                ws[f"{c_col}4"].border = border_underline_header
+
+            ws.merge_cells('B5:D5')
+            ws['B5'] = "N° DE EMPLEADOR (Caja de Salud)"
+            ws['B5'].font = font_h_bold
+            ws.merge_cells('E5:G5')
+            ws['E5'] = nro_patronal
+            ws['E5'].font = font_h_val
+            for c_col in ['E', 'F', 'G']:
+                ws[f"{c_col}5"].border = border_underline_header
+
+            # Título central
+            title_text = "NÓMINA GENERAL DE EMPLEADOS"
+            if sub_label:
+                title_text += f" ({sub_label.upper()})"
+            ws.merge_cells('F6:K6')
+            ws['F6'] = title_text
+            ws['F6'].font = font_title_main
+            ws['F6'].alignment = Alignment(horizontal="center", vertical="center")
+
+            ws.merge_cells('F7:K7')
+            ws['F7'] = "(Expresado en Bolivianos)"
+            ws['F7'].font = font_h_bold
+            ws['F7'].alignment = Alignment(horizontal="center", vertical="center")
+
+            # Fecha de reporte
+            ws.merge_cells('L7:N7')
+            ws['L7'] = f"FECHA DE REPORTE: {fecha_rep}"
+            ws['L7'].font = font_h_bold
+            ws['L7'].alignment = Alignment(horizontal="right", vertical="center")
+
+            # Encabezados de columnas (Fila 9)
+            th_list = [
+                ("B", "N°"),
+                ("C", "CÓDIGO"),
+                ("D", "CARNET DE\nIDENTIDAD"),
+                ("E", "APELLIDOS Y NOMBRES"),
+                ("F", "SEXO\n(F/M)"),
+                ("G", "FECHA DE\nNACIMIENTO"),
+                ("H", "NACIONALIDAD"),
+                ("I", "CARGO / OCUPACIÓN"),
+                ("J", "DEPARTAMENTO /\nÁREA"),
+                ("K", "FECHA DE\nINGRESO"),
+                ("L", "FECHA DE\nRETIRO"),
+                ("M", "HABER BÁSICO\n(Bs.)"),
+                ("N", "ESTADO")
+            ]
+            ws.row_dimensions[9].height = 36
+            for col_l, text_h in th_list:
+                cell = ws[f"{col_l}9"]
+                cell.value = text_h
+                cell.font = font_th
+                cell.fill = fill_header
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                cell.border = border_cell
+
+            # Datos
+            current_row = 10
+            activos_c = 0
+            inactivos_c = 0
+
+            for idx, emp in enumerate(emps_list, start=1):
+                ws.row_dimensions[current_row].height = 20
+                is_act = bool(emp.get('is_active', True))
+                if is_act:
+                    activos_c += 1
+                else:
+                    inactivos_c += 1
+
+                ws[f"B{current_row}"] = idx
+                ws[f"B{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+                ws[f"B{current_row}"].font = font_td_bold
+
+                code_val = str(emp.get('internal_code') or '').strip()
+                ws[f"C{current_row}"] = code_val
+                ws[f"C{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+                ws[f"C{current_row}"].font = font_td
+
+                doc_id = str(emp.get('documento_identidad') or '').strip()
+                ext = str(emp.get('ext_ci') or '').strip()
+                ws[f"D{current_row}"] = f"{doc_id} {ext}".strip()
+                ws[f"D{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+                ws[f"D{current_row}"].font = font_td
+
+                paterno = str(emp.get('apellido_paterno') or '').strip()
+                materno = str(emp.get('apellido_materno') or '').strip()
+                nombres = str(emp.get('nombres') or '').strip()
+                full_name = f"{paterno} {materno} {nombres}".strip().upper()
+                ws[f"E{current_row}"] = full_name
+                ws[f"E{current_row}"].alignment = Alignment(horizontal="left", vertical="center")
+                ws[f"E{current_row}"].font = font_td
+
+                raw_sexo = str(emp.get('sexo') or '').strip().upper()
+                sexo_norm = "F" if raw_sexo in ["F", "MUJER"] else "M"
+                ws[f"F{current_row}"] = sexo_norm
+                ws[f"F{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+                ws[f"F{current_row}"].font = font_td
+
+                ws[f"G{current_row}"] = DocumentService.format_date_dmy(emp.get('fecha_nacimiento'))
+                ws[f"G{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+                ws[f"G{current_row}"].font = font_td
+
+                ws[f"H{current_row}"] = str(emp.get('nacionalidad') or 'BOLIVIANA').strip().upper()
+                ws[f"H{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+                ws[f"H{current_row}"].font = font_td
+
+                ws[f"I{current_row}"] = str(emp.get('ocupacion') or '').strip().upper()
+                ws[f"I{current_row}"].alignment = Alignment(horizontal="left", vertical="center")
+                ws[f"I{current_row}"].font = font_td
+
+                ws[f"J{current_row}"] = str(emp.get('departamento') or 'SIN DEPARTAMENTO').strip().upper()
+                ws[f"J{current_row}"].alignment = Alignment(horizontal="left", vertical="center")
+                ws[f"J{current_row}"].font = font_td
+
+                ws[f"K{current_row}"] = DocumentService.format_date_dmy(emp.get('fecha_ingreso'))
+                ws[f"K{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+                ws[f"K{current_row}"].font = font_td
+
+                # Fecha de retiro: si está activo o no hay fecha de retiro, se deja en blanco
+                f_salida = emp.get('fecha_retiro') or ''
+                if not is_act and f_salida:
+                    ws[f"L{current_row}"] = DocumentService.format_date_dmy(f_salida)
+                else:
+                    ws[f"L{current_row}"] = ""
+                ws[f"L{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+                ws[f"L{current_row}"].font = font_td
+
+                hb = float(emp.get('haber_basico') or 0.0)
+                ws[f"M{current_row}"] = hb
+                ws[f"M{current_row}"].number_format = '#,##0.00'
+                ws[f"M{current_row}"].font = font_td
+                ws[f"M{current_row}"].alignment = Alignment(horizontal="right", vertical="center")
+
+                ws[f"N{current_row}"] = "ACTIVO" if is_act else "RETIRADO"
+                ws[f"N{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+                ws[f"N{current_row}"].font = font_td_bold
+
+                for col_c in ['B','C','D','E','F','G','H','I','J','K','L','M','N']:
+                    ws[f"{col_c}{current_row}"].border = border_cell
+
+                current_row += 1
+
+            # Fila TOTALES
+            ws.row_dimensions[current_row].height = 22
+            ws.merge_cells(f"B{current_row}:L{current_row}")
+            ws[f"B{current_row}"] = f"TOTAL: {len(emps_list)} EMPLEADOS ({activos_c} ACTIVOS, {inactivos_c} RETIRADOS)"
+            ws[f"B{current_row}"].font = font_totales
+            ws[f"B{current_row}"].fill = fill_totales
+            ws[f"B{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
+
+            c_tot = ws[f"M{current_row}"]
+            if emps_list:
+                c_tot.value = f"=SUM(M10:M{current_row-1})"
+            else:
+                c_tot.value = 0.0
+            c_tot.number_format = '#,##0.00'
+            c_tot.font = font_totales
+            c_tot.fill = fill_totales
+            c_tot.alignment = Alignment(horizontal="right", vertical="center")
+
+            ws[f"N{current_row}"].fill = fill_totales
+
+            for col_c in ['B','C','D','E','F','G','H','I','J','K','L','M','N']:
+                ws[f"{col_c}{current_row}"].border = double_bottom
+
+            # Pie Legal de Firmas
+            f_row = current_row + 4
+            thin_dark = Side(style='thin', color='000000')
+            border_underline = Border(bottom=thin_dark)
+
+            ws.row_dimensions[f_row].height = 20.0
+            ws.row_dimensions[f_row+1].height = 16.0
+
+            # Bloque 1: Representante Legal (Cols C a F)
+            ws.merge_cells(f"C{f_row}:F{f_row}")
+            ws[f"C{f_row}"] = rep_legal
+            ws[f"C{f_row}"].font = font_h_bold
+            ws[f"C{f_row}"].alignment = Alignment(horizontal="center", vertical="bottom")
+            for col_c in ['C', 'D', 'E', 'F']:
+                ws[f"{col_c}{f_row}"].border = border_underline
+
+            ws.merge_cells(f"C{f_row+1}:F{f_row+1}")
+            ws[f"C{f_row+1}"] = "NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL"
+            ws[f"C{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+            ws[f"C{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
+
+            # Bloque 2: CI (Cols H a J)
+            ws.merge_cells(f"H{f_row}:J{f_row}")
+            ws[f"H{f_row}"] = rep_ci
+            ws[f"H{f_row}"].font = font_h_bold
+            ws[f"H{f_row}"].alignment = Alignment(horizontal="center", vertical="bottom")
+            for col_c in ['H', 'I', 'J']:
+                ws[f"{col_c}{f_row}"].border = border_underline
+
+            ws.merge_cells(f"H{f_row+1}:J{f_row+1}")
+            ws[f"H{f_row+1}"] = "N° DE DOCUMENTO DE IDENTIDAD"
+            ws[f"H{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+            ws[f"H{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
+
+            # Bloque 3: Firma y Sello (Cols L a N)
+            ws.merge_cells(f"L{f_row}:N{f_row}")
+            ws[f"L{f_row}"] = ""
+            for col_c in ['L', 'M', 'N']:
+                ws[f"{col_c}{f_row}"].border = border_underline
+
+            ws.merge_cells(f"L{f_row+1}:N{f_row+1}")
+            ws[f"L{f_row+1}"] = "FIRMA Y SELLO"
+            ws[f"L{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+            ws[f"L{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
+
+        # Generar pestañas según filtro
+        if filter_status == "activos":
+            ws_main = wb.create_sheet()
+            _render_employee_sheet(ws_main, "Empleados Activos", all_employees, "Personal Activo")
+        elif filter_status == "desvinculados":
+            ws_main = wb.create_sheet()
+            _render_employee_sheet(ws_main, "Personal Retirado", all_employees, "Personal Retirado")
+        else:
+            # Todos: Hoja 1 Nómina General, Hoja 2 Activos, Hoja 3 Retirados
+            ws_main = wb.create_sheet()
+            _render_employee_sheet(ws_main, "Nómina General", all_employees, "Nómina General")
+
+            activos_list = [e for e in all_employees if e.get('is_active', True)]
+            inactivos_list = [e for e in all_employees if not e.get('is_active', True)]
+
+            if activos_list and len(activos_list) != len(all_employees):
+                ws_act = wb.create_sheet()
+                _render_employee_sheet(ws_act, "Personal Activo", activos_list, "Personal Activo")
+
+            if inactivos_list:
+                ws_inact = wb.create_sheet()
+                _render_employee_sheet(ws_inact, "Personal Retirado", inactivos_list, "Personal Retirado")
+
+        fecha_slug = now_dt.strftime("%d_%m_%Y")
+        xlsx_path = os.path.join(exports_dir, f"nomina_empleados_{empresa_slug}_{fecha_slug}.xlsx")
+        effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
+
+        if output_format.lower() == "pdf":
+            pdf_path = os.path.join(exports_dir, f"nomina_empleados_{empresa_slug}_{fecha_slug}.pdf")
+            return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
+
+        return effective_xlsx
+
+

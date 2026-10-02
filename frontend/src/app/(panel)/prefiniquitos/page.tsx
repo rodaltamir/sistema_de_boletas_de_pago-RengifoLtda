@@ -257,6 +257,7 @@ function NumericInput({
 function PrefiniquitosPageContent() {
   const searchParams = useSearchParams();
   const tenantSchema = searchParams.get("tenant");
+  const empIdParam = searchParams.get("empleado_id");
 
   // Tabs: "calculo" | "historial"
   const [activeTab, setActiveTab] = useState<"calculo" | "historial">("calculo");
@@ -343,6 +344,17 @@ function PrefiniquitosPageContent() {
   };
 
   const selectedEmp = employees.find(e => e.id === Number(selectedEmpId));
+
+  // Auto-seleccionar empleado si viene por URL (desde el botón de desvinculación de la nómina)
+  useEffect(() => {
+    if (empIdParam && employees.length > 0) {
+      const targetEmp = employees.find(e => e.id === Number(empIdParam));
+      if (targetEmp) {
+        setSelectedEmpId(targetEmp.id);
+        setActiveTab("calculo");
+      }
+    }
+  }, [empIdParam, employees]);
 
   // Sync default sueldo promedio
   useEffect(() => {
@@ -671,6 +683,18 @@ function PrefiniquitosPageContent() {
               </div>
               
               <div className="space-y-4">
+                {empIdParam && selectedEmp && (
+                  <div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-xl text-xs text-amber-900 flex items-start gap-2.5 shadow-xs">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <span className="font-bold text-amber-950 block">Desvinculación en Proceso:</span>
+                      <p className="leading-relaxed">
+                        Se ha seleccionado a <b>{selectedEmp.nombres} {selectedEmp.apellido_paterno}</b> desde la Nómina. Complete los parámetros del finiquito y presione <b>"Guardar y Finalizar Retiro"</b> para formalizar su desvinculación definitiva.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Selector de empleado */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">

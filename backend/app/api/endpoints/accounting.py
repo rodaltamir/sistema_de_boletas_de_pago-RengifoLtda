@@ -125,14 +125,14 @@ def save_accounting_sheet(
                 is_manually_unlocked=bool(payload.is_manually_unlocked)
             )
 
-        AccountingService.save_custom_sheet(
+        _, updated_sheet = AccountingService.save_custom_sheet(
             session=tenant_session,
             month=payload.month,
             year=payload.year,
             sheet_data=sheet_data
         )
 
-        return sheet_data
+        return updated_sheet
     finally:
         tenant_session.close()
 

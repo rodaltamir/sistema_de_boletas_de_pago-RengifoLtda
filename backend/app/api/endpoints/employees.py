@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import text
 from app.db.session import engine
 from app.models.employee import Employee
 from app.models.department import Department
@@ -7,8 +9,9 @@ from app.models.payroll import Payslip, Payroll
 from app.models.prefiniquito import Prefiniquito
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
 from app.services.payroll_service import calcular_boleta_empleado, calculate_seniority_years
+from app.services.document_service import DocumentService
 from decimal import Decimal
-from datetime import date
+from datetime import date, datetime
 import calendar
 from app.models.global_params import SalarioMinimoNacional
 
@@ -49,6 +52,152 @@ def get_employees(schema_name: str, db: Session = Depends(get_tenant_db)):
         return sorted(employees, key=lambda e: sort_code_key(e.internal_code, e.id))
     except Exception as e:
         raise HTTPException(status_code=500, detail='Error de base de datos. Verifica si el entorno existe.')
+
+@router.get('/export/excel')
+@router.get('/export/excel/', include_in_schema=False)
+def export_employees_excel(
+    schema_name: str,
+    status: str = "todos",
+    db: Session = Depends(get_tenant_db)
+):
+    with engine.connect() as conn:
+        result = conn.execute(
+            text(f"SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = '{schema_name}'")
+        ).fetchone()
+        t_name = result[0] if result else "Empresa"
+        t_patronal = result[1] if result and result[1] else "No asignado"
+        t_nit = result[2] if result and result[2] else ""
+        t_emp_nombres = result[3] if result and result[3] else ""
+        t_emp_paterno = result[4] if result and result[4] else ""
+        t_emp_materno = result[5] if result and result[5] else ""
+        t_emp_ci = result[6] if result and result[6] else ""
+        rep_legal = f"{t_emp_paterno} {t_emp_materno} {t_emp_nombres}".strip() or t_name
+
+    query = db.query(Employee)
+    if status.lower() == "activos":
+        query = query.filter(Employee.is_active == True)
+    elif status.lower() == "desvinculados":
+        query = query.filter(Employee.is_active == False)
+    
+    employees = query.all()
+    employees = sorted(employees, key=lambda e: sort_code_key(e.internal_code, e.id))
+
+    prefiniquitos = db.query(Prefiniquito).order_by(Prefiniquito.id.desc()).all()
+    pref_map = {}
+    for p in prefiniquitos:
+        if p.employee_id not in pref_map:
+            pref_map[p.employee_id] = p.fecha_retiro
+
+    emps_data = []
+    for emp in employees:
+        f_retiro = pref_map.get(emp.id) if not emp.is_active else None
+        emps_data.append({
+            'id': emp.id,
+            'internal_code': emp.internal_code or '',
+            'documento_identidad': emp.documento_identidad,
+            'ext_ci': emp.ext_ci or '',
+            'nombres': emp.nombres,
+            'apellido_paterno': emp.apellido_paterno,
+            'apellido_materno': emp.apellido_materno or '',
+            'sexo': emp.sexo,
+            'fecha_nacimiento': emp.fecha_nacimiento,
+            'nacionalidad': emp.nacionalidad,
+            'ocupacion': emp.ocupacion,
+            'departamento': emp.departamento or 'Sin departamento',
+            'fecha_ingreso': emp.fecha_ingreso,
+            'fecha_retiro': f_retiro,
+            'haber_basico': float(emp.haber_basico or 0.0),
+            'is_active': emp.is_active
+        })
+
+    payload = {
+        'empresa_nombre': t_name,
+        'nit': t_nit,
+        'numero_patronal': t_patronal,
+        'representante_legal': rep_legal,
+        'ci_representante': t_emp_ci,
+        'filter_status': status,
+        'employees': emps_data
+    }
+
+    file_path = DocumentService.generate_employees_excel(payload, output_format="xlsx", schema_name=schema_name)
+    empresa_slug = DocumentService._slugify(schema_name if schema_name else t_name)
+    now_str = datetime.now().strftime("%d-%m-%Y")
+    filename = f"nomina_empleados_{empresa_slug}_{now_str}.xlsx"
+    return FileResponse(path=file_path, filename=filename, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+@router.get('/export/pdf')
+@router.get('/export/pdf/', include_in_schema=False)
+def export_employees_pdf(
+    schema_name: str,
+    status: str = "todos",
+    db: Session = Depends(get_tenant_db)
+):
+    with engine.connect() as conn:
+        result = conn.execute(
+            text(f"SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = '{schema_name}'")
+        ).fetchone()
+        t_name = result[0] if result else "Empresa"
+        t_patronal = result[1] if result and result[1] else "No asignado"
+        t_nit = result[2] if result and result[2] else ""
+        t_emp_nombres = result[3] if result and result[3] else ""
+        t_emp_paterno = result[4] if result and result[4] else ""
+        t_emp_materno = result[5] if result and result[5] else ""
+        t_emp_ci = result[6] if result and result[6] else ""
+        rep_legal = f"{t_emp_paterno} {t_emp_materno} {t_emp_nombres}".strip() or t_name
+
+    query = db.query(Employee)
+    if status.lower() == "activos":
+        query = query.filter(Employee.is_active == True)
+    elif status.lower() == "desvinculados":
+        query = query.filter(Employee.is_active == False)
+    
+    employees = query.all()
+    employees = sorted(employees, key=lambda e: sort_code_key(e.internal_code, e.id))
+
+    prefiniquitos = db.query(Prefiniquito).order_by(Prefiniquito.id.desc()).all()
+    pref_map = {}
+    for p in prefiniquitos:
+        if p.employee_id not in pref_map:
+            pref_map[p.employee_id] = p.fecha_retiro
+
+    emps_data = []
+    for emp in employees:
+        f_retiro = pref_map.get(emp.id) if not emp.is_active else None
+        emps_data.append({
+            'id': emp.id,
+            'internal_code': emp.internal_code or '',
+            'documento_identidad': emp.documento_identidad,
+            'ext_ci': emp.ext_ci or '',
+            'nombres': emp.nombres,
+            'apellido_paterno': emp.apellido_paterno,
+            'apellido_materno': emp.apellido_materno or '',
+            'sexo': emp.sexo,
+            'fecha_nacimiento': emp.fecha_nacimiento,
+            'nacionalidad': emp.nacionalidad,
+            'ocupacion': emp.ocupacion,
+            'departamento': emp.departamento or 'Sin departamento',
+            'fecha_ingreso': emp.fecha_ingreso,
+            'fecha_retiro': f_retiro,
+            'haber_basico': float(emp.haber_basico or 0.0),
+            'is_active': emp.is_active
+        })
+
+    payload = {
+        'empresa_nombre': t_name,
+        'nit': t_nit,
+        'numero_patronal': t_patronal,
+        'representante_legal': rep_legal,
+        'ci_representante': t_emp_ci,
+        'filter_status': status,
+        'employees': emps_data
+    }
+
+    file_path = DocumentService.generate_employees_excel(payload, output_format="pdf", schema_name=schema_name)
+    empresa_slug = DocumentService._slugify(schema_name if schema_name else t_name)
+    now_str = datetime.now().strftime("%d-%m-%Y")
+    filename = f"nomina_empleados_{empresa_slug}_{now_str}.pdf"
+    return FileResponse(path=file_path, filename=filename, media_type="application/pdf")
 
 @router.post('', response_model=EmployeeResponse)
 @router.post('/', response_model=EmployeeResponse, include_in_schema=False)

@@ -45,6 +45,9 @@ class ImporteRestanteItem(BaseModel):
     activo: bool = True
     descuento_retenciones: float = 0.0
     descuento_patronal: float = 0.0
+    descuento_salud: float = 0.0
+    interes: float = 0.0
+
 
 class GestoraPaymentData(BaseModel):
     fecha: Optional[str] = ""
@@ -77,6 +80,11 @@ class DepartmentPayrollItem(BaseModel):
     bono_antiguedad: float = 0.0
     total_depto: float = 0.0
 
+class TramiteMinTrabajoItem(BaseModel):
+    id: Optional[str] = None
+    descripcion: str = ""
+    monto: float = 0.0
+
 class DevengamientoData(BaseModel):
     departamentos: List[DepartmentPayrollItem] = Field(default_factory=list)
     sueldos_adm: float = 0.0
@@ -86,6 +94,7 @@ class DevengamientoData(BaseModel):
     retenciones_ley: float = 0.0
     sueldos_por_pagar: float = 0.0
     arancel_min_trabajo: float = 27.00
+    tramites_min_trabajo: List[TramiteMinTrabajoItem] = Field(default_factory=list)
     caja_salud_choice: str = "Caja Petrolera de Salud"
     patronal_gestora: Optional[float] = None
     patronal_caja: Optional[float] = None
@@ -123,6 +132,7 @@ class AccountingSheetSaveRequest(BaseModel):
     caja_banco_name: Optional[str] = "Caja Moneda Nacional"
     caja_salud_name: Optional[str] = "Caja Petrolera de Salud"
     arancel_min_trabajo: Optional[float] = 27.00
+    tramites_min_trabajo: Optional[List[TramiteMinTrabajoItem]] = None
     devengamiento: Optional[DevengamientoData] = None
     gestora_payment: Optional[GestoraPaymentData] = None
     caja_payment: Optional[CajaPaymentData] = None
