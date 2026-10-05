@@ -47,6 +47,68 @@ def get_smn(db: Session, year: int) -> Decimal:
     smn = db.query(SalarioMinimoNacional).filter(SalarioMinimoNacional.year == year).first()
     return Decimal(str(smn.amount)) if smn else Decimal("3300.00")
 
+def calculate_aguinaldo_months_worked(emp: Employee, pref: Prefiniquito | None, year: int) -> Decimal:
+    start_of_year = date(year, 1, 1)
+    end_of_year = date(year, 12, 31)
+
+    # Si hay prefiniquito y la fecha de retiro es dentro del año
+    if pref and start_of_year <= pref.fecha_retiro <= end_of_year:
+        m_ret = pref.fecha_retiro.month
+        # Regla: el mes de desvinculación cuenta en aguinaldos, pero los meses posteriores ya no
+        if emp.fecha_ingreso < start_of_year:
+            # Trabajó desde enero hasta el mes de desvinculación inclusive
+            return Decimal(str(m_ret))
+        else:
+            m_ing = emp.fecha_ingreso.month
+            return Decimal(str(max(1, m_ret - m_ing + 1)))
+
+    # Empleado no desvinculado en este año (activo todo el año o con retiro posterior)
+    if emp.fecha_ingreso < start_of_year:
+        return Decimal("12.00")
+    else:
+        m_ing = emp.fecha_ingreso.month
+        return Decimal(str(max(1, 12 - m_ing + 1)))
+
+def sync_employee_aguinaldo_for_year(db: Session, employee_id: int, year: int):
+    """
+    Sincroniza o recalcula la boleta de aguinaldo del empleado para el año indicado,
+    actualizando sus meses trabajados y total de aguinaldo si la planilla de aguinaldos existe y está abierta.
+    """
+    try:
+        payroll = db.query(AguinaldoPayroll).filter(AguinaldoPayroll.year == year).first()
+        if not payroll or payroll.is_closed:
+            return
+
+        emp = db.query(Employee).filter(Employee.id == employee_id).first()
+        if not emp:
+            return
+
+        slip = db.query(AguinaldoSlip).filter(
+            AguinaldoSlip.aguinaldo_payroll_id == payroll.id,
+            AguinaldoSlip.employee_id == employee_id
+        ).first()
+
+        pref = db.query(Prefiniquito).filter(
+            Prefiniquito.employee_id == employee_id
+        ).order_by(Prefiniquito.fecha_retiro.desc(), Prefiniquito.id.desc()).first()
+
+        start_of_year = date(year, 1, 1)
+        if not emp.is_active and pref and pref.fecha_retiro < start_of_year:
+            if slip:
+                db.delete(slip)
+                db.commit()
+            return
+
+        meses = calculate_aguinaldo_months_worked(emp, pref, year)
+        if slip:
+            slip.meses_trabajados = meses
+            prom_total = Decimal(str(slip.promedio_total_ganado or 0.0))
+            slip.total_aguinaldo = round(prom_total * (meses / Decimal("12")), 2)
+            db.add(slip)
+            db.commit()
+    except Exception as e:
+        print(f"[sync_employee_aguinaldo_for_year] Error: {e}")
+
 @router.get("/{year}", response_model=AguinaldoPayrollResponse)
 @router.get("/{year}/", response_model=AguinaldoPayrollResponse, include_in_schema=False)
 def get_or_generate_aguinaldo_payroll(schema_name: str, year: int, db: Session = Depends(get_tenant_db)):
@@ -90,36 +152,15 @@ def get_or_generate_aguinaldo_payroll(schema_name: str, year: int, db: Session =
             if emp.fecha_ingreso > end_of_year:
                 continue
 
-            pref = None
-            if not emp.is_active:
-                pref = db.query(Prefiniquito).filter(Prefiniquito.employee_id == emp.id).order_by(Prefiniquito.id.desc()).first()
-                if pref and pref.fecha_retiro < start_of_year:
-                    continue
+            pref = db.query(Prefiniquito).filter(
+                Prefiniquito.employee_id == emp.id
+            ).order_by(Prefiniquito.fecha_retiro.desc(), Prefiniquito.id.desc()).first()
 
-            # Calcular meses trabajados en el año
-            if emp.fecha_ingreso < start_of_year:
-                if not emp.is_active and pref and pref.fecha_retiro <= end_of_year:
-                    m_ret = pref.fecha_retiro.month
-                    d_ret = pref.fecha_retiro.day
-                    meses_ret = Decimal(str(m_ret - 1)) + (Decimal(str(min(30, d_ret))) / Decimal("30"))
-                    meses = round(max(Decimal("0.5"), min(Decimal("12.0"), meses_ret)), 2)
-                else:
-                    meses = Decimal("12.00")
-            else:
-                end_calc = pref.fecha_retiro if (not emp.is_active and pref and pref.fecha_retiro <= end_of_year) else end_of_year
-                m_ing = emp.fecha_ingreso.month
-                d_ing = emp.fecha_ingreso.day
-                m_end = end_calc.month
-                d_end = end_calc.day
-                if m_ing == m_end:
-                    dias = max(0, d_end - d_ing + 1)
-                    meses = round(Decimal(str(dias)) / Decimal("30"), 2)
-                else:
-                    meses_ent = Decimal(str(max(0, m_end - m_ing - 1)))
-                    dias_ini = max(0, 30 - d_ing + 1)
-                    dias_fin = min(30, d_end)
-                    meses = round(meses_ent + (Decimal(str(dias_ini + dias_fin)) / Decimal("30")), 2)
-                meses = round(max(Decimal("0.5"), min(Decimal("12.0"), meses)), 2)
+            if not emp.is_active and pref and pref.fecha_retiro < start_of_year:
+                continue
+
+            is_desvinculado_en_gestion = bool(pref and start_of_year <= pref.fecha_retiro <= end_of_year)
+            meses = calculate_aguinaldo_months_worked(emp, pref, year)
 
             # Buscar boletas previas del año (preferentemente sep, oct, nov, o las disponibles)
             monthly_slips = (
@@ -171,6 +212,10 @@ def get_or_generate_aguinaldo_payroll(schema_name: str, year: int, db: Session =
                     existing_slip.promedio_total_ganado = prom_total
                     existing_slip.meses_trabajados = meses
                     existing_slip.total_aguinaldo = tot_ag
+                elif is_desvinculado_en_gestion:
+                    # Si el empleado fue desvinculado, sincronizar siempre sus meses trabajados y total
+                    existing_slip.meses_trabajados = meses
+                    existing_slip.total_aguinaldo = round(existing_slip.promedio_total_ganado * (meses / Decimal("12")), 2)
             else:
                 new_slip = AguinaldoSlip(
                     aguinaldo_payroll_id=payroll.id,

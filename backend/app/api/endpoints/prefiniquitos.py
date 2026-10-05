@@ -6,7 +6,7 @@ from sqlalchemy import text
 from app.db.session import SessionLocal, engine
 from app.models.employee import Employee
 from app.models.prefiniquito import Prefiniquito
-from app.schemas.prefiniquito import PrefiniquitoCreate, PrefiniquitoResponse, PrefiniquitoBase, CuotaPagarRequest, PagoRegistrarRequest
+from app.schemas.prefiniquito import PrefiniquitoCreate, PrefiniquitoUpdate, PrefiniquitoResponse, PrefiniquitoBase, CuotaPagarRequest, PagoRegistrarRequest
 from app.services.prefiniquito_service import calculate_prefiniquito, calculate_time_worked
 from app.services.document_service import DocumentService
 from app.models.tenant import Tenant
@@ -74,7 +74,7 @@ def preview_prefiniquito(
         dias_vacacion_pendientes=data.dias_vacacion_pendientes or 0,
         otros_pagos=otros_monto,
         descuentos=data.descuentos or 0.0,
-        aplicar_multa=data.aplicar_multa or False
+        aplicar_multa=getattr(data, "aplicar_multa", False) or False
     )
 
     cuotas_proyectadas = []
@@ -268,6 +268,12 @@ def create_prefiniquito(
         sync_prefiniquito_document_on_disk(schema_name, pref.id, db)
     except Exception as e:
         print(f"[PrefiniquitoSync] Error syncing on disk: {e}")
+
+    try:
+        from app.api.endpoints.aguinaldos import sync_employee_aguinaldo_for_year
+        sync_employee_aguinaldo_for_year(db, pref.employee_id, pref.fecha_retiro.year)
+    except Exception as e:
+        print(f"[PrefiniquitoAguinaldoSync] Error on create: {e}")
         
     return pref
 
@@ -289,6 +295,128 @@ def get_prefiniquito_by_id(
     if not pref:
         raise HTTPException(status_code=404, detail="Prefiniquito no encontrado")
     return pref
+
+@router.put("/{id}", response_model=PrefiniquitoResponse)
+@router.put("/{id}/", response_model=PrefiniquitoResponse, include_in_schema=False)
+def update_prefiniquito(
+    schema_name: str,
+    id: int,
+    data: PrefiniquitoUpdate,
+    db: Session = Depends(get_tenant_db)
+):
+    pref = db.query(Prefiniquito).filter(Prefiniquito.id == id).first()
+    if not pref:
+        raise HTTPException(status_code=404, detail="Prefiniquito no encontrado")
+
+    emp = db.query(Employee).filter(Employee.id == pref.employee_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado asociado no encontrado")
+
+    fecha_ret = data.fecha_retiro or pref.fecha_retiro
+    motivo_act = data.motivo if data.motivo is not None else pref.motivo
+    sueldo_prom = data.sueldo_promedio if data.sueldo_promedio is not None else float(pref.sueldo_promedio)
+    dias_vac = data.dias_vacacion_pendientes if data.dias_vacacion_pendientes is not None else pref.dias_vacacion_pendientes
+    otros_monto = float(data.otros_pagos if data.otros_pagos is not None else (pref.otros_pagos or 0.0))
+    tipo_otros = data.tipo_otros_pagos or pref.tipo_otros_pagos or "directo"
+    otros_detalle = data.otros_pagos_detalle if data.otros_pagos_detalle is not None else pref.otros_pagos_detalle
+    cuotas_tot = data.cuotas_total if data.cuotas_total is not None else (pref.cuotas_total or 1)
+    desc = float(data.descuentos if data.descuentos is not None else (pref.descuentos or 0.0))
+    aplicar_m = data.aplicar_multa if data.aplicar_multa is not None else (float(pref.multa_30 or 0) > 0)
+
+    calc = calculate_prefiniquito(
+        fecha_ingreso=emp.fecha_ingreso,
+        fecha_retiro=fecha_ret,
+        motivo=motivo_act,
+        sueldo_promedio=sueldo_prom,
+        dias_vacacion_pendientes=dias_vac or 0,
+        otros_pagos=otros_monto,
+        descuentos=desc,
+        aplicar_multa=aplicar_m
+    )
+
+    old_year = pref.fecha_retiro.year
+
+    pref.fecha_retiro = fecha_ret
+    pref.motivo = motivo_act
+    pref.sueldo_promedio = calc["sueldo_promedio"]
+    pref.anios_trabajados = calc["anios_trabajados"]
+    pref.meses_trabajados = calc["meses_trabajados"]
+    pref.dias_trabajados = calc["dias_trabajados"]
+    pref.desahucio = calc["desahucio"]
+    pref.indemnizacion_anios = calc["indemnizacion_anios"]
+    pref.indemnizacion_meses = calc["indemnizacion_meses"]
+    pref.indemnizacion_dias = calc["indemnizacion_dias"]
+    pref.aguinaldo_meses = calc["aguinaldo_meses"]
+    pref.aguinaldo_dias = calc["aguinaldo_dias"]
+    pref.dias_vacacion_pendientes = dias_vac
+    pref.vacaciones = calc["vacaciones"]
+    pref.otros_pagos = otros_monto
+    pref.tipo_otros_pagos = tipo_otros
+    pref.otros_pagos_detalle = otros_detalle
+    pref.cuotas_total = cuotas_tot
+    pref.descuentos = desc
+    pref.total_calculo = calc["total_calculo"]
+    pref.multa_30 = calc["multa_30"]
+    pref.total_final = calc["total_final"]
+
+    if tipo_otros == "directo":
+        pref.cuotas_total = 1
+        if not pref.cuotas_historial:
+            pref.cuotas_pagadas = 0
+            pref.monto_cuota = 0.0
+
+    flag_modified(pref, "cuotas_historial")
+    db.add(pref)
+    db.commit()
+    db.refresh(pref)
+
+    try:
+        sync_prefiniquito_document_on_disk(schema_name, pref.id, db)
+    except Exception as e:
+        print(f"[PrefiniquitoSync] Error syncing on disk: {e}")
+
+    try:
+        from app.api.endpoints.aguinaldos import sync_employee_aguinaldo_for_year
+        sync_employee_aguinaldo_for_year(db, pref.employee_id, fecha_ret.year)
+        if old_year != fecha_ret.year:
+            sync_employee_aguinaldo_for_year(db, pref.employee_id, old_year)
+    except Exception as e:
+        print(f"[PrefiniquitoAguinaldoSync] Error on update: {e}")
+
+    return pref
+
+@router.delete("/{id}")
+@router.delete("/{id}/", include_in_schema=False)
+def delete_prefiniquito(
+    schema_name: str,
+    id: int,
+    db: Session = Depends(get_tenant_db)
+):
+    pref = db.query(Prefiniquito).filter(Prefiniquito.id == id).first()
+    if not pref:
+        raise HTTPException(status_code=404, detail="Prefiniquito no encontrado")
+
+    emp_id = pref.employee_id
+    ret_year = pref.fecha_retiro.year
+
+    db.delete(pref)
+    db.commit()
+
+    # Si el empleado no tiene otros prefiniquitos registrados, reactivarlo
+    remaining = db.query(Prefiniquito).filter(Prefiniquito.employee_id == emp_id).all()
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if emp and not remaining:
+        emp.is_active = True
+        db.add(emp)
+        db.commit()
+
+    try:
+        from app.api.endpoints.aguinaldos import sync_employee_aguinaldo_for_year
+        sync_employee_aguinaldo_for_year(db, emp_id, ret_year)
+    except Exception as e:
+        print(f"[PrefiniquitoAguinaldoSync] Error on delete: {e}")
+
+    return {"message": "Prefiniquito eliminado con éxito", "id": id}
 
 @router.post("/{id}/cuotas/{cuota_num}/pagar", response_model=PrefiniquitoResponse)
 def pagar_cuota(

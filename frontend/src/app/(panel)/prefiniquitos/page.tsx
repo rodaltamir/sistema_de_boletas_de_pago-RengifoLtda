@@ -23,7 +23,9 @@ import {
   TrendingDown,
   Briefcase,
   Sparkles,
-  Info
+  Info,
+  Pencil,
+  Trash2
 } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
 
@@ -263,6 +265,8 @@ function PrefiniquitosPageContent() {
   const [activeTab, setActiveTab] = useState<"calculo" | "historial">("calculo");
 
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [editingPrefId, setEditingPrefId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   
   // Selection and Form
@@ -322,6 +326,7 @@ function PrefiniquitosPageContent() {
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
+          setAllEmployees(data);
           setEmployees(data.filter((e: Employee) => e.is_active));
         }
         setLoading(false);
@@ -343,7 +348,7 @@ function PrefiniquitosPageContent() {
       .catch(() => setLoadingHistory(false));
   };
 
-  const selectedEmp = employees.find(e => e.id === Number(selectedEmpId));
+  const selectedEmp = (allEmployees.length > 0 ? allEmployees : employees).find(e => e.id === Number(selectedEmpId));
 
   // Auto-seleccionar empleado si viene por URL (desde el botón de desvinculación de la nómina)
   useEffect(() => {
@@ -542,6 +547,122 @@ function PrefiniquitosPageContent() {
     }
   };
 
+  const handleStartEdit = (record: PrefiniquitoRecord) => {
+    setEditingPrefId(record.id);
+    setSelectedEmpId(record.employee_id);
+    setFechaRetiro(record.fecha_retiro);
+    setMotivo(record.motivo);
+    setSueldoPromedio(record.sueldo_promedio);
+    setDiasVacacion(record.dias_vacacion_pendientes || 0);
+    setOtrosPagos(record.otros_pagos || 0);
+    setTipoOtrosPagos((record.tipo_otros_pagos as "directo" | "cuotas") || "directo");
+    setOtrosPagosDetalle(record.otros_pagos_detalle || "");
+    setCuotasTotal(record.cuotas_total || 2);
+    setDescuentos(record.descuentos || 0);
+    setAplicarMulta(Number(record.multa_30) > 0);
+    setAbonoInicial("");
+    setSuccess(false);
+
+    setCalcResult({
+      employee_id: record.employee_id,
+      fecha_retiro: record.fecha_retiro,
+      motivo: record.motivo,
+      anios_trabajados: record.anios_trabajados,
+      meses_trabajados: record.meses_trabajados,
+      dias_trabajados: record.dias_trabajados,
+      sueldo_promedio: record.sueldo_promedio,
+      desahucio: record.desahucio,
+      indemnizacion_anios: record.indemnizacion_anios,
+      indemnizacion_meses: record.indemnizacion_meses,
+      indemnizacion_dias: record.indemnizacion_dias,
+      aguinaldo_meses: record.aguinaldo_meses,
+      aguinaldo_dias: record.aguinaldo_dias,
+      dias_vacacion_pendientes: record.dias_vacacion_pendientes,
+      vacaciones: record.vacaciones,
+      otros_pagos: record.otros_pagos,
+      tipo_otros_pagos: record.tipo_otros_pagos,
+      otros_pagos_detalle: record.otros_pagos_detalle,
+      cuotas_total: record.cuotas_total,
+      cuotas_pagadas: record.cuotas_pagadas,
+      monto_cuota: record.monto_cuota,
+      cuotas_historial: record.cuotas_historial,
+      descuentos: record.descuentos,
+      total_calculo: record.total_calculo,
+      multa_30: record.multa_30,
+      total_final: record.total_final
+    });
+
+    setActiveTab("calculo");
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPrefId(null);
+    setSelectedEmpId("");
+    setCalcResult(null);
+    setSuccess(false);
+  };
+
+  const handleUpdatePrefiniquito = async () => {
+    if (!editingPrefId || !calcResult || !selectedEmpId) return;
+    if (!confirm(`¿Está seguro de guardar las modificaciones del Prefiniquito #${editingPrefId}?`)) return;
+
+    setSaving(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/prefiniquitos/${editingPrefId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fecha_retiro: fechaRetiro,
+          motivo,
+          sueldo_promedio: Number(sueldoPromedio) || 0,
+          dias_vacacion_pendientes: Number(diasVacacion) || 0,
+          otros_pagos: Number(otrosPagos) || 0,
+          tipo_otros_pagos: tipoOtrosPagos,
+          otros_pagos_detalle: otrosPagosDetalle,
+          cuotas_total: tipoOtrosPagos === "cuotas" ? cuotasTotal : 1,
+          descuentos: Number(descuentos) || 0,
+          aplicar_multa: aplicarMulta
+        })
+      });
+
+      if (res.ok) {
+        alert("Prefiniquito actualizado exitosamente.");
+        setEditingPrefId(null);
+        setSelectedEmpId("");
+        setCalcResult(null);
+        fetchEmployees();
+        fetchHistory();
+        setActiveTab("historial");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || "Error al actualizar el prefiniquito.");
+      }
+    } catch(e) {
+      console.error(e);
+      alert("Error de conexión al actualizar el prefiniquito.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeletePrefiniquito = async (id: number, empName: string) => {
+    if (!confirm(`¿Está seguro de eliminar el Prefiniquito #${id} de ${empName}? El empleado volverá a estar ACTIVO si no tiene otras desvinculaciones registradas.`)) return;
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/prefiniquitos/${id}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        fetchEmployees();
+        fetchHistory();
+      } else {
+        alert("Error al eliminar el prefiniquito.");
+      }
+    } catch(err) {
+      console.error(err);
+      alert("Error de conexión al eliminar.");
+    }
+  };
+
   const handleRegistrarPago = async (id: number) => {
     if (!pagoMonto || Number(pagoMonto) <= 0) {
       alert("Por favor ingrese un monto de abono válido mayor a 0.");
@@ -642,8 +763,8 @@ function PrefiniquitosPageContent() {
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <Calculator className="w-4 h-4 text-teal-600" />
-            Nuevo Prefiniquito
+            {editingPrefId ? <Pencil className="w-4 h-4 text-amber-600" /> : <Calculator className="w-4 h-4 text-teal-600" />}
+            {editingPrefId ? `Modificar Prefiniquito #${editingPrefId}` : "Nuevo Prefiniquito"}
           </button>
           <button
             onClick={() => { setActiveTab("historial"); fetchHistory(); }}
@@ -667,6 +788,31 @@ function PrefiniquitosPageContent() {
       {/* TAB 1: NUEVO PREFINIQUITO / CÁLCULO */}
       {activeTab === "calculo" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+          {/* BANNER MODO EDICIÓN */}
+          {editingPrefId && (
+            <div className="lg:col-span-12 p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center font-bold shrink-0">
+                  <Pencil className="w-5 h-5 text-amber-800" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-amber-950 text-sm">
+                    Modo Edición: Modificando Prefiniquito #{editingPrefId} de {selectedEmp ? `${selectedEmp.nombres} ${selectedEmp.apellido_paterno}` : `Empleado #${selectedEmpId}`}
+                  </h4>
+                  <p className="text-xs text-amber-800 mt-0.5">
+                    Modifique los parámetros deseados (motivo, fecha de retiro, descuentos, pagos únicos o en cuotas) y guarde los cambios.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleCancelEdit}
+                className="px-4 py-2 bg-white text-slate-700 hover:bg-slate-100 border border-amber-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-xs"
+              >
+                <X className="w-4 h-4" /> Cancelar Edición
+              </button>
+            </div>
+          )}
           
           {/* PANEL IZQUIERDO - FORMULARIO */}
           <div className="lg:col-span-4 space-y-6">
@@ -683,7 +829,7 @@ function PrefiniquitosPageContent() {
               </div>
               
               <div className="space-y-4">
-                {empIdParam && selectedEmp && (
+                {empIdParam && selectedEmp && !editingPrefId && (
                   <div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-xl text-xs text-amber-900 flex items-start gap-2.5 shadow-xs">
                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div className="space-y-1">
@@ -698,17 +844,18 @@ function PrefiniquitosPageContent() {
                 {/* Selector de empleado */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                    Empleado Activo <span className="text-rose-500">*</span>
+                    {editingPrefId ? "Empleado del Prefiniquito" : "Empleado Activo"} <span className="text-rose-500">*</span>
                   </label>
                   <select 
                     value={selectedEmpId} 
+                    disabled={editingPrefId !== null}
                     onChange={(e) => setSelectedEmpId(e.target.value ? Number(e.target.value) : "")}
-                    className="w-full text-slate-900 border border-slate-300 rounded-xl px-3.5 py-2.5 bg-slate-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none transition text-sm font-medium"
+                    className="w-full text-slate-900 border border-slate-300 rounded-xl px-3.5 py-2.5 bg-slate-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 outline-none transition text-sm font-medium disabled:bg-slate-100 disabled:text-slate-600"
                   >
                     <option value="">-- Seleccione un trabajador --</option>
-                    {employees.map(emp => (
+                    {(editingPrefId ? (allEmployees.length > 0 ? allEmployees : employees) : employees).map(emp => (
                       <option key={emp.id} value={emp.id}>
-                        {`${emp.apellido_paterno} ${emp.apellido_materno || ""} ${emp.nombres}`.trim().replace(/  +/g, " ")} (CI: {emp.documento_identidad})
+                        {`${emp.apellido_paterno} ${emp.apellido_materno || ""} ${emp.nombres}`.trim().replace(/  +/g, " ")} (CI: {emp.documento_identidad}) {!emp.is_active ? " - (Desvinculado)" : ""}
                       </option>
                     ))}
                   </select>
@@ -732,8 +879,8 @@ function PrefiniquitosPageContent() {
                             </div>
                           </div>
                         </div>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          Activo
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${selectedEmp.is_active ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-rose-100 text-rose-800 border border-rose-200'}`}>
+                          {selectedEmp.is_active ? 'Activo' : 'Desvinculado'}
                         </span>
                       </div>
                       
@@ -934,7 +1081,7 @@ function PrefiniquitosPageContent() {
                       ) : (
                         <>
                           <Calculator className="w-4 h-4 text-teal-400" />
-                          <span>Generar Vista Previa</span>
+                          <span>{editingPrefId ? "Recalcular Vista Previa" : "Generar Vista Previa"}</span>
                         </>
                       )}
                     </button>
@@ -1140,12 +1287,12 @@ function PrefiniquitosPageContent() {
                   {isAdmin && (
                     <div className="bg-slate-100 p-4 border-t border-slate-200 flex justify-end">
                       <button 
-                        onClick={handleFinalize}
+                        onClick={editingPrefId ? handleUpdatePrefiniquito : handleFinalize}
                         disabled={saving}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 shadow-md transition disabled:opacity-50"
+                        className={`flex items-center gap-2 px-6 py-2.5 ${editingPrefId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-rose-600 hover:bg-rose-700'} text-white font-bold rounded-xl shadow-md transition disabled:opacity-50`}
                       >
-                        {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <UserX className="w-5 h-5" />} 
-                        Finalizar Desvinculación
+                        {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : editingPrefId ? <Check className="w-5 h-5" /> : <UserX className="w-5 h-5" />} 
+                        {editingPrefId ? "Guardar Modificaciones del Prefiniquito" : "Finalizar Desvinculación"}
                       </button>
                     </div>
                   )}
@@ -1291,6 +1438,16 @@ function PrefiniquitosPageContent() {
                           </td>
                           <td className="px-5 py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
+                              {/* EDITAR PREFINIQUITO */}
+                              <button
+                                onClick={() => handleStartEdit(item)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 text-xs font-semibold rounded-lg transition"
+                                title="Editar parámetros de este prefiniquito"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                Editar
+                              </button>
+
                               {isCuotas && saldo > 0 && (
                                 <button
                                   onClick={() => {
@@ -1346,6 +1503,15 @@ function PrefiniquitosPageContent() {
                                   {exportLoading === `saved_${item.id}_pdf` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                                 </button>
                               </div>
+
+                              {/* ELIMINAR PREFINIQUITO */}
+                              <button
+                                onClick={() => handleDeletePrefiniquito(item.id, empName)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition ml-1"
+                                title="Eliminar este prefiniquito"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </td>
                         </tr>

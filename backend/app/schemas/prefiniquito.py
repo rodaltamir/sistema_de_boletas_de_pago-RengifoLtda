@@ -83,6 +83,17 @@ class PrefiniquitoCreate(BaseModel):
     metodo_abono_inicial: Optional[str] = "Efectivo"
     descuentos: Optional[float] = 0.0
     aplicar_multa: Optional[bool] = False
+class PrefiniquitoUpdate(BaseModel):
+    fecha_retiro: Optional[date] = None
+    motivo: Optional[str] = None
+    sueldo_promedio: Optional[float] = None
+    dias_vacacion_pendientes: Optional[int] = 0
+    otros_pagos: Optional[float] = 0.0
+    tipo_otros_pagos: Optional[str] = "directo"
+    otros_pagos_detalle: Optional[str] = None
+    cuotas_total: Optional[int] = 1
+    descuentos: Optional[float] = 0.0
+    aplicar_multa: Optional[bool] = False
 
 class PrefiniquitoResponse(PrefiniquitoBase):
     id: int
