@@ -1088,7 +1088,8 @@ function PlanillasPageContent() {
                   <thead>
                     <tr className="bg-[#2C3E50] text-white border-b border-slate-700">
                       <th className="p-3 text-center w-10">N°</th>
-                      <th className="p-3">NOMBRES Y APELLIDOS<br/><span className="text-[10px] font-normal opacity-80">CARGO</span></th>
+                      <th className="p-3">APELLIDOS Y NOMBRES</th>
+                      <th className="p-3">OCUPACIÓN</th>
                       <th className="p-3 text-right">TOTAL<br/>GANADO</th>
                       <th className="p-3 text-right">CNS<br/>10%</th>
                       <th className="p-3 text-right">AFP's<br/>1,71%</th>
@@ -1106,10 +1107,8 @@ function PlanillasPageContent() {
                     {patronalData.details.map((slip, i) => (
                       <tr key={slip.id} className="border-b border-slate-200 hover:bg-slate-50 transition">
                         <td className="p-3 text-center font-bold text-slate-700">{i + 1}</td>
-                        <td className="p-3">
-                          <p className="font-bold text-slate-900">{slip.employee_name}</p>
-                          <p className="text-[10px] text-slate-500 uppercase">{slip.employee_cargo || "General"}</p>
-                        </td>
+                        <td className="p-3 font-bold text-slate-900 whitespace-nowrap">{slip.employee_name}</td>
+                        <td className="p-3 text-slate-600 uppercase text-[11px] whitespace-nowrap">{slip.employee_cargo || "General"}</td>
                         <td className="p-3 text-right font-semibold text-slate-800">{formatBs(slip.total_ganado)}</td>
                         <td className="p-3 text-right text-slate-600">{formatBs(slip.cns)}</td>
                         <td className="p-3 text-right text-slate-600">{formatBs(slip.afp)}</td>
@@ -1133,14 +1132,14 @@ function PlanillasPageContent() {
                     ))}
                     {patronalData.details.length === 0 && (
                       <tr>
-                        <td colSpan={13} className="p-8 text-center text-slate-500">No hay registros patronales para este periodo.</td>
+                        <td colSpan={14} className="p-8 text-center text-slate-500">No hay registros patronales para este periodo.</td>
                       </tr>
                     )}
                   </tbody>
                   {/* Fila de TOTALES (Azul/Pizarra idéntica a Imagen 1) */}
                   <tfoot>
                     <tr className="bg-[#2C3E50] text-white font-bold">
-                      <td colSpan={2} className="p-3.5 text-center tracking-widest text-sm uppercase">T O T A L E S</td>
+                      <td colSpan={3} className="p-3.5 text-center tracking-widest text-sm uppercase">T O T A L E S</td>
                       <td className="p-3.5 text-right">{formatBs(patronalData.totals.total_ganado)}</td>
                       <td className="p-3.5 text-right">{formatBs(patronalData.totals.cns)}</td>
                       <td className="p-3.5 text-right">{formatBs(patronalData.totals.afp)}</td>

@@ -301,33 +301,33 @@ class DocumentService:
         dias_pagados = boleta_data.get('dias_pagados', 30)
 
         # Montos
-        hb = float(boleta_data.get('haber_basico', 0) or 0)
-        ba = float(boleta_data.get('bono_antiguedad', 0) or 0)
-        bp = float(boleta_data.get('bono_produccion', 0) or 0)
-        sub_frontera = float(boleta_data.get('subsidio_frontera', 0) or 0)
-        he = float(boleta_data.get('trabajo_extraordinario', 0) or 0)
-        dom = float(boleta_data.get('pago_dominical', 0) or 0)
-        sub_nat = float(boleta_data.get('subsidio_natalidad', 0) or 0)
-        otros_bonos = float(boleta_data.get('otros_bonos', 0) or 0)
+        hb = round(float(boleta_data.get('haber_basico', 0) or 0), 2)
+        ba = round(float(boleta_data.get('bono_antiguedad', 0) or 0), 2)
+        bp = round(float(boleta_data.get('bono_produccion', 0) or 0), 2)
+        sub_frontera = round(float(boleta_data.get('subsidio_frontera', 0) or 0), 2)
+        he = round(float(boleta_data.get('trabajo_extraordinario', 0) or 0), 2)
+        dom = round(float(boleta_data.get('pago_dominical', 0) or 0), 2)
+        sub_nat = round(float(boleta_data.get('subsidio_natalidad', 0) or 0), 2)
+        otros_bonos = round(float(boleta_data.get('otros_bonos', 0) or 0), 2)
         if bp == 0 and sub_frontera == 0 and he == 0 and dom == 0 and otros_bonos == 0:
-            otros_ing_fallback = float(boleta_data.get('otros_ingresos', 0) or 0)
+            otros_ing_fallback = round(float(boleta_data.get('otros_ingresos', 0) or 0), 2)
             if otros_ing_fallback > 0:
                 otros_bonos = otros_ing_fallback
 
-        total_ganado = float(boleta_data.get('total_ganado', 0) or 0)
+        total_ganado = round(float(boleta_data.get('total_ganado', 0) or 0), 2)
 
-        tot_gestora = float(boleta_data.get('aporte_gestora', 0) or 0)
+        tot_gestora = round(float(boleta_data.get('aporte_gestora', 0) or 0), 2)
         aporte_solidario = round(total_ganado * 0.005, 2)
         gestora_publica = round(tot_gestora - aporte_solidario, 2)
         if gestora_publica < 0:
             gestora_publica = tot_gestora
             aporte_solidario = 0.0
 
-        rc_iva = float(boleta_data.get('rc_iva', 0) or 0)
-        anticipos = float(boleta_data.get('anticipos', 0) or 0)
-        otros_des = float(boleta_data.get('otros_descuentos', 0) or 0)
-        total_descuentos = float(boleta_data.get('total_descuentos', 0) or 0)
-        liquido = float(boleta_data.get('liquido_pagable', total_ganado - total_descuentos) or 0)
+        rc_iva = round(float(boleta_data.get('rc_iva', 0) or 0), 2)
+        anticipos = round(float(boleta_data.get('anticipos', 0) or 0), 2)
+        otros_des = round(float(boleta_data.get('otros_descuentos', 0) or 0), 2)
+        total_descuentos = round(float(boleta_data.get('total_descuentos', 0) or 0), 2)
+        liquido = round(float(boleta_data.get('liquido_pagable', total_ganado - total_descuentos) or 0), 2)
 
         entero = int(liquido)
         decimal = int(round((liquido - entero) * 100))
@@ -908,6 +908,13 @@ class DocumentService:
                 ws['S6'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=False)
             except: pass
             
+            # Encabezado descriptivo para Aportes Gestora Pública (12.71%)
+            try:
+                DocumentService._set_cell_value(ws, 'S8', "Aportes Gestora Pública\n12.71%")
+                ws['S8'].font = openpyxl.styles.Font(name="Arial", size=9, bold=True)
+                ws['S8'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=True)
+            except: pass
+
             # Paginacion
             DocumentService._set_cell_value(ws, 'V2', 1)
             DocumentService._set_cell_value(ws, 'X2', 1)
@@ -974,19 +981,19 @@ class DocumentService:
                 horas = 8
             dias = emp.get('dias_pagados', 30)
 
-            hb = float(emp.get('haber_basico', 0) or 0)
-            ba = float(emp.get('bono_antiguedad', 0) or 0)
-            bp = float(emp.get('bono_produccion', 0) or 0)
-            sf = float(emp.get('subsidio_frontera', 0) or 0)
-            te = float(emp.get('trabajo_extraordinario', 0) or 0)
-            pd = float(emp.get('pago_dominical', 0) or 0)
-            ob = float(emp.get('otros_bonos', 0) or 0)
-            tg = float(emp.get('total_ganado', 0) or 0)
-            ag = float(emp.get('aporte_gestora', 0) or 0)
-            rc = float(emp.get('rc_iva', 0) or 0)
-            otros_desc = float(emp.get('otros_descuentos', 0) or 0) + float(emp.get('anticipos', 0) or 0)
-            td = float(emp.get('total_descuentos', 0) or 0)
-            lp = float(emp.get('liquido_pagable', 0) or 0)
+            hb = round(float(emp.get('haber_basico', 0) or 0), 2)
+            ba = round(float(emp.get('bono_antiguedad', 0) or 0), 2)
+            bp = round(float(emp.get('bono_produccion', 0) or 0), 2)
+            sf = round(float(emp.get('subsidio_frontera', 0) or 0), 2)
+            te = round(float(emp.get('trabajo_extraordinario', 0) or 0), 2)
+            pd = round(float(emp.get('pago_dominical', 0) or 0), 2)
+            ob = round(float(emp.get('otros_bonos', 0) or 0), 2)
+            tg = round(float(emp.get('total_ganado', 0) or 0), 2)
+            ag = round(float(emp.get('aporte_gestora', 0) or 0), 2)
+            rc = round(float(emp.get('rc_iva', 0) or 0), 2)
+            otros_desc = round(float(emp.get('otros_descuentos', 0) or 0) + float(emp.get('anticipos', 0) or 0), 2)
+            td = round(float(emp.get('total_descuentos', 0) or 0), 2)
+            lp = round(float(emp.get('liquido_pagable', 0) or 0), 2)
 
             row_values = {
                 1: (i + 1, 'center', None),
@@ -3032,22 +3039,23 @@ class DocumentService:
         ws.print_options.horizontalCentered = True
         ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.25, right=0.25, top=0.8, bottom=0.3)
 
-        # Configurar anchos de columna (B..E = 65, F..I = 54, J..M = 65)
+        # Configurar anchos de columna (B..O)
         col_widths = {
             'A': 2.0,   # Margen
-            'B': 5.0,   # No
-            'C': 32.0,  # NOMBRES Y APELLIDOS / CARGO
-            'D': 15.0,  # TOTAL GANADO
-            'E': 13.0,  # CNS 10%
-            'F': 13.0,  # AFP's 1,71%
-            'G': 13.0,  # FONVI 2%
-            'H': 13.0,  # APS 3.5%
-            'I': 15.0,  # TOTAL APORTES
-            'J': 15.0,  # PROVISIÓN AGUINALDO
-            'K': 15.0,  # PROVISIÓN INDEMNIZACIÓN
-            'L': 15.0,  # TOTAL PROVISIONES
-            'M': 20.0,  # TOTAL CARGA PATRONAL
-            'N': 2.0    # Margen
+            'B': 4.5,   # No
+            'C': 26.0,  # APELLIDOS Y NOMBRES
+            'D': 20.0,  # OCUPACIÓN QUE DESEMPEÑA
+            'E': 14.0,  # TOTAL GANADO
+            'F': 11.5,  # CNS 10%
+            'G': 11.5,  # AFP's 1,71%
+            'H': 11.5,  # FONVI 2%
+            'I': 11.5,  # APS 3.5%
+            'J': 13.5,  # TOTAL APORTES
+            'K': 13.5,  # PROVISIÓN AGUINALDO
+            'L': 13.5,  # PROVISIÓN INDEMNIZACIÓN
+            'M': 13.5,  # TOTAL PROVISIONES
+            'N': 17.0,  # TOTAL CARGA PATRONAL
+            'O': 2.0    # Margen
         }
         for col_let, width in col_widths.items():
             ws.column_dimensions[col_let].width = width
@@ -3070,62 +3078,63 @@ class DocumentService:
         double_bottom = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style='double', color='000000'))
 
         # Encabezado superior
-        ws.merge_cells('B2:E2')
+        ws.merge_cells('B2:F2')
         ws['B2'] = empresa
         ws['B2'].font = font_empresa
         ws['B2'].alignment = Alignment(horizontal="left", vertical="center")
 
-        ws.merge_cells('B3:E3')
+        ws.merge_cells('B3:F3')
         ws['B3'] = ciudad
         ws['B3'].font = font_ciudad
         ws['B3'].alignment = Alignment(horizontal="left", vertical="center")
 
-        ws['L2'] = "N° Patronal"
-        ws['L2'].font = font_patronal
-        ws['L2'].alignment = Alignment(horizontal="right", vertical="center")
-        ws['M2'] = f"  {nro_patronal}"
+        ws['M2'] = "N° Patronal"
         ws['M2'].font = font_patronal
-        ws['M2'].alignment = Alignment(horizontal="left", vertical="center")
+        ws['M2'].alignment = Alignment(horizontal="right", vertical="center")
+        ws['N2'] = f"  {nro_patronal}"
+        ws['N2'].font = font_patronal
+        ws['N2'].alignment = Alignment(horizontal="left", vertical="center")
 
-        ws['L3'] = "N° N.I.T.  :"
-        ws['L3'].font = font_patronal
-        ws['L3'].alignment = Alignment(horizontal="right", vertical="center")
-        ws['M3'] = f"  {nit}"
+        ws['M3'] = "N° N.I.T.  :"
         ws['M3'].font = font_patronal
-        ws['M3'].alignment = Alignment(horizontal="left", vertical="center")
+        ws['M3'].alignment = Alignment(horizontal="right", vertical="center")
+        ws['N3'] = f"  {nit}"
+        ws['N3'].font = font_patronal
+        ws['N3'].alignment = Alignment(horizontal="left", vertical="center")
 
         # Título y Subtítulo
-        ws.merge_cells('B5:M5')
+        ws.merge_cells('B5:N5')
         ws['B5'] = "PLANILLA PATRONAL"
         ws['B5'].font = font_title
         ws['B5'].alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[5].height = 22
 
-        ws.merge_cells('F6:I6')
-        ws['F6'] = "(Expresado en Bolivianos)"
-        ws['F6'].font = Font(name="Arial", size=10, bold=True)
-        ws['F6'].alignment = Alignment(horizontal="center", vertical="center")
+        ws.merge_cells('G6:J6')
+        ws['G6'] = "(Expresado en Bolivianos)"
+        ws['G6'].font = Font(name="Arial", size=10, bold=True)
+        ws['G6'].alignment = Alignment(horizontal="center", vertical="center")
 
-        ws.merge_cells('J6:M6')
-        ws['J6'] = f"CORRESPONDIENTE AL MES DE {mes_nombre.upper()} DE {anio}"
-        ws['J6'].font = Font(name="Arial", size=9.5, bold=True)
-        ws['J6'].alignment = Alignment(horizontal="right", vertical="center")
+        ws.merge_cells('K6:N6')
+        ws['K6'] = f"CORRESPONDIENTE AL MES DE {mes_nombre.upper()} DE {anio}"
+        ws['K6'].font = Font(name="Arial", size=9.5, bold=True)
+        ws['K6'].alignment = Alignment(horizontal="right", vertical="center")
         ws.row_dimensions[6].height = 18
 
         # Encabezados de tabla
         headers = [
             ("B", "N°"),
-            ("C", "APELLIDOS Y NOMBRES\nOCUPACIÓN QUE DESEMPEÑA"),
-            ("D", "TOTAL\nGANADO"),
-            ("E", "CNS\n10%"),
-            ("F", "AFP's\n1,71%"),
-            ("G", "FONVI\n2%"),
-            ("H", "APS\n3.5%"),
-            ("I", "TOTAL\nAPORTES"),
-            ("J", "PROVISIÓN\nAGUINALDO"),
-            ("K", "PROVISIÓN\nINDEMNIZACIÓN"),
-            ("L", "TOTAL\nPROVISIONES"),
-            ("M", "TOTAL CARGA\nPATRONAL")
+            ("C", "APELLIDOS Y NOMBRES"),
+            ("D", "OCUPACIÓN QUE DESEMPEÑA"),
+            ("E", "TOTAL\nGANADO"),
+            ("F", "CNS\n10%"),
+            ("G", "AFP's\n1,71%"),
+            ("H", "FONVI\n2%"),
+            ("I", "APS\n3.5%"),
+            ("J", "TOTAL\nAPORTES"),
+            ("K", "PROVISIÓN\nAGUINALDO"),
+            ("L", "PROVISIÓN\nINDEMNIZACIÓN"),
+            ("M", "TOTAL\nPROVISIONES"),
+            ("N", "TOTAL CARGA\nPATRONAL")
         ]
         ws.row_dimensions[7].height = 32
         for col_let, text in headers:
@@ -3145,27 +3154,30 @@ class DocumentService:
             
             emp_name = str(item.get('employee_name') or '').upper()
             emp_cargo = str(item.get('employee_cargo') or '').upper()
-            combined_name_cargo = f"{emp_name}\n{emp_cargo}" if emp_cargo else emp_name
 
             ws[f"B{current_row}"] = idx
             ws[f"B{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"B{current_row}"].font = font_td_bold
 
-            ws[f"C{current_row}"] = combined_name_cargo
+            ws[f"C{current_row}"] = emp_name
             ws[f"C{current_row}"].alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
             ws[f"C{current_row}"].font = font_td
 
+            ws[f"D{current_row}"] = emp_cargo
+            ws[f"D{current_row}"].alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            ws[f"D{current_row}"].font = font_td
+
             num_cols = [
-                ("D", float(item.get('total_ganado', 0))),
-                ("E", float(item.get('cns', 0))),
-                ("F", float(item.get('afp', 0))),
-                ("G", float(item.get('fonvi', 0))),
-                ("H", float(item.get('aps', 0))),
-                ("I", float(item.get('total_aportes', 0))),
-                ("J", float(item.get('provision_aguinaldo', 0))),
-                ("K", float(item.get('provision_indemnizacion', 0))),
-                ("L", float(item.get('total_provisiones', 0))),
-                ("M", float(item.get('total_carga_patronal', 0))),
+                ("E", round(float(item.get('total_ganado', 0) or 0), 2)),
+                ("F", round(float(item.get('cns', 0) or 0), 2)),
+                ("G", round(float(item.get('afp', 0) or 0), 2)),
+                ("H", round(float(item.get('fonvi', 0) or 0), 2)),
+                ("I", round(float(item.get('aps', 0) or 0), 2)),
+                ("J", round(float(item.get('total_aportes', 0) or 0), 2)),
+                ("K", round(float(item.get('provision_aguinaldo', 0) or 0), 2)),
+                ("L", round(float(item.get('provision_indemnizacion', 0) or 0), 2)),
+                ("M", round(float(item.get('total_provisiones', 0) or 0), 2)),
+                ("N", round(float(item.get('total_carga_patronal', 0) or 0), 2)),
             ]
             for col_l, val in num_cols:
                 c = ws[f"{col_l}{current_row}"]
@@ -3174,21 +3186,22 @@ class DocumentService:
                 c.font = font_td
                 c.alignment = Alignment(horizontal="right", vertical="center")
 
-            for col_c in ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']:
+            for col_c in ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']:
                 ws[f"{col_c}{current_row}"].border = border_cell
 
             current_row += 1
 
         # Fila TOTALES
         ws.row_dimensions[current_row].height = 25
-        ws.merge_cells(f"B{current_row}:C{current_row}")
+        ws.merge_cells(f"B{current_row}:D{current_row}")
         ws[f"B{current_row}"] = "T O T A L E S"
         ws[f"B{current_row}"].font = font_totales
         ws[f"B{current_row}"].fill = fill_totales
         ws[f"B{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
         ws[f"C{current_row}"].fill = fill_totales
+        ws[f"D{current_row}"].fill = fill_totales
 
-        totals_cols = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']
+        totals_cols = ['E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
         for col_l in totals_cols:
             c = ws[f"{col_l}{current_row}"]
             if details:
@@ -3200,7 +3213,7 @@ class DocumentService:
             c.fill = fill_totales
             c.alignment = Alignment(horizontal="right", vertical="center")
 
-        for col_c in ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']:
+        for col_c in ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']:
             ws[f"{col_c}{current_row}"].border = double_bottom
 
         # Bloque de Firmas al pie (Simétrico, separado con espacios y línea entre datos y título)
@@ -3245,17 +3258,18 @@ class DocumentService:
         ws[f'G{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
 
         # Columna J: Separador en blanco (sin bordes)
+        # Columna K: Separador en blanco (sin bordes)
 
-        # Bloque 3: K:M (Firma)
-        ws.merge_cells(f'K{r_sig}:M{r_sig}')
-        ws[f'K{r_sig}'] = ""
-        for col_l in ['K', 'L', 'M']:
+        # Bloque 3: L:N (Firma)
+        ws.merge_cells(f'L{r_sig}:N{r_sig}')
+        ws[f'L{r_sig}'] = ""
+        for col_l in ['L', 'M', 'N']:
             ws[f'{col_l}{r_sig}'].border = thin_black_line
 
-        ws.merge_cells(f'K{r_sig+1}:M{r_sig+1}')
-        ws[f'K{r_sig+1}'] = "FIRMA"
-        ws[f'K{r_sig+1}'].font = Font(name="Arial", size=7.5, bold=True)
-        ws[f'K{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
+        ws.merge_cells(f'L{r_sig+1}:N{r_sig+1}')
+        ws[f'L{r_sig+1}'] = "FIRMA"
+        ws[f'L{r_sig+1}'].font = Font(name="Arial", size=7.5, bold=True)
+        ws[f'L{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
 
         xlsx_path = os.path.join(exports_dir, f"planilla_patronal_{empresa_slug}_{mes_nombre.lower()}_{anio}.xlsx")
         effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
@@ -3466,16 +3480,16 @@ class DocumentService:
             ws[f"I{current_row}"].font = font_td
 
             num_cols = [
-                ("J", float(item.get('haber_basico', 0))),
-                ("K", float(item.get('bono_antiguedad', 0))),
-                ("L", float(item.get('bono_produccion', 0))),
-                ("M", float(item.get('subsidio_frontera', 0))),
-                ("N", float(item.get('trabajo_extraordinario', 0))),
-                ("O", float(item.get('pago_dominical', 0))),
-                ("P", float(item.get('otros_bonos', 0))),
-                ("Q", float(item.get('promedio_total_ganado', 0))),
-                ("R", float(item.get('meses_trabajados', 12))),
-                ("S", float(item.get('total_aguinaldo', 0)))
+                ("J", round(float(item.get('haber_basico', 0) or 0), 2)),
+                ("K", round(float(item.get('bono_antiguedad', 0) or 0), 2)),
+                ("L", round(float(item.get('bono_produccion', 0) or 0), 2)),
+                ("M", round(float(item.get('subsidio_frontera', 0) or 0), 2)),
+                ("N", round(float(item.get('trabajo_extraordinario', 0) or 0), 2)),
+                ("O", round(float(item.get('pago_dominical', 0) or 0), 2)),
+                ("P", round(float(item.get('otros_bonos', 0) or 0), 2)),
+                ("Q", round(float(item.get('promedio_total_ganado', 0) or 0), 2)),
+                ("R", round(float(item.get('meses_trabajados', 12) or 12), 2)),
+                ("S", round(float(item.get('total_aguinaldo', 0) or 0), 2))
             ]
             for col_l, val in num_cols:
                 c = ws[f"{col_l}{current_row}"]

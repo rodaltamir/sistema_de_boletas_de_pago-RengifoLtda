@@ -611,7 +611,7 @@ function EmpleadosPageContent() {
                     </td>
 
                     <td className="p-4 font-mono font-bold text-slate-900">
-                      Bs. {emp.haber_basico.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                      Bs. {emp.haber_basico.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
 
                     <td className="p-4 text-center">
@@ -1123,7 +1123,7 @@ function EmpleadosPageContent() {
                   <div className="p-3.5 bg-white/5 rounded-xl border border-white/5">
                     <p className="text-xs text-slate-400">Haber Básico Mensual</p>
                     <p className="font-bold text-emerald-400 font-mono mt-1">
-                      Bs. {viewingEmployee.haber_basico.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                      Bs. {viewingEmployee.haber_basico.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div className="p-3.5 bg-white/5 rounded-xl border border-white/5">

@@ -1660,12 +1660,12 @@ function AsientosPageContent() {
               {isCuadrado ? (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Balance Cuadrado: Bs. {liveTotalDebe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                  <span>Balance Cuadrado: Bs. {liveTotalDebe.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </>
               ) : (
                 <>
                   <AlertTriangle className="w-4 h-4 text-red-600" />
-                  <span>Descuadrado: Dif. Bs. {liveDiferencia.toLocaleString("es-BO", { minimumFractionDigits: 2 })} (DEBE: {liveTotalDebe} / HABER: {liveTotalHaber})</span>
+                  <span>Descuadrado: Dif. Bs. {liveDiferencia.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (DEBE: {liveTotalDebe} / HABER: {liveTotalHaber})</span>
                 </>
               )}
             </div>
@@ -1828,7 +1828,7 @@ function AsientosPageContent() {
                           </div>
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-                              Bs. {deptoTotal.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                              Bs. {deptoTotal.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                             {!isLockedCuadrantes && devengamiento.departamentos && devengamiento.departamentos.length > 2 && (
                               <button
@@ -1903,7 +1903,7 @@ function AsientosPageContent() {
                   <span className="text-sm font-bold">TOTAL GANADO DEVENGADO (DEBE):</span>
                 </div>
                 <div className="text-xl md:text-2xl font-black text-blue-900">
-                  Bs. {totalGanado.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  Bs. {totalGanado.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               </div>
 
@@ -2074,7 +2074,7 @@ function AsientosPageContent() {
               <div className="bg-emerald-50 px-6 py-3 border-t border-emerald-100 flex items-center justify-between">
                 <span className="text-xs font-bold text-emerald-900">SUBTOTAL PATRONALES:</span>
                 <span className="text-lg font-black text-emerald-900">
-                  Bs. {subtotalPatronal.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  Bs. {subtotalPatronal.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
@@ -2156,7 +2156,7 @@ function AsientosPageContent() {
               <div className="bg-purple-50 px-6 py-3 border-t border-purple-100 flex items-center justify-between">
                 <span className="text-xs font-bold text-purple-900">SUBTOTAL BENEFICIOS:</span>
                 <span className="text-lg font-black text-purple-900">
-                  Bs. {subtotalBeneficios.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  Bs. {subtotalBeneficios.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
@@ -2181,7 +2181,7 @@ function AsientosPageContent() {
                 <div className="text-right">
                   <span className="text-xs text-amber-200 block">Total Min. Trabajo:</span>
                   <span className="text-lg font-black text-white font-mono">
-                    Bs. {totalMinTrabajo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                    Bs. {totalMinTrabajo.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <button
@@ -2326,7 +2326,7 @@ function AsientosPageContent() {
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-amber-950 uppercase">Subtotal Cuadrante 4:</span>
                 <span className="text-base font-black text-amber-950 font-mono">
-                  Bs. {totalMinTrabajo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  Bs. {totalMinTrabajo.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
@@ -2361,7 +2361,7 @@ function AsientosPageContent() {
               <div className="text-right">
                 <div className="text-xs text-slate-300">Total a Pagar Gestora:</div>
                 <div className="text-lg font-black text-white">
-                  Bs. {totalPagoGestora.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  Bs. {totalPagoGestora.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               </div>
             </div>
@@ -2393,14 +2393,14 @@ function AsientosPageContent() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-[11px] font-medium text-slate-500 block">Base Retenciones:</span>
                   <span className="text-sm font-bold text-slate-800">
-                    Bs. {Number(devengamiento.retenciones_ley || 0).toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                    Bs. {Number(devengamiento.retenciones_ley || 0).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
 
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-[11px] font-medium text-slate-500 block">Base Patronal Gestora:</span>
                   <span className="text-sm font-bold text-slate-800">
-                    Bs. {patronalGestora.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                    Bs. {patronalGestora.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
@@ -2424,7 +2424,7 @@ function AsientosPageContent() {
                   <div className="text-right">
                     <span className="text-[10px] text-blue-600 block uppercase font-semibold">Total a Liquidar este mes:</span>
                     <span className="text-xs font-mono font-black text-blue-950">
-                      + Bs. {sumPriorGestora.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                      + Bs. {sumPriorGestora.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -2490,7 +2490,7 @@ function AsientosPageContent() {
 
                                 {/* Desglose de Retenciones y Patronal */}
                                 <div className="text-[11px] text-slate-500 flex items-center gap-2 flex-wrap">
-                                  <span>Saldo capital: <b className="text-slate-800">Bs. {Number(saldo.monto_restante).toLocaleString("es-BO", { minimumFractionDigits: 2 })}</b></span>
+                                  <span>Saldo capital: <b className="text-slate-800">Bs. {Number(saldo.monto_restante).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></span>
                                   {((Number(saldo.monto_retenciones) || 0) > 0 || (Number(saldo.monto_patronal) || 0) > 0) && (
                                     <span className="text-slate-400">
                                       (Retenciones: Bs. {Number(saldo.monto_retenciones || 0).toFixed(2)} | Patronal: Bs. {Number(saldo.monto_patronal || 0).toFixed(2)})
@@ -2521,7 +2521,7 @@ function AsientosPageContent() {
                               <div className="text-right min-w-[110px]">
                                 <span className="text-[10px] text-slate-400 block font-semibold uppercase">Total Liquidar:</span>
                                 <span className={`text-xs font-mono font-black ${isSelected ? "text-emerald-700 text-sm" : "text-slate-400"}`}>
-                                  {isSelected ? `+ Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}` : `Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}`}
+                                  {isSelected ? `+ Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                 </span>
                               </div>
                             </div>
@@ -2675,7 +2675,7 @@ function AsientosPageContent() {
                               <div className="font-mono text-xs font-bold">
                                 {isChecked && hasMonto ? (
                                   <span className="text-red-600">
-                                    - Bs. {item.descRet.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                                    - Bs. {item.descRet.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                                 ) : (
                                   <span className="text-slate-400 font-normal">Bs. 0.00</span>
@@ -2691,7 +2691,7 @@ function AsientosPageContent() {
                               <div className="font-mono text-xs font-bold">
                                 {isChecked && hasMonto ? (
                                   <span className="text-red-600">
-                                    - Bs. {item.descPat.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                                    - Bs. {item.descPat.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                                 ) : (
                                   <span className="text-slate-400 font-normal">Bs. 0.00</span>
@@ -2740,11 +2740,11 @@ function AsientosPageContent() {
                     </div>
                     <div className="flex items-center justify-between text-slate-500 text-[11px]">
                       <span>Total Deducido:</span>
-                      <span className="font-mono text-red-600 font-semibold">- Bs. {gestoraDeduccionCalc.totalDescRet.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono text-red-600 font-semibold">- Bs. {gestoraDeduccionCalc.totalDescRet.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex items-center justify-between border-t border-slate-100 pt-1 font-bold text-slate-800">
                       <span>Neto a Cancelar:</span>
-                      <span className="font-mono text-emerald-700">Bs. {gestoraDeduccionCalc.netoRet.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono text-emerald-700">Bs. {gestoraDeduccionCalc.netoRet.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   </div>
 
@@ -2755,18 +2755,18 @@ function AsientosPageContent() {
                     </div>
                     <div className="flex items-center justify-between text-slate-500 text-[11px]">
                       <span>Total Deducido:</span>
-                      <span className="font-mono text-red-600 font-semibold">- Bs. {gestoraDeduccionCalc.totalDescPat.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono text-red-600 font-semibold">- Bs. {gestoraDeduccionCalc.totalDescPat.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex items-center justify-between border-t border-slate-100 pt-1 font-bold text-slate-800">
                       <span>Neto a Cancelar:</span>
-                      <span className="font-mono text-emerald-700">Bs. {gestoraDeduccionCalc.netoPat.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono text-emerald-700">Bs. {gestoraDeduccionCalc.netoPat.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   </div>
 
                   <div className="p-3 bg-gradient-to-br from-amber-50 to-amber-100/80 rounded-xl border border-amber-300 text-xs space-y-1.5 flex flex-col justify-between">
                     <div className="flex items-center justify-between font-bold text-amber-950">
                       <span>Total Base Efectiva:</span>
-                      <span className="font-mono text-base text-amber-900">Bs. {gestoraDeduccionCalc.baseEfectiva.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono text-base text-amber-900">Bs. {gestoraDeduccionCalc.baseEfectiva.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <p className="text-[11px] text-amber-800/90 leading-tight">
                       {gestoraDeduccionCalc.totalImpRestante > 0
@@ -2869,7 +2869,7 @@ function AsientosPageContent() {
               <div className="text-right">
                 <div className="text-xs text-emerald-200">Total a Pagar Caja:</div>
                 <div className="text-lg font-black text-white">
-                  Bs. {totalPagoCaja.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  Bs. {totalPagoCaja.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               </div>
             </div>
@@ -2901,7 +2901,7 @@ function AsientosPageContent() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-[11px] font-medium text-slate-500 block">Base Aporte Salud:</span>
                   <span className="text-sm font-bold text-slate-800">
-                    Bs. {patronalCaja.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                    Bs. {patronalCaja.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
@@ -2925,7 +2925,7 @@ function AsientosPageContent() {
                   <div className="text-right">
                     <span className="text-[10px] text-teal-600 block uppercase font-semibold">Total a Liquidar este mes:</span>
                     <span className="text-xs font-mono font-black text-teal-950">
-                      + Bs. {sumPriorCaja.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                      + Bs. {sumPriorCaja.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -2990,7 +2990,7 @@ function AsientosPageContent() {
                                 )}
 
                                 <div className="text-[11px] text-slate-500">
-                                  <span>Saldo capital: <b className="text-slate-800">Bs. {Number(saldo.monto_restante).toLocaleString("es-BO", { minimumFractionDigits: 2 })}</b> (10.00% Aporte Salud)</span>
+                                  <span>Saldo capital: <b className="text-slate-800">Bs. {Number(saldo.monto_restante).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> (10.00% Aporte Salud)</span>
                                 </div>
                               </div>
                             </div>
@@ -3016,7 +3016,7 @@ function AsientosPageContent() {
                               <div className="text-right min-w-[110px]">
                                 <span className="text-[10px] text-slate-400 block font-semibold uppercase">Total Liquidar:</span>
                                 <span className={`text-xs font-mono font-black ${isSelected ? "text-emerald-700 text-sm" : "text-slate-400"}`}>
-                                  {isSelected ? `+ Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}` : `Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}`}
+                                  {isSelected ? `+ Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `Bs. ${subtotalSaldo.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                 </span>
                               </div>
                             </div>
@@ -3170,7 +3170,7 @@ function AsientosPageContent() {
                               <div className="font-mono text-xs font-bold">
                                 {isChecked && hasMonto ? (
                                   <span className="text-red-600">
-                                    - Bs. {item.descSalud.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                                    - Bs. {item.descSalud.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                                 ) : (
                                   <span className="text-slate-400 font-normal">Bs. 0.00</span>
@@ -3215,22 +3215,22 @@ function AsientosPageContent() {
                   <div className="p-3 bg-white rounded-xl border border-amber-200 text-xs space-y-1">
                     <div className="flex items-center justify-between text-slate-600">
                       <span className="font-semibold">Base Aporte Salud:</span>
-                      <span className="font-mono font-bold text-slate-800">Bs. {cajaDeduccionCalc.baseSalud.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono font-bold text-slate-800">Bs. {cajaDeduccionCalc.baseSalud.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-500 text-[11px]">
                       <span>Total Deducido (Saldo diferido):</span>
-                      <span className="font-mono text-red-600 font-semibold">- Bs. {cajaDeduccionCalc.totalImpRestante.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono text-red-600 font-semibold">- Bs. {cajaDeduccionCalc.totalImpRestante.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex items-center justify-between border-t border-slate-100 pt-1 font-bold text-slate-800">
                       <span>Neto a Cancelar Este Mes:</span>
-                      <span className="font-mono text-emerald-700">Bs. {cajaDeduccionCalc.netoSalud.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono text-emerald-700">Bs. {cajaDeduccionCalc.netoSalud.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   </div>
 
                   <div className="p-3 bg-gradient-to-br from-amber-50 to-amber-100/80 rounded-xl border border-amber-300 text-xs space-y-1.5 flex flex-col justify-between">
                     <div className="flex items-center justify-between font-bold text-amber-950">
                       <span>Total Base Efectiva Caja:</span>
-                      <span className="font-mono text-base text-amber-900">Bs. {cajaDeduccionCalc.netoSalud.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      <span className="font-mono text-base text-amber-900">Bs. {cajaDeduccionCalc.netoSalud.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                     <p className="text-[11px] text-amber-800/90 leading-tight">
                       {cajaDeduccionCalc.totalImpRestante > 0
@@ -3330,7 +3330,7 @@ function AsientosPageContent() {
               <div className="text-right">
                 <div className="text-xs text-amber-200">Total a Pagar Min. Trabajo:</div>
                 <div className="text-lg font-black text-white">
-                  Bs. {totalPagoMinTrabajo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  Bs. {totalPagoMinTrabajo.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
               </div>
             </div>
@@ -3362,7 +3362,7 @@ function AsientosPageContent() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-[11px] font-medium text-slate-500 block">Base Arancel OVT:</span>
                   <span className="text-sm font-bold text-slate-800">
-                    Bs. {arancelMt.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                    Bs. {arancelMt.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
@@ -3523,10 +3523,10 @@ function AsientosPageContent() {
                                 )}
                               </td>
                               <td className="p-2.5 text-right font-mono text-xs font-bold text-slate-900">
-                                {item.debe > 0 ? item.debe.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : ""}
+                                {item.debe > 0 ? item.debe.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
                               </td>
                               <td className="p-2.5 pr-6 text-right font-mono text-xs font-bold text-slate-900">
-                                {item.haber > 0 ? item.haber.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : ""}
+                                {item.haber > 0 ? item.haber.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
                               </td>
                             </tr>
                             {/* Subcuentas si existen */}
@@ -3547,10 +3547,10 @@ function AsientosPageContent() {
                           Subtotal {section.title}
                         </td>
                         <td className="p-2.5 text-right font-mono text-xs font-black text-slate-900 border-t border-slate-300">
-                          {section.subtotal_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                          {section.subtotal_debe.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="p-2.5 pr-6 text-right font-mono text-xs font-black text-slate-900 border-t border-slate-300">
-                          {section.subtotal_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                          {section.subtotal_haber.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
                     </React.Fragment>
@@ -3616,10 +3616,10 @@ function AsientosPageContent() {
                                 )}
                               </td>
                               <td className="py-1.5 px-4 text-right font-mono text-slate-900">
-                                {item.debe > 0 ? item.debe.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : ""}
+                                {item.debe > 0 ? item.debe.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
                               </td>
                               <td className="py-1.5 px-4 text-right font-mono text-slate-900">
-                                {item.haber > 0 ? item.haber.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : ""}
+                                {item.haber > 0 ? item.haber.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
                               </td>
                             </tr>
 
@@ -3656,13 +3656,13 @@ function AsientosPageContent() {
                           className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 border-t border-slate-700"
                           style={{ borderBottom: "3px double #0f172a" }}
                         >
-                          {section.subtotal_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                          {section.subtotal_debe.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td
                           className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 border-t border-slate-700"
                           style={{ borderBottom: "3px double #0f172a" }}
                         >
-                          {section.subtotal_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                          {section.subtotal_haber.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
                     </tbody>
@@ -3686,13 +3686,13 @@ function AsientosPageContent() {
               <div className="text-right">
                 <span className="text-[11px] font-bold text-slate-500 uppercase block">Total Debe</span>
                 <span className="text-base md:text-lg font-black font-mono text-slate-900 border-b-2 border-slate-800">
-                  Bs. {sheetData?.total_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  Bs. {sheetData?.total_debe.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
               <div className="text-right">
                 <span className="text-[11px] font-bold text-slate-500 uppercase block">Total Haber</span>
                 <span className="text-base md:text-lg font-black font-mono text-slate-900 border-b-2 border-slate-800">
-                  Bs. {sheetData?.total_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                  Bs. {sheetData?.total_haber.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
               <div className="pl-4 border-l border-slate-300 flex items-center gap-2">
@@ -3745,7 +3745,7 @@ function AsientosPageContent() {
               <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-100 space-y-1">
                 <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Total Debe Anual</span>
                 <div className="text-xl md:text-2xl font-black text-blue-900">
-                  Bs. {historyData?.total_anual_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 }) || "0.00"}
+                  Bs. {historyData?.total_anual_debe.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"}
                 </div>
                 <p className="text-[11px] text-blue-600">Consolidado general de débitos del ejercicio</p>
               </div>
@@ -3753,7 +3753,7 @@ function AsientosPageContent() {
               <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-100 space-y-1">
                 <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Total Haber Anual</span>
                 <div className="text-xl md:text-2xl font-black text-emerald-900">
-                  Bs. {historyData?.total_anual_haber.toLocaleString("es-BO", { minimumFractionDigits: 2 }) || "0.00"}
+                  Bs. {historyData?.total_anual_haber.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"}
                 </div>
                 <p className="text-[11px] text-emerald-600">Balance cuadrado al centavo con el Debe</p>
               </div>
@@ -3821,26 +3821,26 @@ function AsientosPageContent() {
                         <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                           <span className="text-slate-500 font-medium">Total Balance (Debe/Haber):</span>
                           <span className="font-bold text-slate-900 font-mono">
-                            Bs. {m.total_debe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                            Bs. {m.total_debe.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
 
                         <div className="space-y-1.5 text-[11px] text-slate-600">
                           <div className="flex justify-between">
                             <span>Total Ganado ({m.departamentos_count} deptos):</span>
-                            <span className="font-semibold text-slate-800">Bs. {m.total_ganado.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-semibold text-slate-800">Bs. {m.total_ganado.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Aportes Patronales (17.21%):</span>
-                            <span className="font-semibold text-slate-800">Bs. {m.patronal_total.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-semibold text-slate-800">Bs. {m.patronal_total.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Beneficios Sociales (16.66%):</span>
-                            <span className="font-semibold text-slate-800">Bs. {m.beneficios_total.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-semibold text-slate-800">Bs. {m.beneficios_total.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Líquido a Pagar:</span>
-                            <span className="font-semibold text-slate-800">Bs. {m.liquido_pagable.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-semibold text-slate-800">Bs. {m.liquido_pagable.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
                         </div>
 
@@ -4023,9 +4023,9 @@ function AsientosPageContent() {
                 <span className={`w-2.5 h-2.5 rounded-full ${isCuadrado ? "bg-emerald-400" : "bg-rose-500 animate-ping"}`} />
                 <span className="text-xs font-bold text-slate-200">
                   {isCuadrado ? (
-                    <span className="text-emerald-400">Balance Cuadrado: Bs. {liveTotalDebe.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                    <span className="text-emerald-400">Balance Cuadrado: Bs. {liveTotalDebe.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   ) : (
-                    <span className="text-rose-400">Descuadre: Bs. {liveDiferencia.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                    <span className="text-rose-400">Descuadre: Bs. {liveDiferencia.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   )}
                 </span>
               </div>
