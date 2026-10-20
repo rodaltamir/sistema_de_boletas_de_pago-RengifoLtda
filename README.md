@@ -14,8 +14,7 @@ Sistema integral de gestión de recursos humanos, nómina salarial, aportes patr
 ## 📑 Tabla de Contenidos
 
 - [🌟 ¿Qué hace el Sistema? (Módulos y Funcionalidades)](#-qué-hace-el-sistema-módulos-y-funcionalidades)
-- [📸 Galería de Capturas de Pantalla](#-galería-de-capturas-de-pantalla)
-- [📂 ¿Dónde guardar las capturas de pantalla?](#-dónde-guardar-las-capturas-de-pantalla)
+- [📸 Capturas de Pantalla](#-capturas-de-pantalla)
 - [🛠️ Stack Tecnológico](#️-stack-tecnológico)
 - [🚀 Instalación y Puesta en Marcha](#-instalación-y-puesta-en-marcha)
   - [Opción 1: Despliegue Rápido con Docker Compose (Recomendado)](#opción-1-despliegue-rápido-con-docker-compose-recomendado)
@@ -31,12 +30,12 @@ Sistema integral de gestión de recursos humanos, nómina salarial, aportes patr
 El sistema automatiza el ciclo de vida laboral y contable completo de una o múltiples empresas en Bolivia:
 
 ### 1. 🏢 Arquitectura Multi-Tenant (Multi-Empresa Aislada)
-* **Aislamiento por Esquema (`Schema-per-tenant`):** Cada empresa cuenta con su propio esquema independiente en PostgreSQL, garantizando confidencialidad y aislamiento total de datos.
+* **Aislamiento por Esquema (`Schema-per-tenant`):** Cada empresa cuenta con su propio esquema independiente en PostgreSQL, garantizando confidencialidad y aislamiento total de datos contables y de personal.
 * **Ficha Corporativa:** Registro de Razón Social, NIT, N° Patronal de Caja de Salud, Tipo de Caja aseguradora (Caja Petrolera de Salud, Caja Nacional de Salud, etc.), Código de Empleador ante el Ministerio de Trabajo (OVT) y logotipo institucional.
 
 ### 2. 👥 Gestión Integral de Empleados
 * **Padrón Laboral Completo:** Registro de datos personales, Documento de Identidad con complemento/extensión, fecha de nacimiento, fecha de ingreso, cargo u ocupación, haber básico contractual, horas laborales y días pagados.
-* **Control de Estados:** Trabajadores activos y personal retirado.
+* **Control de Estados:** Seguimiento claro entre trabajadores activos y personal retirado.
 * **Desvinculación Inteligente:** El botón de desvinculación redirige al trabajador directamente al módulo de Prefiniquitos para garantizar una liquidación formal de beneficios sociales antes de marcarlo como inactivo.
 * **Exportación de Nómina a Excel:** Descarga consolidada de la lista de trabajadores con fecha de ingreso y fecha de salida (para personal retirado) o celda vacía intuitiva para empleados activos, lista para inspecciones laborales.
 
@@ -105,90 +104,29 @@ El sistema automatiza el ciclo de vida laboral y contable completo de una o múl
 
 ---
 
-## 📸 Galería de Capturas de Pantalla
+## 📸 Capturas de Pantalla
 
-A continuación se muestra la vista previa de las interfaces principales del sistema.
-
-### 1. Panel de Control y Métricas Generales
+### 1. Panel de Control (Dashboard)
 ![Panel de Control](./docs/screenshots/dashboard.png)
-*Resumen ejecutivo con indicadores de nómina, total ganado, aportes y estado de los empleados activos.*
+*Vista principal con resumen ejecutivo, métricas salariales del periodo y estado de los trabajadores.*
 
 ---
 
-### 2. Selector y Configuración de Empresas Multi-Tenant
-![Selector de Empresas](./docs/screenshots/empresas.png)
-*Gestión de razones sociales independientes, asignación de NIT, número patronal, caja de salud y logos corporativos.*
-
----
-
-### 3. Padrón y Gestión de Empleados
+### 2. Gestión de Empleados
 ![Módulo de Empleados](./docs/screenshots/empleados.png)
-*Administración de personal, sueldos contractuales, fechas de ingreso/retiro y exportación a Excel.*
+*Administración de personal, registro de salarios contractuales, fechas de ingreso/retiro y exportación a Excel.*
 
 ---
 
-### 4. Planilla Mensual de Sueldos y Salarios
-![Planilla de Sueldos](./docs/screenshots/planillas_sueldos.png)
-*Cálculo de haberes, bono de antigüedad automático, aportes laborales a la Gestora Pública (12.71%) y líquido pagable.*
+### 3. Emisión de Boletas de Pago
+![Boletas de Pago](./docs/screenshots/boletas.png)
+*Generación de boletas oficiales en formato dual (empleador / trabajador) con desglose de ingresos y retenciones.*
 
 ---
 
-### 5. Planilla Patronal y Cargas Sociales
-![Planilla Patronal](./docs/screenshots/planillas_patronal.png)
-*Desglose de aportes patronales (17.21%), provisiones de aguinaldo e indemnización, con columnas separadas de nombres y cargos.*
-
----
-
-### 6. Planilla de Aguinaldos de Navidad
-![Planilla de Aguinaldos](./docs/screenshots/planillas_aguinaldos.png)
-*Cálculo sobre el promedio trimestral de ley, duodécimas sincronizadas con desvinculaciones y generación de boletas navideñas.*
-
----
-
-### 7. Emisión Oficial de Boletas de Pago
-![Boletas de Pago](./docs/screenshots/boletas_pago.png)
-*Boletas de pago oficiales en formato dual empleador/trabajador listas para exportar a Excel y PDF.*
-
----
-
-### 8. Asientos Contables y Comprobantes de Pago
-![Asientos Contables](./docs/screenshots/asientos_contables.png)
-*Cuadrantes de devengamiento, cargas sociales, beneficios y comprobantes de egreso con gestión de importes restantes.*
-
----
-
-### 9. Prefiniquitos y Liquidación de Beneficios Sociales
+### 4. Prefiniquitos y Liquidación de Beneficios Sociales
 ![Prefiniquitos](./docs/screenshots/prefiniquitos.png)
-*Cálculo legal de indemnización, desahucio, vacaciones no gozadas, pagos en cuotas e historial 100% editable.*
-
----
-
-## 📂 ¿Dónde guardar las capturas de pantalla?
-
-Para que las imágenes anteriores se vean directamente en GitHub, en tu lector de Markdown o en la documentación:
-
-1. Ubica la carpeta creada en la raíz del proyecto:
-   ```text
-   sistema_de_boletas_de_pago-RengifoLtda/
-   └── docs/
-       └── screenshots/   <--- [Guarda aquí tus capturas]
-   ```
-2. Guarda tus capturas de pantalla con los siguientes nombres exactos:
-
-| Archivo requerido | Pantalla recomendada |
-| :--- | :--- |
-| `dashboard.png` | Captura del Inicio / Dashboard (`http://localhost:3000/inicio`) |
-| `empresas.png` | Captura del Selector de Empresas (`http://localhost:3000/seleccionar-empresa`) |
-| `empleados.png` | Captura del Módulo de Empleados (`http://localhost:3000/empleados`) |
-| `planillas_sueldos.png` | Captura de la Planilla de Sueldos (`http://localhost:3000/planillas`) |
-| `planillas_patronal.png` | Captura de la Planilla Patronal (`http://localhost:3000/planillas` - Pestaña Patronal) |
-| `planillas_aguinaldos.png` | Captura de la Planilla de Aguinaldos (`http://localhost:3000/planillas` - Pestaña Aguinaldos) |
-| `boletas_pago.png` | Captura del Módulo de Boletas (`http://localhost:3000/boletas`) |
-| `asientos_contables.png` | Captura de Asientos Contables (`http://localhost:3000/asientos`) |
-| `prefiniquitos.png` | Captura de Prefiniquitos (`http://localhost:3000/prefiniquitos`) |
-
-> [!TIP]
-> Puedes utilizar formato `.png` o `.jpg` con resolución recomendada de **1920x1080** para una visualización óptima y profesional.
+*Cálculo de beneficios sociales, indemnización, desahucio, vacaciones no gozadas, pagos en cuotas e historial editable.*
 
 ---
 
@@ -280,13 +218,6 @@ venv\Scripts\activate
 # Instalar dependencias
 pip install -r requirements.txt
 
-# Configurar variables de entorno (crear archivo .env en backend/)
-# POSTGRES_SERVER=localhost
-# POSTGRES_PORT=5432
-# POSTGRES_USER=postgres
-# POSTGRES_PASSWORD=tu_password
-# POSTGRES_DB=db_planillas_pago_rengifo
-
 # Iniciar servidor FastAPI
 uvicorn main:app --reload --port 8000
 ```
@@ -334,14 +265,10 @@ sistema_de_boletas_de_pago-RengifoLtda/
 ├── README.md                       # Documentación principal del sistema
 │
 ├── docs/                           # Documentación y recursos gráficos
-│   └── screenshots/                # Capturas de pantalla para el README
+│   └── screenshots/                # Capturas de pantalla reales del sistema
 │       ├── dashboard.png
 │       ├── empleados.png
-│       ├── planillas_sueldos.png
-│       ├── planillas_patronal.png
-│       ├── planillas_aguinaldos.png
-│       ├── boletas_pago.png
-│       ├── asientos_contables.png
+│       ├── boletas.png
 │       └── prefiniquitos.png
 │
 ├── backend/                        # API RESTful en FastAPI (Python 3.12)
