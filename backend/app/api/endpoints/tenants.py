@@ -19,7 +19,7 @@ def get_db():
 @router.post("/", response_model=TenantResponse, include_in_schema=False)
 def create_tenant(tenant: TenantCreate, db: Session = Depends(get_db)):
     import re
-    # Normalizar el nombre para usarlo como esquema de BD segur0 (solo letras y num minúsculas)
+    # Normalizar el nombre para usarlo como esquema de BD seguro (solo letras y num minúsculas)
     schema_name = re.sub(r'[^a-z0-9]', '', tenant.name.lower())
     if not schema_name:
         raise HTTPException(status_code=400, detail="El nombre de la empresa no es válido.")
@@ -43,7 +43,9 @@ def create_tenant(tenant: TenantCreate, db: Session = Depends(get_db)):
         empleador_ci=tenant.empleador_ci,
         empleador_nit=tenant.empleador_nit or tenant.nit,
         icon=tenant.icon,
-        logo_base64=tenant.logo_base64
+        logo_base64=tenant.logo_base64,
+        has_eventuales=bool(tenant.has_eventuales),
+        has_vacaciones=bool(tenant.has_vacaciones)
     )
     db.add(new_tenant)
     db.commit()
@@ -205,6 +207,8 @@ def update_tenant_dashboard(schema_name: str, data: TenantUpdateRequest, db: Ses
     if data.empleador_nit is not None: tenant.empleador_nit = data.empleador_nit
     if data.icon is not None: tenant.icon = data.icon
     if data.logo_base64 is not None: tenant.logo_base64 = data.logo_base64
+    if data.has_eventuales is not None: tenant.has_eventuales = data.has_eventuales
+    if data.has_vacaciones is not None: tenant.has_vacaciones = data.has_vacaciones
     
     # Actualizar SMN global
     current_year = date.today().year
@@ -253,6 +257,10 @@ def update_tenant(schema_name: str, data: TenantCreate, db: Session = Depends(ge
     tenant.icon = data.icon
     if data.logo_base64:
         tenant.logo_base64 = data.logo_base64
+    if data.has_eventuales is not None:
+        tenant.has_eventuales = data.has_eventuales
+    if data.has_vacaciones is not None:
+        tenant.has_vacaciones = data.has_vacaciones
         
     db.commit()
     db.refresh(tenant)

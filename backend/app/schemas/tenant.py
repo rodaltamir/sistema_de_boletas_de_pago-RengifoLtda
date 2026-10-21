@@ -14,6 +14,8 @@ class TenantCreate(BaseModel):
     empleador_nit: Optional[str] = None
     icon: Optional[str] = "Building2"
     logo_base64: Optional[str] = None
+    has_eventuales: Optional[bool] = False
+    has_vacaciones: Optional[bool] = False
 
 class TenantResponse(BaseModel):
     id: int
@@ -30,6 +32,8 @@ class TenantResponse(BaseModel):
     empleador_nit: Optional[str] = None
     icon: Optional[str] = "Building2"
     logo_base64: Optional[str] = None
+    has_eventuales: Optional[bool] = False
+    has_vacaciones: Optional[bool] = False
     is_active: bool
 
     class Config:
@@ -82,4 +86,6 @@ class TenantUpdateRequest(BaseModel):
     empleador_nit: Optional[str] = None
     icon: Optional[str] = None
     logo_base64: Optional[str] = None
+    has_eventuales: Optional[bool] = None
+    has_vacaciones: Optional[bool] = None
     current_smn: Optional[float] = None

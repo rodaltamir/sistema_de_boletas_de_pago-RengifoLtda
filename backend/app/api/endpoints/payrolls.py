@@ -61,7 +61,7 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
     
     # Obtener info del tenant
     with engine.connect() as conn:
-        result = conn.execute(text(f"SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = '{schema_name}'")).fetchone()
+        result = conn.execute(text(f"SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci, has_eventuales FROM public.tenants WHERE schema_name = '{schema_name}'")).fetchone()
         t_name = result[0] if result else "Empresa"
         t_patronal = result[1] if result and result[1] else "No asignado"
         t_nit = result[2] if result and result[2] else ""
@@ -69,6 +69,7 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
         t_emp_paterno = result[4] if result and result[4] else ""
         t_emp_materno = result[5] if result and result[5] else ""
         t_emp_ci = result[6] if result and result[6] else ""
+        t_has_eventuales = bool(result[7]) if result and len(result) > 7 else False
     
     _, last_day = calendar.monthrange(year, month)
     period_start = date(year, month, 1)
@@ -88,6 +89,9 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
         for p in list(payroll.payslips):
             emp = db.query(Employee).filter(Employee.id == p.employee_id).first()
             if not emp:
+                slips_to_remove.append(p)
+                continue
+            if t_has_eventuales and getattr(emp, 'tipo_contrato', 'permanente') == 'eventual':
                 slips_to_remove.append(p)
                 continue
             # Si su fecha de ingreso es posterior al fin de este mes, no debe figurar en esta planilla
@@ -113,6 +117,8 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
         missing_employees = []
         for emp in all_employees:
             if emp.id in existing_emp_ids:
+                continue
+            if t_has_eventuales and getattr(emp, 'tipo_contrato', 'permanente') == 'eventual':
                 continue
             # El empleado debe haber ingresado a más tardar en este mes
             if emp.fecha_ingreso > period_end:
@@ -209,7 +215,8 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
             slip.employee_fecha_nacimiento = str(emp.fecha_nacimiento)
             slip.employee_sexo = getattr(emp, 'sexo', None) or getattr(emp, 'genero', None) or 'M'
             slip.employee_is_active = emp.is_active
-            valid_slips.append(slip)
+            if not (t_has_eventuales and getattr(emp, 'tipo_contrato', 'permanente') == 'eventual'):
+                valid_slips.append(slip)
             
     response_data.payslips = valid_slips
 

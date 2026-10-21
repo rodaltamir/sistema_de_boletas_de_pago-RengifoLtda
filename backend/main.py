@@ -1,6 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.endpoints import payrolls, tenants, employees, prefiniquitos, auth, departments, accounting, patronal, aguinaldos
+from app.api.endpoints import (
+    payrolls,
+    tenants,
+    employees,
+    prefiniquitos,
+    auth,
+    departments,
+    accounting,
+    patronal,
+    aguinaldos,
+    eventuales,
+    vacations
+)
 from app.db.migrate_tenants import migrate_tenants
 
 app = FastAPI(
@@ -35,6 +47,8 @@ app.include_router(accounting.router, prefix="/api/tenants/{schema_name}/asiento
 app.include_router(prefiniquitos.router, prefix="/api/tenants/{schema_name}/prefiniquitos", tags=["prefiniquitos"])
 app.include_router(patronal.router, prefix="/api/tenants/{schema_name}/patronal", tags=["patronal"])
 app.include_router(aguinaldos.router, prefix="/api/tenants/{schema_name}/aguinaldos", tags=["aguinaldos"])
+app.include_router(eventuales.router, prefix="/api/tenants/{schema_name}/eventuales", tags=["eventuales"])
+app.include_router(vacations.router, prefix="/api/tenants/{schema_name}/vacaciones", tags=["vacaciones"])
 
 @app.get("/")
 def read_root():

@@ -27,4 +27,5 @@ class Employee(Base):
     fecha_ingreso = Column(Date, nullable=False)
     
     haber_basico = Column(Numeric(12, 2), nullable=False) # Sueldo base contratado
+    tipo_contrato = Column(String(50), default="permanente") # "permanente" | "eventual"
     is_active = Column(Boolean, default=True)

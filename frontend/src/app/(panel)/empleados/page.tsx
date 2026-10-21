@@ -45,6 +45,7 @@ interface Employee {
   departamento?: string | null;
   fecha_ingreso: string;
   haber_basico: number;
+  tipo_contrato?: string;
   is_active: boolean;
 }
 
@@ -65,7 +66,8 @@ function EmpleadosPageContent() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"todos" | "activos" | "desvinculados">("todos");
+  const [filterStatus, setFilterStatus] = useState<"todos" | "activos" | "desvinculados" | "permanentes" | "eventuales">("todos");
+  const [hasEventuales, setHasEventuales] = useState(false);
   const [filterDept, setFilterDept] = useState<string>("todos");
   const [reactivatingId, setReactivatingId] = useState<number | null>(null);
   const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
@@ -92,7 +94,8 @@ function EmpleadosPageContent() {
     department_id: null,
     departamento: null,
     fecha_ingreso: "",
-    haber_basico: 3300
+    haber_basico: 3300,
+    tipo_contrato: "permanente"
   });
 
   // Modal Gestión de Departamentos
@@ -141,13 +144,23 @@ function EmpleadosPageContent() {
     setIsAdmin(localStorage.getItem("isAdmin") === "true");
     fetchEmployees();
     fetchDepartments();
+    if (tenantSchema) {
+      fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/dashboard`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.tenant) {
+            setHasEventuales(Boolean(data.tenant.has_eventuales));
+          }
+        })
+        .catch(console.error);
+    }
   }, [tenantSchema]);
 
   const handleOpenModal = (emp?: Employee) => {
     setError("");
     if (emp) {
       setIsEditing(true);
-      setFormData(emp);
+      setFormData({ ...emp, tipo_contrato: emp.tipo_contrato || 'permanente' });
     } else {
       setIsEditing(false);
       setFormData({
@@ -164,7 +177,8 @@ function EmpleadosPageContent() {
         department_id: departments.length > 0 ? departments[0].id : null,
         departamento: departments.length > 0 ? departments[0].name : null,
         fecha_ingreso: "",
-        haber_basico: 3300
+        haber_basico: 3300,
+        tipo_contrato: 'permanente'
       });
     }
     setShowModal(true);
@@ -401,6 +415,8 @@ function EmpleadosPageContent() {
 
   const activeCount = employees.filter(e => e.is_active).length;
   const inactiveCount = employees.filter(e => !e.is_active).length;
+  const permanentCount = employees.filter(e => e.is_active && e.tipo_contrato !== "eventual").length;
+  const eventualCount = employees.filter(e => e.is_active && e.tipo_contrato === "eventual").length;
 
   const filteredEmployees = employees.filter(emp => {
     const q = search.toLowerCase();
@@ -417,6 +433,8 @@ function EmpleadosPageContent() {
 
     if (filterStatus === "activos") return emp.is_active;
     if (filterStatus === "desvinculados") return !emp.is_active;
+    if (filterStatus === "permanentes") return emp.is_active && emp.tipo_contrato !== "eventual";
+    if (filterStatus === "eventuales") return emp.is_active && emp.tipo_contrato === "eventual";
 
     if (filterDept !== "todos") {
       if (filterDept === "sin_depto") return !emp.department_id;
@@ -538,13 +556,32 @@ function EmpleadosPageContent() {
               >
                 Todos ({employees.length})
               </button>
-              <button
-                onClick={() => setFilterStatus("activos")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${filterStatus === "activos" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
-              >
-                <CheckCircle className="w-3.5 h-3.5" />
-                Activos ({activeCount})
-              </button>
+              {hasEventuales ? (
+                <>
+                  <button
+                    onClick={() => setFilterStatus("permanentes")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${filterStatus === "permanentes" ? "bg-teal-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Permanentes ({permanentCount})
+                  </button>
+                  <button
+                    onClick={() => setFilterStatus("eventuales")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${filterStatus === "eventuales" ? "bg-amber-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    Eventuales ({eventualCount})
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setFilterStatus("activos")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${filterStatus === "activos" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Activos ({activeCount})
+                </button>
+              )}
               <button
                 onClick={() => setFilterStatus("desvinculados")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${filterStatus === "desvinculados" ? "bg-rose-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
@@ -994,6 +1031,46 @@ function EmpleadosPageContent() {
                       />
                     </div>
                   </div>
+
+                  {hasEventuales && (
+                    <div className="bg-slate-800/80 p-4 rounded-2xl border border-teal-500/30">
+                      <label className="block text-sm font-bold text-teal-200 mb-2">Condición Laboral / Tipo de Personal *</label>
+                      <div className="grid grid-cols-2 gap-4">
+                        <label className={`flex items-center justify-center gap-2 p-3 rounded-xl border cursor-pointer font-bold text-sm transition-all ${
+                          formData.tipo_contrato !== 'eventual' 
+                            ? 'bg-teal-500/20 border-teal-400 text-teal-200 shadow-sm' 
+                            : 'bg-black/30 border-white/10 text-slate-400 hover:border-white/30'
+                        }`}>
+                          <input
+                            type="radio"
+                            name="tipo_contrato"
+                            value="permanente"
+                            checked={formData.tipo_contrato !== 'eventual'}
+                            onChange={() => setFormData({ ...formData, tipo_contrato: 'permanente' })}
+                            className="sr-only"
+                          />
+                          <CheckCircle className="w-4 h-4 text-teal-400" />
+                          <span>Personal Permanente</span>
+                        </label>
+                        <label className={`flex items-center justify-center gap-2 p-3 rounded-xl border cursor-pointer font-bold text-sm transition-all ${
+                          formData.tipo_contrato === 'eventual' 
+                            ? 'bg-amber-500/20 border-amber-400 text-amber-200 shadow-sm' 
+                            : 'bg-black/30 border-white/10 text-slate-400 hover:border-white/30'
+                        }`}>
+                          <input
+                            type="radio"
+                            name="tipo_contrato"
+                            value="eventual"
+                            checked={formData.tipo_contrato === 'eventual'}
+                            onChange={() => setFormData({ ...formData, tipo_contrato: 'eventual' })}
+                            className="sr-only"
+                          />
+                          <Layers className="w-4 h-4 text-amber-400" />
+                          <span>Personal Eventual</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Fila 5: Departamento Asignado */}
                   <div>

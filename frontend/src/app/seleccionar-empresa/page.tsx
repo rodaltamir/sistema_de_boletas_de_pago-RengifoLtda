@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, Plus, ArrowRight, Briefcase, Factory, Store, X, Upload, CheckCircle2, AlertCircle, Building, Loader2 } from "lucide-react";
+import { Building2, Plus, ArrowRight, Briefcase, Factory, Store, X, Upload, CheckCircle2, AlertCircle, Building, Loader2, Calendar, FileText } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
 
 import Swal from "sweetalert2";
@@ -33,6 +33,8 @@ interface Tenant {
   caja_salud?: string | null;
   min_trabajo_id?: string | null;
   icon: string | null;
+  has_eventuales?: boolean;
+  has_vacaciones?: boolean;
 }
 
 export default function SeleccionarEmpresa() {
@@ -55,7 +57,9 @@ export default function SeleccionarEmpresa() {
     empleador_apellido_paterno: "",
     empleador_apellido_materno: "",
     empleador_ci: "",
-    empleador_nit: ""
+    empleador_nit: "",
+    has_eventuales: false,
+    has_vacaciones: false
   });
 
   // Cargar empresas desde el Backend
@@ -118,7 +122,9 @@ export default function SeleccionarEmpresa() {
       empleador_apellido_paterno: tenant.empleador_apellido_paterno || "",
       empleador_apellido_materno: tenant.empleador_apellido_materno || "",
       empleador_ci: tenant.empleador_ci || "",
-      empleador_nit: tenant.empleador_nit || ""
+      empleador_nit: tenant.empleador_nit || "",
+      has_eventuales: Boolean(tenant.has_eventuales),
+      has_vacaciones: Boolean(tenant.has_vacaciones)
     });
     setShowModal(true);
   };
@@ -182,17 +188,9 @@ export default function SeleccionarEmpresa() {
     setSubmitting(true);
     setError("");
 
-    // Validaciones estrictas
-    if (formData.name.trim().length < 3) {
-      const msg = "El nombre de la empresa debe tener al menos 3 caracteres.";
-      setError(msg);
-      Swal.fire({ title: "Validación", text: msg, icon: "warning", background: "#1e293b", color: "#fff" });
-      setSubmitting(false);
-      return;
-    }
-    
-    if (formData.nit && !/^\d+$/.test(formData.nit.replace(/\s/g, ''))) {
-      const msg = "El NIT debe contener únicamente números.";
+    // Validaciones
+    if (formData.nit && formData.nit.length < 5) {
+      const msg = "El NIT ingresado no parece válido (muy corto).";
       setError(msg);
       Swal.fire({ title: "Validación", text: msg, icon: "warning", background: "#1e293b", color: "#fff" });
       setSubmitting(false);
@@ -245,7 +243,8 @@ export default function SeleccionarEmpresa() {
       // Resetear formulario
       setFormData({
         name: "", nit: "", numero_patronal: "", caja_salud: "Caja Petrolera de Salud", min_trabajo_id: "", icon: "Building2", logo_base64: "",
-        empleador_nombres: "", empleador_apellido_paterno: "", empleador_apellido_materno: "", empleador_ci: "", empleador_nit: ""
+        empleador_nombres: "", empleador_apellido_paterno: "", empleador_apellido_materno: "", empleador_ci: "", empleador_nit: "",
+        has_eventuales: false, has_vacaciones: false
       });
     } catch (err: any) {
       setError(err.message);
@@ -325,10 +324,24 @@ export default function SeleccionarEmpresa() {
                         <SelectedIcon className="text-teal-300 w-8 h-8" />
                       </div>
                       <h2 className="text-2xl font-bold text-white mb-2 line-clamp-2">{tenant.name}</h2>
-                      <p className="text-teal-100/70 text-sm mb-6 flex-grow">
+                      <p className="text-teal-100/70 text-sm mb-4">
                         NIT: {tenant.nit || "No registrado"} <br/> 
                         Esquema BD: {tenant.schema_name}
                       </p>
+
+                      {/* Badges de Funcionalidades Activas */}
+                      <div className="flex flex-wrap gap-2 mb-6">
+                        {tenant.has_eventuales && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            <FileText className="w-3 h-3" /> Eventuales
+                          </span>
+                        )}
+                        {tenant.has_vacaciones && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                            <Calendar className="w-3 h-3" /> Vacaciones
+                          </span>
+                        )}
+                      </div>
                       
                       <div className="flex items-center text-teal-300 font-semibold group-hover:text-teal-100 transition-colors mt-auto">
                         Administrar Planillas <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
@@ -351,7 +364,8 @@ export default function SeleccionarEmpresa() {
                     setEditingTenant(null);
                     setFormData({
                       name: "", nit: "", numero_patronal: "", caja_salud: "Caja Petrolera de Salud", min_trabajo_id: "", icon: "Building2", logo_base64: "",
-                      empleador_nombres: "", empleador_apellido_paterno: "", empleador_apellido_materno: "", empleador_ci: "", empleador_nit: ""
+                      empleador_nombres: "", empleador_apellido_paterno: "", empleador_apellido_materno: "", empleador_ci: "", empleador_nit: "",
+                      has_eventuales: false, has_vacaciones: false
                     });
                     setShowModal(true);
                   }}
@@ -493,6 +507,57 @@ export default function SeleccionarEmpresa() {
                     </div>
                   </div>
 
+                  {/* Fila: Módulos Opcionales (CHECKBOXES SOLICITADOS) */}
+                  <div className="bg-slate-900/60 border border-teal-500/30 rounded-2xl p-5 space-y-4">
+                    <div>
+                      <h3 className="text-base font-bold text-white flex items-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-teal-400" />
+                        Módulos Opcionales y Funcionalidades
+                      </h3>
+                      <p className="text-xs text-teal-200/70 mt-1">
+                        Habilita las opciones requeridas para el entorno de esta empresa:
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                      {/* Checkbox 1: Planilla de Eventuales */}
+                      <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
+                        formData.has_eventuales ? 'bg-teal-500/15 border-teal-400 shadow-sm' : 'bg-black/20 border-white/10 hover:border-white/20'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={formData.has_eventuales}
+                          onChange={(e) => setFormData({ ...formData, has_eventuales: e.target.checked })}
+                          className="w-5 h-5 mt-0.5 rounded text-teal-500 focus:ring-teal-400 focus:ring-offset-slate-900 bg-slate-900 border-white/30 cursor-pointer shrink-0"
+                        />
+                        <div>
+                          <span className="font-semibold text-sm text-white block">Planilla de Eventuales</span>
+                          <span className="text-xs text-slate-300 block mt-0.5">
+                            Permite registrar personal eventual y permanente con haber básico editable e independiente.
+                          </span>
+                        </div>
+                      </label>
+
+                      {/* Checkbox 2: Control de Vacaciones */}
+                      <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
+                        formData.has_vacaciones ? 'bg-teal-500/15 border-teal-400 shadow-sm' : 'bg-black/20 border-white/10 hover:border-white/20'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={formData.has_vacaciones}
+                          onChange={(e) => setFormData({ ...formData, has_vacaciones: e.target.checked })}
+                          className="w-5 h-5 mt-0.5 rounded text-teal-500 focus:ring-teal-400 focus:ring-offset-slate-900 bg-slate-900 border-white/30 cursor-pointer shrink-0"
+                        />
+                        <div>
+                          <span className="font-semibold text-sm text-white block">Control de Vacaciones</span>
+                          <span className="text-xs text-slate-300 block mt-0.5">
+                            Módulo de cálculo de antigüedad (Art. 44 LGT), vacaciones a cuenta, solicitadas y colectivas.
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
                   {/* Fila 3: Icono Representativo */}
                   <div>
                     <label className="block text-sm font-medium text-teal-100 mb-3">Icono Representativo</label>
@@ -566,7 +631,7 @@ export default function SeleccionarEmpresa() {
                   disabled={submitting}
                   className="px-6 py-2.5 rounded-xl bg-teal-500 text-slate-900 font-bold hover:bg-teal-400 hover:scale-105 transition-all shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
                 >
-                  {submitting ? <><Loader2 className="w-5 h-5 animate-spin" /> Creando entorno...</> : 'Confirmar y Crear Entorno'}
+                  {submitting ? <><Loader2 className="w-5 h-5 animate-spin" /> Guardando entorno...</> : (editingTenant ? 'Guardar Cambios' : 'Confirmar y Crear Entorno')}
                 </button>
               </div>
 

@@ -30,5 +30,9 @@ class Tenant(Base):
     icon = Column(String(50), nullable=True)
     logo_base64 = Column(String, nullable=True)
     
+    # Módulos adicionales configurables
+    has_eventuales = Column(Boolean, default=False)
+    has_vacaciones = Column(Boolean, default=False)
+    
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useState, useEffect, Suspense } from "react";
-import { Building2, Briefcase, Factory, Store, Building, LogOut, RefreshCw } from 'lucide-react';
+import { Building2, Briefcase, Factory, Store, Building, LogOut, RefreshCw, Calendar } from 'lucide-react';
 import { getApiUrl } from "@/utils/api";
 
 const ICON_OPTIONS = {
@@ -26,6 +26,8 @@ function DashboardLayoutContent({
   const [tenantName, setTenantName] = useState("Cargando...");
   const [tenantIcon, setTenantIcon] = useState<IconName>("Building2");
   const [tenantLogo, setTenantLogo] = useState<string | null>(null);
+  const [hasVacaciones, setHasVacaciones] = useState(false);
+  const [hasEventuales, setHasEventuales] = useState(false);
 
   useEffect(() => {
     if (tenantSchema) {
@@ -36,6 +38,8 @@ function DashboardLayoutContent({
             setTenantName(data.tenant.name);
             setTenantIcon((data.tenant.icon as IconName) || "Building2");
             setTenantLogo(data.tenant.logo_base64 || null);
+            setHasVacaciones(Boolean(data.tenant.has_vacaciones));
+            setHasEventuales(Boolean(data.tenant.has_eventuales));
           }
         })
         .catch(err => console.error(err));
@@ -50,11 +54,11 @@ function DashboardLayoutContent({
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <nav className="bg-slate-900 text-white shadow-2xl border-b border-teal-500/30 sticky top-0 z-50">
-        <div className="w-full mx-auto px-4 sm:px-8 lg:px-12">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
             
             {/* Sección Izquierda: Logos y Links */}
-            <div className="flex items-center gap-8">
+            <div className="flex items-center gap-6">
               
               {/* Branding combinado */}
               <div className="flex items-center gap-4">
@@ -82,7 +86,7 @@ function DashboardLayoutContent({
                         <SelectedIcon className="w-5 h-5" />
                       </div>
                     )}
-                    <span className="font-bold text-teal-50 tracking-wide truncate max-w-[150px] md:max-w-[200px]">
+                    <span className="font-bold text-teal-50 tracking-wide truncate max-w-[140px] md:max-w-[180px]">
                       {tenantName}
                     </span>
                   </div>
@@ -92,13 +96,19 @@ function DashboardLayoutContent({
               {/* Links de Navegación */}
               {tenantSchema && (
                 <div className="hidden lg:block">
-                  <div className="flex items-baseline space-x-1">
-                    <Link href={getHref("/inicio")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Panel de Control</Link>
-                    <Link href={getHref("/empleados")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Directorio de Personal</Link>
-                    <Link href={getHref("/planillas")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Planillas de Sueldos</Link>
-                    <Link href={getHref("/boletas")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Boletas</Link>
-                    <Link href={getHref("/asientos")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Asientos Contables</Link>
-                    <Link href={getHref("/prefiniquitos")} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Prefiniquitos y Liquidaciones</Link>
+                  <div className="flex items-center space-x-1">
+                    <Link href={getHref("/inicio")} className="px-3 py-2 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Panel de Control</Link>
+                    <Link href={getHref("/empleados")} className="px-3 py-2 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Personal</Link>
+                    <Link href={getHref("/planillas")} className="px-3 py-2 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Planillas</Link>
+                    {hasVacaciones && (
+                      <Link href={getHref("/vacaciones")} className="px-3 py-2 rounded-xl text-sm font-semibold text-teal-300 bg-teal-500/10 border border-teal-500/30 hover:bg-teal-500/20 hover:text-white transition-all flex items-center gap-1.5 shadow-xs">
+                        <Calendar className="w-3.5 h-3.5 text-teal-400" />
+                        <span>Vacaciones</span>
+                      </Link>
+                    )}
+                    <Link href={getHref("/boletas")} className="px-3 py-2 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Boletas</Link>
+                    <Link href={getHref("/asientos")} className="px-3 py-2 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Asientos</Link>
+                    <Link href={getHref("/prefiniquitos")} className="px-3 py-2 rounded-xl text-sm font-semibold text-slate-300 hover:text-teal-300 hover:bg-white/10 transition-all">Prefiniquitos</Link>
                   </div>
                 </div>
               )}

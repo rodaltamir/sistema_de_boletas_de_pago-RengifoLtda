@@ -25,7 +25,12 @@ import {
   Building,
   Save,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Briefcase,
+  Users,
+  Check,
+  AlertCircle,
+  Sparkles
 } from "lucide-react";
 import { getApiUrl } from "@/utils/api";
 import { getStoredPeriod, setStoredPeriod } from "@/utils/period";
@@ -168,6 +173,57 @@ interface AguinaldoPayrollData {
   };
 }
 
+// --- INTERFACES: PLANILLA DE EVENTUALES (NUEVA) ---
+interface EventualPayslip {
+  id: number;
+  eventual_payroll_id: number;
+  employee_id: number;
+  employee_code?: string;
+  employee_name?: string;
+  employee_ci?: string;
+  employee_cargo?: string;
+  employee_fecha_ingreso?: string;
+  employee_nacionalidad?: string;
+  employee_fecha_nacimiento?: string;
+  employee_sexo?: string;
+  employee_tipo_contrato?: string;
+  employee_is_active?: boolean;
+  
+  dias_pagados: number;
+  horas_pagadas: number;
+  haber_basico: number;
+  bono_antiguedad: number;
+  bono_produccion: number;
+  subsidio_frontera: number;
+  trabajo_extraordinario: number;
+  pago_dominical: number;
+  otros_bonos: number;
+  subsidio_natalidad: number;
+  total_ganado: number;
+  aporte_gestora: number;
+  rc_iva: number;
+  anticipos: number;
+  otros_descuentos: number;
+  total_descuentos: number;
+  liquido_pagable: number;
+  is_customized?: boolean;
+}
+
+interface EventualPayrollData {
+  id: number;
+  month: number;
+  year: number;
+  is_closed: boolean;
+  tenant_name?: string;
+  tenant_nro_patronal?: string;
+  tenant_nit?: string;
+  tenant_empleador_nombres?: string;
+  tenant_empleador_apellido_paterno?: string;
+  tenant_empleador_apellido_materno?: string;
+  tenant_empleador_ci?: string;
+  payslips: EventualPayslip[];
+}
+
 const MONTHS = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
@@ -179,7 +235,7 @@ function PlanillasPageContent() {
   const tenantSchema = searchParams.get("tenant");
 
   // Pestaña activa principal
-  const [activeTab, setActiveTab] = useState<'sueldos' | 'patronal' | 'aguinaldos'>('sueldos');
+  const [activeTab, setActiveTab] = useState<'sueldos' | 'eventuales' | 'patronal' | 'aguinaldos'>('sueldos');
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -394,7 +450,240 @@ function PlanillasPageContent() {
     }
   };
 
+    // ==========================================
+  // ESTADO Y MÉTODOS: PLANILLA DE EVENTUALES (NUEVA)
   // ==========================================
+  const [hasEventuales, setHasEventuales] = useState(false);
+  const [eventualMonth, setEventualMonth] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().month;
+    }
+    return new Date().getMonth() + 1;
+  });
+  const [eventualYear, setEventualYear] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      return getStoredPeriod().year;
+    }
+    return new Date().getFullYear();
+  });
+
+  const handleEventualMonthChange = (newMonth: number) => {
+    setEventualMonth(newMonth);
+    setStoredPeriod(newMonth, eventualYear, tenantSchema);
+  };
+
+  const handleEventualYearChange = (newYear: number) => {
+    setEventualYear(newYear);
+    setStoredPeriod(eventualMonth, newYear, tenantSchema);
+  };
+
+  const [eventualPayroll, setEventualPayroll] = useState<EventualPayrollData | null>(null);
+  const [eventualLoading, setEventualLoading] = useState(false);
+  const [eventualSearch, setEventualSearch] = useState("");
+  const [eventualFilterType, setEventualFilterType] = useState<"todos" | "eventual" | "permanente">("todos");
+  const [expandedEventualSlips, setExpandedEventualSlips] = useState<number[]>([]);
+
+  // Edición directa del Haber Básico
+  const [editingSlipId, setEditingSlipId] = useState<number | null>(null);
+  const [editingHbValue, setEditingHbValue] = useState<string>("");
+  const [savingSlipId, setSavingSlipId] = useState<number | null>(null);
+  const [saveSuccessSlipId, setSaveSuccessSlipId] = useState<number | null>(null);
+
+  // Modales confirmación cerrar/reabrir
+  const [showConfirmEventualModal, setShowConfirmEventualModal] = useState(false);
+  const [confirmingEventual, setConfirmingEventual] = useState(false);
+  const [showReopenEventualModal, setShowReopenEventualModal] = useState(false);
+  const [reopeningEventual, setReopeningEventual] = useState(false);
+
+  const fetchEventualPayroll = async () => {
+    if (!tenantSchema) return;
+    setEventualLoading(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/eventuales/${eventualMonth}/${eventualYear}`);
+      if (res.ok) {
+        const data = await res.json();
+        setEventualPayroll(data);
+      }
+    } catch (err) {
+      console.error("Error al cargar planilla eventual:", err);
+    } finally {
+      setEventualLoading(false);
+    }
+  };
+
+  const handleStartEditHb = (slip: EventualPayslip) => {
+    setEditingSlipId(slip.id);
+    const val = Number(slip.haber_basico || 0);
+    setEditingHbValue(val === 0 ? "" : String(val));
+  };
+
+  const handleCancelEditHb = () => {
+    setEditingSlipId(null);
+    setEditingHbValue("");
+  };
+
+  const handleSaveHaberBasico = async (slipId: number, valOverride?: number) => {
+    if (!tenantSchema || !eventualPayroll) return;
+    const rawStr = editingHbValue.trim();
+    const numVal = valOverride !== undefined 
+      ? valOverride 
+      : (rawStr === "" ? 0 : parseFloat(rawStr));
+    if (isNaN(numVal) || numVal < 0) {
+      alert("Por favor introduzca un monto válido para el Haber Básico (0 o mayor).");
+      return;
+    }
+    setSavingSlipId(slipId);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/eventuales/slip/${slipId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ haber_basico: numVal })
+      });
+      if (res.ok) {
+        const updatedSlip: EventualPayslip = await res.json();
+        setEventualPayroll(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            payslips: prev.payslips.map(s => s.id === updatedSlip.id ? updatedSlip : s)
+          };
+        });
+        setEditingSlipId(null);
+        setSaveSuccessSlipId(slipId);
+        setTimeout(() => setSaveSuccessSlipId(null), 2500);
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Error al actualizar el Haber Básico");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error de conexión al guardar el Haber Básico");
+    } finally {
+      setSavingSlipId(null);
+    }
+  };
+
+  const handleCloseEventualPayroll = async () => {
+    if (!tenantSchema || !eventualMonth || !eventualYear) return;
+    setConfirmingEventual(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/eventuales/${eventualMonth}/${eventualYear}/close`, {
+        method: "POST"
+      });
+      if (res.ok) {
+        setEventualPayroll(prev => prev ? { ...prev, is_closed: true } : prev);
+        setShowConfirmEventualModal(false);
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Error al cerrar la planilla de eventuales");
+      }
+    } catch (e) {
+      alert("Error de conexión");
+    } finally {
+      setConfirmingEventual(false);
+    }
+  };
+
+  const handleReopenEventualPayroll = async () => {
+    if (!tenantSchema || !eventualMonth || !eventualYear) return;
+    setReopeningEventual(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/eventuales/${eventualMonth}/${eventualYear}/reopen`, {
+        method: "POST"
+      });
+      if (res.ok) {
+        setEventualPayroll(prev => prev ? { ...prev, is_closed: false } : prev);
+        setShowReopenEventualModal(false);
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Error al reabrir la planilla de eventuales");
+      }
+    } catch (e) {
+      alert("Error de conexión");
+    } finally {
+      setReopeningEventual(false);
+    }
+  };
+
+  const handleExportEventual = (format: 'pdf' | 'excel') => {
+    if (!tenantSchema || !eventualMonth || !eventualYear) return;
+    const url = `${getApiUrl()}/api/tenants/${tenantSchema}/eventuales/${eventualMonth}/${eventualYear}/export/${format}`;
+    window.open(url, '_blank');
+  };
+
+  const toggleExpandEventual = (id: number) => {
+    setExpandedEventualSlips(prev => 
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
+  };
+
+  const toggleExpandAllEventual = () => {
+    if (eventualPayroll) {
+      if (expandedEventualSlips.length === eventualPayroll.payslips.length) {
+        setExpandedEventualSlips([]);
+      } else {
+        setExpandedEventualSlips(eventualPayroll.payslips.map(s => s.id));
+      }
+    }
+  };
+
+  const filteredEventualSlips = React.useMemo(() => {
+    if (!eventualPayroll?.payslips) return [];
+    return eventualPayroll.payslips.filter(s => {
+      if (eventualFilterType === "eventual" && s.employee_tipo_contrato !== "eventual") return false;
+      if (eventualFilterType === "permanente" && s.employee_tipo_contrato === "eventual") return false;
+      if (!eventualSearch) return true;
+      const q = eventualSearch.toLowerCase().trim();
+      const name = (s.employee_name || "").toLowerCase();
+      const ci = (s.employee_ci || "").toLowerCase();
+      const code = (s.employee_code || "").toLowerCase();
+      const cargo = (s.employee_cargo || "").toLowerCase();
+      return name.includes(q) || ci.includes(q) || code.includes(q) || cargo.includes(q);
+    });
+  }, [eventualPayroll, eventualFilterType, eventualSearch]);
+
+  const totalsEventuales = React.useMemo(() => {
+    if (!eventualPayroll?.payslips || eventualPayroll.payslips.length === 0) {
+      return {
+        total_empleados: 0,
+        eventuales_count: 0,
+        permanentes_count: 0,
+        haber_basico: 0,
+        bono_antiguedad: 0,
+        total_ganado: 0,
+        aporte_gestora: 0,
+        total_descuentos: 0,
+        liquido_pagable: 0
+      };
+    }
+    const slips = eventualPayroll.payslips;
+    return slips.reduce((acc, s) => {
+      const isEv = s.employee_tipo_contrato === "eventual";
+      return {
+        total_empleados: acc.total_empleados + 1,
+        eventuales_count: acc.eventuales_count + (isEv ? 1 : 0),
+        permanentes_count: acc.permanentes_count + (isEv ? 0 : 1),
+        haber_basico: acc.haber_basico + Number(s.haber_basico || 0),
+        bono_antiguedad: acc.bono_antiguedad + Number(s.bono_antiguedad || 0),
+        total_ganado: acc.total_ganado + Number(s.total_ganado || 0),
+        aporte_gestora: acc.aporte_gestora + Number(s.aporte_gestora || 0),
+        total_descuentos: acc.total_descuentos + Number(s.total_descuentos || 0),
+        liquido_pagable: acc.liquido_pagable + Number(s.liquido_pagable || 0)
+      };
+    }, {
+      total_empleados: 0,
+      eventuales_count: 0,
+      permanentes_count: 0,
+      haber_basico: 0,
+      bono_antiguedad: 0,
+      total_ganado: 0,
+      aporte_gestora: 0,
+      total_descuentos: 0,
+      liquido_pagable: 0
+    });
+  }, [eventualPayroll]);
+
+// ==========================================
   // ESTADO Y MÉTODOS: PLANILLA PATRONAL (NUEVA)
   const [patronalMonth, setPatronalMonth] = useState<number>(() => {
     if (typeof window !== "undefined") {
@@ -658,8 +947,26 @@ function PlanillasPageContent() {
       setPatronalMonth(p.month);
       setPatronalYear(p.year);
       setAguinaldoYear(p.year);
+      setEventualMonth(p.month);
+      setEventualYear(p.year);
+
+      fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/dashboard`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.tenant) {
+            setHasEventuales(Boolean(data.tenant.has_eventuales));
+          }
+        })
+        .catch(console.error);
     }
   }, [tenantSchema]);
+
+  useEffect(() => {
+    if (!tenantSchema) return;
+    if (activeTab === 'eventuales') {
+      fetchEventualPayroll();
+    }
+  }, [activeTab, tenantSchema, eventualMonth, eventualYear]);
 
   // Carga reactiva de datos al cambiar pestaña o período
   useEffect(() => {
@@ -702,6 +1009,23 @@ function PlanillasPageContent() {
           <Calculator className="w-5 h-5" />
           Planilla de Sueldos y Salarios
         </button>
+
+        {hasEventuales && (
+          <button
+            onClick={() => setActiveTab('eventuales')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
+              activeTab === 'eventuales'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'text-amber-800 hover:text-amber-950 bg-amber-50 hover:bg-amber-100/80 border border-amber-200'
+            }`}
+          >
+            <Briefcase className="w-5 h-5 text-amber-500" />
+            Planilla de Eventuales
+            <span className="ml-1 px-1.5 py-0.5 text-[10px] font-black rounded-md bg-amber-200/60 text-amber-900 uppercase tracking-wider">
+              Especial
+            </span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab('patronal')}
@@ -1014,7 +1338,477 @@ function PlanillasPageContent() {
         </div>
       )}
 
+            {/* ========================================================= */}
+      {/* VISTA EVENTUALES: PERSONAL EVENTUAL Y PERMANENTE          */}
       {/* ========================================================= */}
+      {activeTab === 'eventuales' && (
+        <div className="space-y-6">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
+                <Briefcase className="text-amber-600 w-8 h-8" />
+                Planilla de Eventuales y Permanentes
+              </h1>
+              <p className="text-slate-600 mt-1">
+                Planilla concentrada con Haber Básico independiente y editable para todo el personal.
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
+              <select 
+                value={eventualMonth} 
+                onChange={(e) => handleEventualMonthChange(Number(e.target.value))}
+                className="bg-slate-50 border-none outline-none text-slate-900 font-semibold px-4 py-2 rounded-xl focus:ring-2 focus:ring-amber-500"
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={i+1} value={i+1}>{m}</option>
+                ))}
+              </select>
+              <input 
+                type="number" 
+                value={eventualYear}
+                onChange={(e) => handleEventualYearChange(Number(e.target.value))}
+                className="w-24 bg-slate-50 border-none outline-none text-slate-900 font-semibold px-4 py-2 rounded-xl focus:ring-2 focus:ring-amber-500"
+              />
+              <button 
+                onClick={fetchEventualPayroll}
+                disabled={eventualLoading}
+                className="bg-amber-600 text-white px-6 py-2 rounded-xl font-bold shadow-md hover:bg-amber-700 transition flex items-center gap-2"
+              >
+                {eventualLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                Cargar Planilla
+              </button>
+            </div>
+          </div>
+
+          {/* Banner Informativo */}
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+            <div className="p-2 bg-amber-100 text-amber-800 rounded-xl mt-0.5">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div className="text-xs text-amber-900 leading-relaxed">
+              <p className="font-bold text-sm text-amber-950 mb-0.5">Características de la Planilla de Eventuales:</p>
+              Esta planilla incluye automáticamente a todos los trabajadores con contrato <strong>Eventual</strong> y <strong>Permanente</strong>.
+              El <strong>Haber Básico</strong> es completamente editable e independiente de la planilla general de sueldos: al guardar un nuevo haber básico se recalculan de inmediato el Total Ganado, el aporte del 12.71% a la Gestora Pública y el Líquido Pagable sin afectar la planilla de sueldos regular.
+            </div>
+          </div>
+
+          {eventualPayroll && (
+            <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-3">
+                    <h2 className="font-bold text-slate-900 text-base md:text-lg">PLANILLA DE PERSONAL EVENTUAL Y PERMANENTE</h2>
+                    {eventualPayroll.is_closed ? (
+                      <span className="bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm">
+                        <CheckCircle className="w-4 h-4 text-emerald-400" /> Mes Cerrado (Bloqueado)
+                      </span>
+                    ) : (
+                      <span className="bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm">
+                        <Unlock className="w-4 h-4 text-amber-600" /> Mes Abierto (En Edición)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                    (Expresado en Bolivianos) — Correspondiente al Mes de {MONTHS[eventualPayroll.month-1].toUpperCase()} {eventualPayroll.year}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 items-center">
+                  {eventualPayroll.is_closed ? (
+                    <button 
+                      onClick={() => setShowReopenEventualModal(true)} 
+                      className="flex items-center gap-2 px-4 py-2 text-sm bg-amber-600 text-white border border-amber-700 rounded-xl hover:bg-amber-700 transition shadow-md font-bold"
+                      title="Reabrir mes para permitir edición"
+                    >
+                      <Unlock className="w-4 h-4" /> Reabrir Mes
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => setShowConfirmEventualModal(true)} 
+                      className="flex items-center gap-2 px-4 py-2 text-sm bg-rose-600 text-white border border-rose-700 rounded-xl hover:bg-rose-700 transition shadow-md font-bold"
+                      title="Cerrar y bloquear mes"
+                    >
+                      <Lock className="w-4 h-4" /> Cerrar Mes
+                    </button>
+                  )}
+                  <button onClick={toggleExpandAllEventual} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-200 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-300 transition">
+                    <Eye className="w-4 h-4" /> {expandedEventualSlips.length === eventualPayroll.payslips.length ? 'Colapsar Todo' : 'Expandir Todo'}
+                  </button>
+                  <button onClick={() => handleExportEventual("excel")} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition font-semibold">
+                    <FileSpreadsheet className="w-4 h-4" /> Excel
+                  </button>
+                  <button onClick={() => handleExportEventual("pdf")} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition font-semibold">
+                    <FileText className="w-4 h-4" /> PDF
+                  </button>
+                </div>
+              </div>
+
+              {/* Tarjetas KPI de Resumen */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-amber-50/40 border-b border-amber-100">
+                <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Total Líquido Pagable</span>
+                    <div className="text-xl font-black text-emerald-700 mt-0.5">
+                      {formatBs(totalsEventuales.liquido_pagable)} Bs.
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Total Ganado Bruto</span>
+                    <div className="text-xl font-black text-amber-800 mt-0.5">
+                      {formatBs(totalsEventuales.total_ganado)} Bs.
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+                    <Plus className="w-5 h-5 text-amber-600" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Aporte Gestora (12.71%)</span>
+                    <div className="text-xl font-black text-rose-700 mt-0.5">
+                      {formatBs(totalsEventuales.aporte_gestora)} Bs.
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-800 flex items-center justify-center font-bold">
+                    <Minus className="w-5 h-5 text-rose-600" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Personal ({totalsEventuales.total_empleados})</span>
+                    <div className="text-sm font-bold text-slate-800 mt-1 flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-xs font-black">
+                        {totalsEventuales.eventuales_count} Eventuales
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-bold">
+                        {totalsEventuales.permanentes_count} Perm.
+                      </span>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
+                    <Users className="w-5 h-5 text-slate-600" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Barra de Filtros y Búsqueda */}
+              <div className="p-3 bg-white border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="text"
+                      placeholder="Buscar por nombre, CI o código..."
+                      value={eventualSearch}
+                      onChange={(e) => setEventualSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-amber-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                  <button
+                    onClick={() => setEventualFilterType("todos")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      eventualFilterType === "todos"
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    Todos ({totalsEventuales.total_empleados})
+                  </button>
+                  <button
+                    onClick={() => setEventualFilterType("eventual")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      eventualFilterType === "eventual"
+                        ? "bg-amber-600 text-white shadow-sm"
+                        : "bg-amber-50 text-amber-800 hover:bg-amber-100"
+                    }`}
+                  >
+                    Solo Eventuales ({totalsEventuales.eventuales_count})
+                  </button>
+                  <button
+                    onClick={() => setEventualFilterType("permanente")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      eventualFilterType === "permanente"
+                        ? "bg-teal-600 text-white shadow-sm"
+                        : "bg-teal-50 text-teal-800 hover:bg-teal-100"
+                    }`}
+                  >
+                    Solo Permanentes ({totalsEventuales.permanentes_count})
+                  </button>
+                </div>
+              </div>
+
+              {/* Tabla de Eventuales */}
+              <div className="overflow-x-auto w-full pb-4 custom-scrollbar">
+                <table className="w-full text-sm text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-900 text-white border-b border-slate-700">
+                      <th className="p-3.5 font-semibold text-center w-12 rounded-tl-xl">N°</th>
+                      <th className="p-3.5 font-semibold">Empleado</th>
+                      <th className="p-3.5 font-semibold text-center">Tipo</th>
+                      <th className="p-3.5 font-semibold hidden lg:table-cell">Cargo</th>
+                      <th className="p-3.5 font-semibold text-right text-amber-300 whitespace-nowrap bg-slate-800">
+                        Haber Básico (Editable)
+                      </th>
+                      <th className="p-3.5 font-semibold text-right text-slate-200 whitespace-nowrap">Bono Antigüedad</th>
+                      <th className="p-3.5 font-semibold text-right text-teal-400 whitespace-nowrap">Total Ganado</th>
+                      <th className="p-3.5 font-semibold text-right text-rose-300 whitespace-nowrap">Gestora (12.71%)</th>
+                      <th className="p-3.5 font-semibold text-right text-rose-400 whitespace-nowrap">Total Descuentos</th>
+                      <th className="p-3.5 font-semibold text-right text-emerald-400 whitespace-nowrap">Líquido Pagable</th>
+                      <th className="p-3.5 font-semibold text-center rounded-tr-xl w-24">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredEventualSlips.map((slip, i) => {
+                      const isExpanded = expandedEventualSlips.includes(slip.id);
+                      const isEditing = editingSlipId === slip.id;
+                      const isSaving = savingSlipId === slip.id;
+                      const isSaved = saveSuccessSlipId === slip.id;
+                      const isEventual = slip.employee_tipo_contrato === "eventual";
+
+                      return (
+                        <React.Fragment key={slip.id}>
+                          <tr className={`border-b border-slate-200 transition bg-white hover:bg-amber-50/30 cursor-pointer ${isExpanded ? 'bg-amber-50/40 border-l-4 border-l-amber-500' : ''}`} onClick={() => toggleExpandEventual(slip.id)}>
+                            <td className="p-3.5 text-center font-bold text-slate-700">{i + 1}</td>
+                            <td className="p-3.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                                  Cód. {slip.employee_code || slip.employee_id}
+                                </span>
+                                <p className="font-bold text-slate-900">{slip.employee_name}</p>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5">CI: {slip.employee_ci ? slip.employee_ci.replace(/\s*-\s*/, ' ') : ''}</p>
+                            </td>
+
+                            <td className="p-3.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              {isEventual ? (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-sm inline-flex items-center gap-1">
+                                  <Briefcase className="w-3 h-3 text-amber-700" /> EVENTUAL
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200 shadow-sm inline-flex items-center gap-1">
+                                  PERMANENTE
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="p-3.5 text-slate-600 hidden lg:table-cell text-xs uppercase">{slip.employee_cargo}</td>
+
+                            {/* Celda Haber Básico Editable */}
+                            <td className="p-3.5 text-right font-bold whitespace-nowrap bg-amber-50/30" onClick={(e) => e.stopPropagation()}>
+                              {isEditing ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="0.00"
+                                    value={editingHbValue}
+                                    onChange={(e) => setEditingHbValue(e.target.value)}
+                                    onFocus={(e) => e.target.select()}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") handleSaveHaberBasico(slip.id);
+                                      if (e.key === "Escape") handleCancelEditHb();
+                                    }}
+                                    autoFocus
+                                    className="w-28 text-right font-black text-sm px-2 py-1 bg-white border-2 border-amber-500 rounded-lg text-slate-900 shadow-md focus:outline-none placeholder:text-slate-300"
+                                  />
+                                  <button
+                                    onClick={() => handleSaveHaberBasico(slip.id)}
+                                    disabled={isSaving}
+                                    className="p-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition shadow-sm"
+                                    title="Guardar Haber Básico"
+                                  >
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                                  </button>
+                                  <button
+                                    onClick={handleCancelEditHb}
+                                    className="p-1.5 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition"
+                                    title="Cancelar"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1.5 group">
+                                  {isSaved && (
+                                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 animate-pulse">
+                                      <Check className="w-3 h-3 text-emerald-700" /> Guardado
+                                    </span>
+                                  )}
+                                  {slip.is_customized && (
+                                    <span className="text-[9px] bg-amber-100 text-amber-900 border border-amber-200 font-bold px-1.5 py-0.5 rounded shadow-xs" title="Haber básico modificado para eventuales">
+                                      Modif.
+                                    </span>
+                                  )}
+                                  <span className="text-slate-900 font-black text-sm">{formatBs(slip.haber_basico)}</span>
+                                  {!eventualPayroll.is_closed ? (
+                                    <button
+                                      onClick={() => handleStartEditHb(slip)}
+                                      className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-100 rounded transition opacity-80 group-hover:opacity-100"
+                                      title="Editar Haber Básico directamente"
+                                    >
+                                      <Edit className="w-3.5 h-3.5" />
+                                    </button>
+                                  ) : (
+                                    <Lock className="w-3.5 h-3.5 text-slate-400 ml-1" />
+                                  )}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="p-3.5 text-right font-semibold text-slate-800 whitespace-nowrap">{formatBs(slip.bono_antiguedad)}</td>
+                            <td className="p-3.5 text-right font-bold text-amber-700 whitespace-nowrap">{formatBs(slip.total_ganado)}</td>
+                            <td className="p-3.5 text-right font-semibold text-rose-600 whitespace-nowrap">{formatBs(slip.aporte_gestora)}</td>
+                            <td className="p-3.5 text-right font-bold text-rose-600 whitespace-nowrap">{formatBs(slip.total_descuentos)}</td>
+                            <td className="p-3.5 text-right font-black text-emerald-600 text-base whitespace-nowrap">{formatBs(slip.liquido_pagable)}</td>
+                            
+                            <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                              <button 
+                                onClick={() => toggleExpandEventual(slip.id)} 
+                                className={`p-2 rounded-lg transition-colors ${isExpanded ? 'bg-slate-800 text-white' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`} 
+                                title={isExpanded ? 'Colapsar Detalles' : 'Ver Detalles y Desglose'}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+
+                          {/* Fila expandible con detalles */}
+                          <AnimatePresence>
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={11} className="p-0 bg-amber-50/20 border-b-2 border-slate-200">
+                                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                    <div className="p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                                        <h4 className="text-slate-800 font-bold mb-3 flex items-center gap-2">
+                                          <Calculator className="w-5 h-5 text-slate-400" /> Información Laboral
+                                        </h4>
+                                        <div className="space-y-2 text-xs">
+                                          <div className="flex justify-between border-b border-slate-100 pb-1">
+                                            <span className="text-slate-500">Condición:</span>
+                                            <span className="font-bold uppercase text-slate-800">{slip.employee_tipo_contrato || 'Permanente'}</span>
+                                          </div>
+                                          <div className="flex justify-between border-b border-slate-100 pb-1">
+                                            <span className="text-slate-500">Fecha Ingreso:</span>
+                                            <span className="font-semibold text-slate-800">{formatDate(slip.employee_fecha_ingreso)}</span>
+                                          </div>
+                                          <div className="flex justify-between border-b border-slate-100 pb-1">
+                                            <span className="text-slate-500">Días Pagados:</span>
+                                            <span className="font-semibold text-slate-800">{slip.dias_pagados} días</span>
+                                          </div>
+                                          <div className="flex justify-between pb-1">
+                                            <span className="text-slate-500">Haber Básico Actual:</span>
+                                            <span className="font-bold text-amber-700">{formatBs(slip.haber_basico)} Bs.</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="bg-amber-50/40 p-5 rounded-2xl shadow-sm border border-amber-100">
+                                        <h4 className="text-amber-900 font-bold mb-3 flex items-center gap-2">
+                                          <Plus className="w-5 h-5 text-amber-600" /> Desglose de Ganado
+                                        </h4>
+                                        <div className="space-y-1.5 text-xs">
+                                          <div className="flex justify-between border-b border-amber-100/60 pb-1">
+                                            <span className="text-amber-900/80">Haber Básico:</span>
+                                            <span className="font-semibold text-amber-950">{formatBs(slip.haber_basico)}</span>
+                                          </div>
+                                          <div className="flex justify-between border-b border-amber-100/60 pb-1">
+                                            <span className="text-amber-900/80">Bono Antigüedad:</span>
+                                            <span className="font-semibold text-amber-950">{formatBs(slip.bono_antiguedad)}</span>
+                                          </div>
+                                          <div className="flex justify-between border-b border-amber-100/60 pb-1">
+                                            <span className="text-amber-900/80">Otros Bonos / Extras:</span>
+                                            <span className="font-semibold text-amber-950">
+                                              {formatBs(Number(slip.bono_produccion || 0) + Number(slip.subsidio_frontera || 0) + Number(slip.trabajo_extraordinario || 0) + Number(slip.pago_dominical || 0) + Number(slip.otros_bonos || 0))}
+                                            </span>
+                                          </div>
+                                          <div className="flex justify-between pt-1 font-bold text-amber-950">
+                                            <span>TOTAL GANADO:</span>
+                                            <span className="text-sm">{formatBs(slip.total_ganado)} Bs.</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="bg-rose-50/30 p-5 rounded-2xl shadow-sm border border-rose-100">
+                                        <h4 className="text-rose-900 font-bold mb-3 flex items-center gap-2">
+                                          <Minus className="w-5 h-5 text-rose-500" /> Desglose de Descuentos
+                                        </h4>
+                                        <div className="space-y-1.5 text-xs">
+                                          <div className="flex justify-between border-b border-rose-100/60 pb-1">
+                                            <span className="text-rose-800/80">Aporte Gestora (12.71%):</span>
+                                            <span className="font-semibold text-rose-950">{formatBs(slip.aporte_gestora)}</span>
+                                          </div>
+                                          <div className="flex justify-between border-b border-rose-100/60 pb-1">
+                                            <span className="text-rose-800/80">RC-IVA / Anticipos:</span>
+                                            <span className="font-semibold text-rose-950">
+                                              {formatBs(Number(slip.rc_iva || 0) + Number(slip.anticipos || 0))}
+                                            </span>
+                                          </div>
+                                          <div className="flex justify-between border-b border-rose-100/60 pb-1">
+                                            <span className="text-rose-800/80">Otros Descuentos:</span>
+                                            <span className="font-semibold text-rose-950">{formatBs(slip.otros_descuentos)}</span>
+                                          </div>
+                                          <div className="flex justify-between pt-1 font-bold text-emerald-800">
+                                            <span>LÍQUIDO PAGABLE:</span>
+                                            <span className="text-sm text-emerald-700">{formatBs(slip.liquido_pagable)} Bs.</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </motion.div>
+                                </td>
+                              </tr>
+                            )}
+                          </AnimatePresence>
+                        </React.Fragment>
+                      );
+                    })}
+
+                    {filteredEventualSlips.length === 0 && (
+                      <tr>
+                        <td colSpan={11} className="p-8 text-center text-slate-500">
+                          No se encontraron empleados que coincidan con la búsqueda o filtro.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+
+                  {/* Fila de TOTALES OFICIALES */}
+                  <tfoot>
+                    <tr className="bg-slate-900 text-white font-bold">
+                      <td colSpan={4} className="p-3.5 text-center tracking-widest text-xs uppercase">
+                        T O T A L E S ({totalsEventuales.total_empleados} EMPLEADOS)
+                      </td>
+                      <td className="p-3.5 text-right text-amber-300 font-black">{formatBs(totalsEventuales.haber_basico)}</td>
+                      <td className="p-3.5 text-right">{formatBs(totalsEventuales.bono_antiguedad)}</td>
+                      <td className="p-3.5 text-right text-amber-300 font-black">{formatBs(totalsEventuales.total_ganado)}</td>
+                      <td className="p-3.5 text-right text-rose-300">{formatBs(totalsEventuales.aporte_gestora)}</td>
+                      <td className="p-3.5 text-right text-rose-400">{formatBs(totalsEventuales.total_descuentos)}</td>
+                      <td className="p-3.5 text-right text-emerald-300 font-black text-base">{formatBs(totalsEventuales.liquido_pagable)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+{/* ========================================================= */}
       {/* VISTA 2: PLANILLA PATRONAL (SEGÚN IMAGEN 1)                */}
       {/* ========================================================= */}
       {activeTab === 'patronal' && (
@@ -1775,7 +2569,64 @@ function PlanillasPageContent() {
         )}
       </AnimatePresence>
 
-      {/* MODALES CERRAR / REABRIR MES */}
+            {/* MODALES CERRAR / REABRIR EVENTUALES */}
+      <AnimatePresence>
+        {showConfirmEventualModal && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+              <div className="p-6">
+                <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mb-4">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Cerrar Planilla de Eventuales</h3>
+                <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+                  ¿Estás seguro de que deseas <strong>cerrar y bloquear</strong> la planilla de eventuales de {MONTHS[eventualMonth - 1]} {eventualYear}?
+                  Al cerrarla, los valores de haberes básicos quedarán <strong>bloqueados para edición</strong> para garantizar la consistencia de los reportes emitidos.
+                </p>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button onClick={() => setShowConfirmEventualModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition font-semibold">
+                    Cancelar
+                  </button>
+                  <button onClick={handleCloseEventualPayroll} disabled={confirmingEventual} className="px-4 py-2 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 flex items-center gap-2 transition disabled:opacity-50 shadow-md">
+                    {confirmingEventual ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                    Sí, Cerrar Planilla
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showReopenEventualModal && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+              <div className="p-6">
+                <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mb-4">
+                  <Unlock className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Reabrir Planilla de Eventuales</h3>
+                <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+                  ¿Estás seguro de que deseas <strong>reabrir la planilla de eventuales</strong> de {MONTHS[eventualMonth - 1]} {eventualYear}?
+                  Se reactivará la posibilidad de ajustar y editar los Haberes Básicos de todo el personal.
+                </p>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button onClick={() => setShowReopenEventualModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition font-semibold">
+                    Cancelar
+                  </button>
+                  <button onClick={handleReopenEventualPayroll} disabled={reopeningEventual} className="px-4 py-2 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 flex items-center gap-2 transition disabled:opacity-50 shadow-md">
+                    {reopeningEventual ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
+                    Sí, Reabrir Planilla
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+{/* MODALES CERRAR / REABRIR MES */}
       <AnimatePresence>
         {showConfirmModal && (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
