@@ -146,11 +146,17 @@ def migrate_tenants():
                         aporte_gestora NUMERIC(12, 2) NOT NULL,
                         rc_iva NUMERIC(12, 2) DEFAULT 0,
                         anticipos NUMERIC(12, 2) DEFAULT 0,
+                        faltas NUMERIC(12, 2) DEFAULT 0,
                         otros_descuentos NUMERIC(12, 2) DEFAULT 0,
                         total_descuentos NUMERIC(12, 2) NOT NULL,
                         liquido_pagable NUMERIC(12, 2) NOT NULL,
                         is_customized BOOLEAN DEFAULT FALSE
                     )
+                '''))
+
+                conn.execute(text(f'''
+                    ALTER TABLE "{schema}".eventual_payslips
+                    ADD COLUMN IF NOT EXISTS faltas NUMERIC(12, 2) DEFAULT 0;
                 '''))
 
                 # 7. Crear tabla de control de vacaciones si no existe

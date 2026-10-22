@@ -17,6 +17,7 @@ class EventualPayslipBase(BaseModel):
     aporte_gestora: Decimal
     rc_iva: Decimal = Decimal("0.00")
     anticipos: Decimal = Decimal("0.00")
+    faltas: Decimal = Decimal("0.00")
     otros_descuentos: Decimal = Decimal("0.00")
     total_descuentos: Decimal
     liquido_pagable: Decimal
@@ -33,6 +34,7 @@ class EventualPayslipUpdate(BaseModel):
     subsidio_natalidad: Optional[Decimal] = None
     rc_iva: Optional[Decimal] = None
     anticipos: Optional[Decimal] = None
+    faltas: Optional[Decimal] = None
     otros_descuentos: Optional[Decimal] = None
 
 class EventualPayslipResponse(EventualPayslipBase):

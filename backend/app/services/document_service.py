@@ -991,7 +991,7 @@ class DocumentService:
             tg = round(float(emp.get('total_ganado', 0) or 0), 2)
             ag = round(float(emp.get('aporte_gestora', 0) or 0), 2)
             rc = round(float(emp.get('rc_iva', 0) or 0), 2)
-            otros_desc = round(float(emp.get('otros_descuentos', 0) or 0) + float(emp.get('anticipos', 0) or 0), 2)
+            otros_desc = round(float(emp.get('otros_descuentos', 0) or 0) + float(emp.get('anticipos', 0) or 0) + float(emp.get('faltas', 0) or 0), 2)
             td = round(float(emp.get('total_descuentos', 0) or 0), 2)
             lp = round(float(emp.get('liquido_pagable', 0) or 0), 2)
 
@@ -4416,7 +4416,7 @@ class DocumentService:
             tg = round(float(emp.get('total_ganado', 0) or 0), 2)
             ag = round(float(emp.get('aporte_gestora', 0) or 0), 2)
             rc = round(float(emp.get('rc_iva', 0) or 0), 2)
-            otros_desc = round(float(emp.get('otros_descuentos', 0) or 0) + float(emp.get('anticipos', 0) or 0), 2)
+            otros_desc = round(float(emp.get('otros_descuentos', 0) or 0) + float(emp.get('anticipos', 0) or 0) + float(emp.get('faltas', 0) or 0), 2)
             td = round(float(emp.get('total_descuentos', 0) or 0), 2)
             lp = round(float(emp.get('liquido_pagable', 0) or 0), 2)
 

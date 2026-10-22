@@ -55,6 +55,7 @@ class EventualPayslip(Base):
     aporte_gestora = Column(Numeric(12, 2), nullable=False) # 12.71%
     rc_iva = Column(Numeric(12, 2), default=0)
     anticipos = Column(Numeric(12, 2), default=0)
+    faltas = Column(Numeric(12, 2), default=0)
     otros_descuentos = Column(Numeric(12, 2), default=0)
     
     total_descuentos = Column(Numeric(12, 2), nullable=False)

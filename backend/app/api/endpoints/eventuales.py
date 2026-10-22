@@ -120,25 +120,32 @@ def get_or_generate_eventual_payroll(schema_name: str, month: int, year: int, db
                 if not pref or pref.fecha_retiro < period_start:
                     continue
             
+            is_permanente = (getattr(emp, 'tipo_contrato', 'permanente') or 'permanente') == 'permanente'
+
             # Si el slip ya existe, sincronizar datos de sueldos si no ha sido customizado
             if emp.id in existing_emp_ids:
                 curr_slip = next((p for p in payroll.eventual_payslips if p.employee_id == emp.id), None)
-                if curr_slip and not curr_slip.is_customized and emp.id in regular_slips_map:
-                    r_slip = regular_slips_map[emp.id]
-                    curr_slip.dias_pagados = r_slip.dias_pagados
-                    curr_slip.horas_pagadas = r_slip.horas_pagadas
-                    curr_slip.bono_antiguedad = r_slip.bono_antiguedad
-                    curr_slip.bono_produccion = r_slip.bono_produccion
-                    curr_slip.subsidio_frontera = r_slip.subsidio_frontera
-                    curr_slip.trabajo_extraordinario = r_slip.trabajo_extraordinario
-                    curr_slip.pago_dominical = r_slip.pago_dominical
-                    curr_slip.otros_bonos = r_slip.otros_bonos
-                    curr_slip.subsidio_natalidad = r_slip.subsidio_natalidad
-                    curr_slip.rc_iva = r_slip.rc_iva
-                    curr_slip.anticipos = r_slip.anticipos
-                    curr_slip.otros_descuentos = r_slip.otros_descuentos
+                if curr_slip:
+                    if not curr_slip.is_customized and emp.id in regular_slips_map:
+                        r_slip = regular_slips_map[emp.id]
+                        curr_slip.dias_pagados = r_slip.dias_pagados
+                        curr_slip.horas_pagadas = r_slip.horas_pagadas
+                        curr_slip.bono_antiguedad = r_slip.bono_antiguedad
+                        curr_slip.bono_produccion = r_slip.bono_produccion
+                        curr_slip.subsidio_frontera = r_slip.subsidio_frontera
+                        curr_slip.trabajo_extraordinario = r_slip.trabajo_extraordinario
+                        curr_slip.pago_dominical = r_slip.pago_dominical
+                        curr_slip.otros_bonos = r_slip.otros_bonos
+                        curr_slip.subsidio_natalidad = r_slip.subsidio_natalidad
+                        curr_slip.rc_iva = r_slip.rc_iva
+                        if curr_slip.anticipos is None:
+                            curr_slip.anticipos = r_slip.anticipos or Decimal("0.00")
+                        if curr_slip.faltas is None:
+                            curr_slip.faltas = Decimal("0.00")
+                        if curr_slip.otros_descuentos is None:
+                            curr_slip.otros_descuentos = r_slip.otros_descuentos or Decimal("0.00")
                     
-                    # Recalcular totales con el haber básico actual de eventuales
+                    # Calcular total ganado con el haber básico de eventuales
                     h_basico = Decimal(str(curr_slip.haber_basico))
                     tot_ganado = (
                         h_basico +
@@ -151,17 +158,37 @@ def get_or_generate_eventual_payroll(schema_name: str, month: int, year: int, db
                         Decimal(str(curr_slip.subsidio_natalidad or 0))
                     )
                     curr_slip.total_ganado = tot_ganado
-                    curr_slip.aporte_gestora = round(tot_ganado * Decimal("0.1271"), 2)
+                    
+                    # Regla Gestora (12.71%):
+                    # Para permanentes: SE COPIA FIJO de la planilla de sueldos (o contrato base)
+                    # Para eventuales: SE RECALCULA con el haber básico de eventuales
+                    if is_permanente:
+                        if emp.id in regular_slips_map:
+                            curr_slip.aporte_gestora = Decimal(str(regular_slips_map[emp.id].aporte_gestora))
+                        else:
+                            anios_ant = calculate_seniority_years(emp.fecha_ingreso, year, month)
+                            calc = calcular_boleta_empleado(
+                                haber_basico=Decimal(str(emp.haber_basico)),
+                                anios_antiguedad=max(0, anios_ant),
+                                smn=smn_actual
+                            )
+                            base_tot = Decimal(str(emp.haber_basico)) + calc.get("bono_antiguedad", Decimal(0))
+                            curr_slip.aporte_gestora = round(base_tot * Decimal("0.1271"), 2)
+                    else:
+                        curr_slip.aporte_gestora = round(tot_ganado * Decimal("0.1271"), 2)
+
                     curr_slip.total_descuentos = (
-                        curr_slip.aporte_gestora +
+                        Decimal(str(curr_slip.aporte_gestora or 0)) +
                         Decimal(str(curr_slip.rc_iva or 0)) +
                         Decimal(str(curr_slip.anticipos or 0)) +
+                        Decimal(str(curr_slip.faltas or 0)) +
                         Decimal(str(curr_slip.otros_descuentos or 0))
                     )
                     curr_slip.liquido_pagable = tot_ganado - curr_slip.total_descuentos
                 continue
 
             # Crear nuevo EventualPayslip
+            faltas = Decimal("0.00")
             if emp.id in regular_slips_map:
                 r_slip = regular_slips_map[emp.id]
                 h_basico = Decimal(str(r_slip.haber_basico))
@@ -174,9 +201,15 @@ def get_or_generate_eventual_payroll(schema_name: str, month: int, year: int, db
                 sub_nat = Decimal(str(r_slip.subsidio_natalidad or 0))
                 rc_iva = Decimal(str(r_slip.rc_iva or 0))
                 anticipos = Decimal(str(r_slip.anticipos or 0))
+                faltas = Decimal("0.00")
                 otros_desc = Decimal(str(r_slip.otros_descuentos or 0))
                 dias_pag = r_slip.dias_pagados
                 horas_pag = r_slip.horas_pagadas
+                tot_ganado = h_basico + bono_ant + bono_prod + sub_fron + trab_ext + pago_dom + otros_b + sub_nat
+                if is_permanente:
+                    gestora = Decimal(str(r_slip.aporte_gestora))
+                else:
+                    gestora = round(tot_ganado * Decimal("0.1271"), 2)
             else:
                 anios_ant = calculate_seniority_years(emp.fecha_ingreso, year, month)
                 calc = calcular_boleta_empleado(
@@ -194,15 +227,16 @@ def get_or_generate_eventual_payroll(schema_name: str, month: int, year: int, db
                 sub_nat = Decimal(0)
                 rc_iva = Decimal(0)
                 anticipos = Decimal(0)
+                faltas = Decimal(0)
                 otros_desc = Decimal(0)
                 dias_pag = 30
                 if emp.fecha_ingreso.year == year and emp.fecha_ingreso.month == month and emp.fecha_ingreso.day > 1:
                     dias_pag = max(1, 30 - emp.fecha_ingreso.day + 1)
                 horas_pag = Decimal("8.00")
+                tot_ganado = h_basico + bono_ant + bono_prod + sub_fron + trab_ext + pago_dom + otros_b + sub_nat
+                gestora = round(tot_ganado * Decimal("0.1271"), 2)
 
-            tot_ganado = h_basico + bono_ant + bono_prod + sub_fron + trab_ext + pago_dom + otros_b + sub_nat
-            gestora = round(tot_ganado * Decimal("0.1271"), 2)
-            tot_desc = gestora + rc_iva + anticipos + otros_desc
+            tot_desc = gestora + rc_iva + anticipos + faltas + otros_desc
             liq_pagable = tot_ganado - tot_desc
 
             eventual_slip = EventualPayslip(
@@ -222,6 +256,7 @@ def get_or_generate_eventual_payroll(schema_name: str, month: int, year: int, db
                 aporte_gestora=gestora,
                 rc_iva=rc_iva,
                 anticipos=anticipos,
+                faltas=faltas,
                 otros_descuentos=otros_desc,
                 total_descuentos=tot_desc,
                 liquido_pagable=liq_pagable,
@@ -297,14 +332,20 @@ def update_eventual_payslip(schema_name: str, payslip_id: int, updates: Eventual
         slip.pago_dominical = updates.pago_dominical
     if updates.otros_bonos is not None:
         slip.otros_bonos = updates.otros_bonos
+        slip.is_customized = True
     if updates.subsidio_natalidad is not None:
         slip.subsidio_natalidad = updates.subsidio_natalidad
     if updates.rc_iva is not None:
         slip.rc_iva = updates.rc_iva
     if updates.anticipos is not None:
         slip.anticipos = updates.anticipos
+        slip.is_customized = True
+    if updates.faltas is not None:
+        slip.faltas = updates.faltas
+        slip.is_customized = True
     if updates.otros_descuentos is not None:
         slip.otros_descuentos = updates.otros_descuentos
+        slip.is_customized = True
 
     # Recálculo exacto
     h_basico = Decimal(str(slip.haber_basico))
@@ -319,11 +360,45 @@ def update_eventual_payslip(schema_name: str, payslip_id: int, updates: Eventual
         Decimal(str(slip.subsidio_natalidad or 0))
     )
     slip.total_ganado = tot_ganado
-    slip.aporte_gestora = round(tot_ganado * Decimal("0.1271"), 2)
+
+    emp = db.query(Employee).filter(Employee.id == slip.employee_id).first()
+    is_permanente = (getattr(emp, 'tipo_contrato', 'permanente') or 'permanente') == 'permanente'
+
+    # Regla Gestora (12.71%):
+    # Para permanentes: SE COPIA FIJO de la planilla de sueldos regular
+    # Para eventuales: SE RECALCULA según el haber básico de eventuales
+    if is_permanente:
+        reg_payroll = db.query(Payroll).filter(
+            Payroll.month == payroll.month,
+            Payroll.year == payroll.year
+        ).first()
+        r_slip = None
+        if reg_payroll:
+            r_slip = db.query(Payslip).filter(
+                Payslip.payroll_id == reg_payroll.id,
+                Payslip.employee_id == slip.employee_id
+            ).first()
+        
+        if r_slip and r_slip.aporte_gestora is not None:
+            slip.aporte_gestora = Decimal(str(r_slip.aporte_gestora))
+        else:
+            smn_actual = get_smn(db, payroll.year)
+            anios_ant = calculate_seniority_years(emp.fecha_ingreso, payroll.year, payroll.month)
+            calc = calcular_boleta_empleado(
+                haber_basico=Decimal(str(emp.haber_basico)),
+                anios_antiguedad=max(0, anios_ant),
+                smn=smn_actual
+            )
+            base_tot = Decimal(str(emp.haber_basico)) + calc.get("bono_antiguedad", Decimal(0))
+            slip.aporte_gestora = round(base_tot * Decimal("0.1271"), 2)
+    else:
+        slip.aporte_gestora = round(tot_ganado * Decimal("0.1271"), 2)
+
     slip.total_descuentos = (
         slip.aporte_gestora +
         Decimal(str(slip.rc_iva or 0)) +
         Decimal(str(slip.anticipos or 0)) +
+        Decimal(str(slip.faltas or 0)) +
         Decimal(str(slip.otros_descuentos or 0))
     )
     slip.liquido_pagable = tot_ganado - slip.total_descuentos
@@ -404,8 +479,9 @@ def export_eventual_payroll_excel(schema_name: str, month: int, year: int, db: S
             "total_ganado": float(s.total_ganado),
             "aporte_gestora": float(s.aporte_gestora),
             "rc_iva": float(s.rc_iva),
-            "anticipos": float(s.anticipos),
-            "otros_descuentos": float(s.otros_descuentos),
+            "anticipos": float(s.anticipos or 0),
+            "faltas": float(s.faltas or 0),
+            "otros_descuentos": float(s.otros_descuentos or 0),
             "total_descuentos": float(s.total_descuentos),
             "liquido_pagable": float(s.liquido_pagable)
         })
@@ -451,8 +527,9 @@ def export_eventual_payroll_pdf(schema_name: str, month: int, year: int, db: Ses
             "total_ganado": float(s.total_ganado),
             "aporte_gestora": float(s.aporte_gestora),
             "rc_iva": float(s.rc_iva),
-            "anticipos": float(s.anticipos),
-            "otros_descuentos": float(s.otros_descuentos),
+            "anticipos": float(s.anticipos or 0),
+            "faltas": float(s.faltas or 0),
+            "otros_descuentos": float(s.otros_descuentos or 0),
             "total_descuentos": float(s.total_descuentos),
             "liquido_pagable": float(s.liquido_pagable)
         })

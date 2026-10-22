@@ -203,6 +203,7 @@ interface EventualPayslip {
   aporte_gestora: number;
   rc_iva: number;
   anticipos: number;
+  faltas?: number;
   otros_descuentos: number;
   total_descuentos: number;
   liquido_pagable: number;
@@ -489,6 +490,17 @@ function PlanillasPageContent() {
   const [savingSlipId, setSavingSlipId] = useState<number | null>(null);
   const [saveSuccessSlipId, setSaveSuccessSlipId] = useState<number | null>(null);
 
+  // Gestión de Descuentos Individuales (Anticipos, Faltas, Otros Descuentos)
+  const [discountsDrafts, setDiscountsDrafts] = useState<Record<number, { anticipos: string; faltas: string; otros_descuentos: string }>>({});
+  const [savingDiscountsSlipId, setSavingDiscountsSlipId] = useState<number | null>(null);
+  const [savedDiscountsSlipId, setSavedDiscountsSlipId] = useState<number | null>(null);
+  const [modalDiscountsSlip, setModalDiscountsSlip] = useState<EventualPayslip | null>(null);
+
+  // Gestión de Bonos / Extras Individuales (Otros Bonos)
+  const [bonosDrafts, setBonosDrafts] = useState<Record<number, string>>({});
+  const [savingBonosSlipId, setSavingBonosSlipId] = useState<number | null>(null);
+  const [savedBonosSlipId, setSavedBonosSlipId] = useState<number | null>(null);
+
   // Modales confirmación cerrar/reabrir
   const [showConfirmEventualModal, setShowConfirmEventualModal] = useState(false);
   const [confirmingEventual, setConfirmingEventual] = useState(false);
@@ -560,6 +572,164 @@ function PlanillasPageContent() {
       alert("Error de conexión al guardar el Haber Básico");
     } finally {
       setSavingSlipId(null);
+    }
+  };
+
+  const getDraftDiscounts = (slip: EventualPayslip) => {
+    if (discountsDrafts[slip.id]) return discountsDrafts[slip.id];
+    return {
+      anticipos: Number(slip.anticipos || 0) === 0 ? "" : String(Number(slip.anticipos)),
+      faltas: Number(slip.faltas || 0) === 0 ? "" : String(Number(slip.faltas)),
+      otros_descuentos: Number(slip.otros_descuentos || 0) === 0 ? "" : String(Number(slip.otros_descuentos))
+    };
+  };
+
+  const handleDiscountFieldChange = (slipId: number, field: "anticipos" | "faltas" | "otros_descuentos", value: string, slip: EventualPayslip) => {
+    setDiscountsDrafts(prev => {
+      const current = prev[slipId] || getDraftDiscounts(slip);
+      return {
+        ...prev,
+        [slipId]: {
+          ...current,
+          [field]: value
+        }
+      };
+    });
+  };
+
+  const getDraftBonos = (slip: EventualPayslip): string => {
+    if (bonosDrafts[slip.id] !== undefined) return bonosDrafts[slip.id];
+    const val = Number(slip.otros_bonos || 0);
+    return val === 0 ? "" : String(val);
+  };
+
+  const handleBonoFieldChange = (slipId: number, value: string, slip: EventualPayslip) => {
+    setBonosDrafts(prev => ({
+      ...prev,
+      [slipId]: value
+    }));
+  };
+
+  const handleSaveBonos = async (slipId: number, valueOverride?: string) => {
+    if (!tenantSchema || !eventualPayroll) return;
+    const slip = eventualPayroll.payslips.find(s => s.id === slipId);
+    if (!slip) return;
+    
+    const rawStr = valueOverride !== undefined ? valueOverride : getDraftBonos(slip);
+    const trimmed = (rawStr || "").trim();
+    const numVal = trimmed === "" ? 0 : parseFloat(trimmed);
+    const safeVal = isNaN(numVal) || numVal < 0 ? 0 : numVal;
+    
+    setSavingBonosSlipId(slipId);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/eventuales/slip/${slipId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          otros_bonos: safeVal
+        })
+      });
+      if (res.ok) {
+        const updatedSlip: EventualPayslip = await res.json();
+        setEventualPayroll(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            payslips: prev.payslips.map(s => s.id === updatedSlip.id ? updatedSlip : s)
+          };
+        });
+        setBonosDrafts(prev => {
+          const next = { ...prev };
+          delete next[slipId];
+          return next;
+        });
+        setSavedBonosSlipId(slipId);
+        setTimeout(() => setSavedBonosSlipId(null), 2500);
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Error al actualizar los bonos");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error de conexión al guardar los bonos");
+    } finally {
+      setSavingBonosSlipId(null);
+    }
+  };
+
+  const handleSaveDiscounts = async (
+    slipId: number,
+    draftOverride?: { anticipos: string; faltas: string; otros_descuentos: string },
+    bonosOverride?: string
+  ) => {
+    if (!tenantSchema || !eventualPayroll) return;
+    const slip = eventualPayroll.payslips.find(s => s.id === slipId);
+    if (!slip) return;
+    
+    const currentDraft = draftOverride || getDraftDiscounts(slip);
+    
+    const parseAmount = (val: string) => {
+      const trimmed = (val || "").trim();
+      if (trimmed === "") return 0;
+      const num = parseFloat(trimmed);
+      return isNaN(num) || num < 0 ? 0 : num;
+    };
+    
+    const ant = parseAmount(currentDraft.anticipos);
+    const flt = parseAmount(currentDraft.faltas);
+    const otr = parseAmount(currentDraft.otros_descuentos);
+
+    const payload: Record<string, number> = {
+      anticipos: ant,
+      faltas: flt,
+      otros_descuentos: otr
+    };
+    if (bonosOverride !== undefined) {
+      payload.otros_bonos = parseAmount(bonosOverride);
+    }
+    
+    setSavingDiscountsSlipId(slipId);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/eventuales/slip/${slipId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const updatedSlip: EventualPayslip = await res.json();
+        setEventualPayroll(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            payslips: prev.payslips.map(s => s.id === updatedSlip.id ? updatedSlip : s)
+          };
+        });
+        setDiscountsDrafts(prev => {
+          const next = { ...prev };
+          delete next[slipId];
+          return next;
+        });
+        if (bonosOverride !== undefined) {
+          setBonosDrafts(prev => {
+            const next = { ...prev };
+            delete next[slipId];
+            return next;
+          });
+        }
+        setSavedDiscountsSlipId(slipId);
+        setTimeout(() => setSavedDiscountsSlipId(null), 2500);
+        if (modalDiscountsSlip?.id === slipId) {
+          setModalDiscountsSlip(null);
+        }
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Error al actualizar los datos");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error de conexión al guardar los datos");
+    } finally {
+      setSavingDiscountsSlipId(null);
     }
   };
 
@@ -1670,18 +1840,56 @@ function PlanillasPageContent() {
 
                             <td className="p-3.5 text-right font-semibold text-slate-800 whitespace-nowrap">{formatBs(slip.bono_antiguedad)}</td>
                             <td className="p-3.5 text-right font-bold text-amber-700 whitespace-nowrap">{formatBs(slip.total_ganado)}</td>
-                            <td className="p-3.5 text-right font-semibold text-rose-600 whitespace-nowrap">{formatBs(slip.aporte_gestora)}</td>
-                            <td className="p-3.5 text-right font-bold text-rose-600 whitespace-nowrap">{formatBs(slip.total_descuentos)}</td>
+                            
+                            {/* Celda Aporte Gestora limpia sin recuadro */}
+                            <td className="p-3.5 text-right font-semibold text-rose-600 whitespace-nowrap">
+                              {formatBs(slip.aporte_gestora)}
+                            </td>
+
+                            {/* Celda Total Descuentos con edición de Anticipos, Faltas y Otros */}
+                            <td className="p-3.5 text-right font-bold whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-1.5 group">
+                                {savedDiscountsSlipId === slip.id && (
+                                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 animate-pulse">
+                                    <Check className="w-3 h-3 text-emerald-700" /> Guardado
+                                  </span>
+                                )}
+                                <span className="text-rose-600 font-bold">{formatBs(slip.total_descuentos)}</span>
+                                {!eventualPayroll.is_closed ? (
+                                  <button
+                                    onClick={() => setModalDiscountsSlip(slip)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-100 rounded transition opacity-80 group-hover:opacity-100"
+                                    title="Editar Anticipos, Faltas y Otros Descuentos"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </button>
+                                ) : (
+                                  <Lock className="w-3.5 h-3.5 text-slate-400 ml-1" />
+                                )}
+                              </div>
+                            </td>
+
                             <td className="p-3.5 text-right font-black text-emerald-600 text-base whitespace-nowrap">{formatBs(slip.liquido_pagable)}</td>
                             
                             <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
-                              <button 
-                                onClick={() => toggleExpandEventual(slip.id)} 
-                                className={`p-2 rounded-lg transition-colors ${isExpanded ? 'bg-slate-800 text-white' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`} 
-                                title={isExpanded ? 'Colapsar Detalles' : 'Ver Detalles y Desglose'}
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
+                              <div className="flex items-center justify-center gap-1">
+                                {!eventualPayroll.is_closed && (
+                                  <button
+                                    onClick={() => setModalDiscountsSlip(slip)}
+                                    className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition"
+                                    title="Editar Anticipos, Faltas y Descuentos"
+                                  >
+                                    <Minus className="w-4 h-4" />
+                                  </button>
+                                )}
+                                <button 
+                                  onClick={() => toggleExpandEventual(slip.id)} 
+                                  className={`p-2 rounded-lg transition-colors ${isExpanded ? 'bg-slate-800 text-white' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`} 
+                                  title={isExpanded ? 'Colapsar Detalles' : 'Ver Detalles y Desglose'}
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
 
@@ -1716,54 +1924,191 @@ function PlanillasPageContent() {
                                         </div>
                                       </div>
 
-                                      <div className="bg-amber-50/40 p-5 rounded-2xl shadow-sm border border-amber-100">
-                                        <h4 className="text-amber-900 font-bold mb-3 flex items-center gap-2">
-                                          <Plus className="w-5 h-5 text-amber-600" /> Desglose de Ganado
-                                        </h4>
-                                        <div className="space-y-1.5 text-xs">
-                                          <div className="flex justify-between border-b border-amber-100/60 pb-1">
-                                            <span className="text-amber-900/80">Haber Básico:</span>
-                                            <span className="font-semibold text-amber-950">{formatBs(slip.haber_basico)}</span>
+                                      <div className="bg-amber-50/40 p-5 rounded-2xl shadow-sm border border-amber-100 flex flex-col justify-between">
+                                        <div>
+                                          <div className="flex items-center justify-between mb-3">
+                                            <h4 className="text-amber-900 font-bold flex items-center gap-2">
+                                              <Plus className="w-5 h-5 text-amber-600" /> Desglose de Ganado
+                                            </h4>
+                                            {savedBonosSlipId === slip.id && (
+                                              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                                <Check className="w-3 h-3 text-emerald-700" /> Guardado
+                                              </span>
+                                            )}
                                           </div>
-                                          <div className="flex justify-between border-b border-amber-100/60 pb-1">
-                                            <span className="text-amber-900/80">Bono Antigüedad:</span>
-                                            <span className="font-semibold text-amber-950">{formatBs(slip.bono_antiguedad)}</span>
-                                          </div>
-                                          <div className="flex justify-between border-b border-amber-100/60 pb-1">
-                                            <span className="text-amber-900/80">Otros Bonos / Extras:</span>
-                                            <span className="font-semibold text-amber-950">
-                                              {formatBs(Number(slip.bono_produccion || 0) + Number(slip.subsidio_frontera || 0) + Number(slip.trabajo_extraordinario || 0) + Number(slip.pago_dominical || 0) + Number(slip.otros_bonos || 0))}
-                                            </span>
-                                          </div>
-                                          <div className="flex justify-between pt-1 font-bold text-amber-950">
-                                            <span>TOTAL GANADO:</span>
-                                            <span className="text-sm">{formatBs(slip.total_ganado)} Bs.</span>
+
+                                          <div className="space-y-2 text-xs">
+                                            <div className="flex justify-between border-b border-amber-100/60 pb-1.5">
+                                              <span className="text-amber-900/80">Haber Básico:</span>
+                                              <span className="font-semibold text-amber-950">{formatBs(slip.haber_basico)} Bs.</span>
+                                            </div>
+                                            <div className="flex justify-between border-b border-amber-100/60 pb-1.5">
+                                              <span className="text-amber-900/80">Bono Antigüedad:</span>
+                                              <span className="font-semibold text-amber-950">{formatBs(slip.bono_antiguedad)} Bs.</span>
+                                            </div>
+
+                                            {/* Apartado editable para Otros Bonos / Extras */}
+                                            <div className="pt-1.5 space-y-1.5 bg-white/70 p-2.5 rounded-xl border border-amber-200">
+                                              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-900/70">
+                                                Bonos / Extras Editables
+                                              </p>
+                                              <div className="flex items-center gap-2">
+                                                <div className="flex-1">
+                                                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Otros Bonos / Extras (Bs)</label>
+                                                  <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    placeholder="0.00"
+                                                    disabled={eventualPayroll.is_closed}
+                                                    value={getDraftBonos(slip)}
+                                                    onChange={(e) => handleBonoFieldChange(slip.id, e.target.value, slip)}
+                                                    onFocus={(e) => e.target.select()}
+                                                    className="w-full text-right font-bold text-xs px-2 py-1 bg-white border border-amber-300 rounded-md focus:border-amber-500 focus:outline-none shadow-xs text-slate-900"
+                                                  />
+                                                </div>
+                                                {!eventualPayroll.is_closed && (
+                                                  <div className="self-end pb-0.5">
+                                                    <button
+                                                      onClick={() => handleSaveBonos(slip.id)}
+                                                      disabled={savingBonosSlipId === slip.id}
+                                                      className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-lg transition shadow-xs flex items-center gap-1 disabled:opacity-50"
+                                                      title="Guardar Otros Bonos"
+                                                    >
+                                                      {savingBonosSlipId === slip.id ? (
+                                                        <>
+                                                          <Loader2 className="w-3 h-3 animate-spin" /> Guardando
+                                                        </>
+                                                      ) : (
+                                                        <>
+                                                          <Save className="w-3 h-3" /> Guardar
+                                                        </>
+                                                      )}
+                                                    </button>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            <div className="flex justify-between pt-2 font-bold text-amber-950 border-t border-amber-100">
+                                              <span>TOTAL GANADO:</span>
+                                              <span className="text-sm">{formatBs(slip.total_ganado)} Bs.</span>
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
 
-                                      <div className="bg-rose-50/30 p-5 rounded-2xl shadow-sm border border-rose-100">
-                                        <h4 className="text-rose-900 font-bold mb-3 flex items-center gap-2">
-                                          <Minus className="w-5 h-5 text-rose-500" /> Desglose de Descuentos
-                                        </h4>
-                                        <div className="space-y-1.5 text-xs">
-                                          <div className="flex justify-between border-b border-rose-100/60 pb-1">
-                                            <span className="text-rose-800/80">Aporte Gestora (12.71%):</span>
-                                            <span className="font-semibold text-rose-950">{formatBs(slip.aporte_gestora)}</span>
+                                      <div className="bg-rose-50/30 p-5 rounded-2xl shadow-sm border border-rose-100 flex flex-col justify-between">
+                                        <div>
+                                          <div className="flex items-center justify-between mb-3">
+                                            <h4 className="text-rose-900 font-bold flex items-center gap-2">
+                                              <Minus className="w-5 h-5 text-rose-500" /> Desglose de Descuentos
+                                            </h4>
+                                            {savedDiscountsSlipId === slip.id && (
+                                              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                                                <Check className="w-3 h-3 text-emerald-700" /> Guardado
+                                              </span>
+                                            )}
                                           </div>
-                                          <div className="flex justify-between border-b border-rose-100/60 pb-1">
-                                            <span className="text-rose-800/80">RC-IVA / Anticipos:</span>
-                                            <span className="font-semibold text-rose-950">
-                                              {formatBs(Number(slip.rc_iva || 0) + Number(slip.anticipos || 0))}
-                                            </span>
-                                          </div>
-                                          <div className="flex justify-between border-b border-rose-100/60 pb-1">
-                                            <span className="text-rose-800/80">Otros Descuentos:</span>
-                                            <span className="font-semibold text-rose-950">{formatBs(slip.otros_descuentos)}</span>
-                                          </div>
-                                          <div className="flex justify-between pt-1 font-bold text-emerald-800">
-                                            <span>LÍQUIDO PAGABLE:</span>
-                                            <span className="text-sm text-emerald-700">{formatBs(slip.liquido_pagable)} Bs.</span>
+
+                                          <div className="space-y-2 text-xs">
+                                            <div className="flex justify-between items-center border-b border-rose-100/60 pb-1.5">
+                                              <div>
+                                                <span className="text-rose-800/90 font-medium">Aporte Gestora (12.71%):</span>
+                                                <span className="block text-[10px] text-slate-500">
+                                                  {slip.employee_tipo_contrato === "eventual" ? "⚡ 12.71% recalculado en eventuales" : "🔒 Copiado fijo de planilla de sueldos"}
+                                                </span>
+                                              </div>
+                                              <span className="font-bold text-rose-950 text-sm">{formatBs(slip.aporte_gestora)}</span>
+                                            </div>
+
+                                            {Number(slip.rc_iva || 0) > 0 && (
+                                              <div className="flex justify-between border-b border-rose-100/60 pb-1">
+                                                <span className="text-rose-800/80">RC-IVA:</span>
+                                                <span className="font-semibold text-rose-950">{formatBs(slip.rc_iva)}</span>
+                                              </div>
+                                            )}
+
+                                            {/* Campos Editables de Descuentos */}
+                                            <div className="pt-1.5 space-y-1.5 bg-white/70 p-2.5 rounded-xl border border-rose-100">
+                                              <p className="text-[10px] font-bold uppercase tracking-wider text-rose-900/70">
+                                                Descuentos Editables Individuales
+                                              </p>
+                                              <div className="grid grid-cols-3 gap-1.5">
+                                                <div>
+                                                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Anticipos</label>
+                                                  <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    placeholder="0.00"
+                                                    disabled={eventualPayroll.is_closed}
+                                                    value={getDraftDiscounts(slip).anticipos}
+                                                    onChange={(e) => handleDiscountFieldChange(slip.id, "anticipos", e.target.value, slip)}
+                                                    onFocus={(e) => e.target.select()}
+                                                    className="w-full text-right font-bold text-xs px-1.5 py-1 bg-white border border-rose-200 rounded-md focus:border-rose-500 focus:outline-none shadow-xs text-slate-900"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Faltas</label>
+                                                  <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    placeholder="0.00"
+                                                    disabled={eventualPayroll.is_closed}
+                                                    value={getDraftDiscounts(slip).faltas}
+                                                    onChange={(e) => handleDiscountFieldChange(slip.id, "faltas", e.target.value, slip)}
+                                                    onFocus={(e) => e.target.select()}
+                                                    className="w-full text-right font-bold text-xs px-1.5 py-1 bg-white border border-rose-200 rounded-md focus:border-rose-500 focus:outline-none shadow-xs text-slate-900"
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Otros Desc.</label>
+                                                  <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    placeholder="0.00"
+                                                    disabled={eventualPayroll.is_closed}
+                                                    value={getDraftDiscounts(slip).otros_descuentos}
+                                                    onChange={(e) => handleDiscountFieldChange(slip.id, "otros_descuentos", e.target.value, slip)}
+                                                    onFocus={(e) => e.target.select()}
+                                                    className="w-full text-right font-bold text-xs px-1.5 py-1 bg-white border border-rose-200 rounded-md focus:border-rose-500 focus:outline-none shadow-xs text-slate-900"
+                                                  />
+                                                </div>
+                                              </div>
+
+                                              {!eventualPayroll.is_closed && (
+                                                <div className="flex justify-end pt-1">
+                                                  <button
+                                                    onClick={() => handleSaveDiscounts(slip.id)}
+                                                    disabled={savingDiscountsSlipId === slip.id}
+                                                    className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg transition shadow-xs flex items-center gap-1 disabled:opacity-50"
+                                                    title="Guardar Anticipos, Faltas y Otros Descuentos"
+                                                  >
+                                                    {savingDiscountsSlipId === slip.id ? (
+                                                      <>
+                                                        <Loader2 className="w-3 h-3 animate-spin" /> Guardando
+                                                      </>
+                                                    ) : (
+                                                      <>
+                                                        <Save className="w-3 h-3" /> Guardar Descuentos
+                                                      </>
+                                                    )}
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+
+                                            <div className="flex justify-between pt-1 font-bold text-rose-950 border-t border-rose-100">
+                                              <span>TOTAL DESCUENTOS:</span>
+                                              <span className="text-sm">{formatBs(slip.total_descuentos)} Bs.</span>
+                                            </div>
+                                            <div className="flex justify-between pt-0.5 font-bold text-emerald-800">
+                                              <span>LÍQUIDO PAGABLE:</span>
+                                              <span className="text-sm text-emerald-700">{formatBs(slip.liquido_pagable)} Bs.</span>
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
@@ -2618,6 +2963,217 @@ function PlanillasPageContent() {
                   <button onClick={handleReopenEventualPayroll} disabled={reopeningEventual} className="px-4 py-2 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 flex items-center gap-2 transition disabled:opacity-50 shadow-md">
                     {reopeningEventual ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
                     Sí, Reabrir Planilla
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL EDITAR DESCUENTOS INDIVIDUALES EN EVENTUALES */}
+      <AnimatePresence>
+        {modalDiscountsSlip && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-100">
+              {/* Encabezado */}
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-rose-950 text-white p-5 flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-400/30 flex items-center justify-center text-rose-300">
+                    <Minus className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Editar Descuentos del Empleado</h3>
+                    <p className="text-xs text-rose-200/80">Planilla de Eventuales • {MONTHS[eventualMonth - 1]} {eventualYear}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalDiscountsSlip(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Contenido */}
+              <div className="p-6 space-y-4">
+                {/* Info Empleado */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-slate-900 text-sm">{modalDiscountsSlip.employee_name}</p>
+                    <p className="text-xs text-slate-500">
+                      CI: {modalDiscountsSlip.employee_ci?.replace(/\s*-\s*/, ' ')} • {modalDiscountsSlip.employee_cargo || 'Sin cargo'}
+                    </p>
+                  </div>
+                  {modalDiscountsSlip.employee_tipo_contrato === "eventual" ? (
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                      EVENTUAL
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                      PERMANENTE
+                    </span>
+                  )}
+                </div>
+
+                {/* Info Gestora 12.71% */}
+                <div className={`p-3.5 rounded-xl border text-xs ${
+                  modalDiscountsSlip.employee_tipo_contrato === "eventual"
+                    ? "bg-amber-50/70 border-amber-200 text-amber-900"
+                    : "bg-teal-50/70 border-teal-200 text-teal-900"
+                }`}>
+                  <div className="flex items-center justify-between font-bold mb-1">
+                    <span className="flex items-center gap-1.5">
+                      {modalDiscountsSlip.employee_tipo_contrato === "eventual" ? (
+                        <>⚡ Aporte Gestora (12.71% Recalculado):</>
+                      ) : (
+                        <>🔒 Aporte Gestora (Fijo de Sueldos):</>
+                      )}
+                    </span>
+                    <span className="text-sm font-black">{formatBs(modalDiscountsSlip.aporte_gestora)} Bs.</span>
+                  </div>
+                  <p className="text-[11px] opacity-80 leading-relaxed">
+                    {modalDiscountsSlip.employee_tipo_contrato === "eventual"
+                      ? "Para personal eventual, la Gestora se calcula automáticamente como el 12.71% de su Total Ganado."
+                      : "Para empleados permanentes, este aporte proviene directamente de la planilla de sueldos y se mantiene fijo aunque varíe el haber básico o bonos en eventuales."}
+                  </p>
+                </div>
+
+                {/* Sección Bonos y Extras */}
+                <div className="space-y-1.5 pt-1">
+                  <label className="block text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <Plus className="w-3.5 h-3.5 text-amber-600" /> Bonos y Extras Editables
+                  </label>
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-100 transition shadow-xs">
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Otros Bonos / Extras (Bs)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      disabled={eventualPayroll?.is_closed}
+                      value={getDraftBonos(modalDiscountsSlip)}
+                      onChange={(e) => handleBonoFieldChange(modalDiscountsSlip.id, e.target.value, modalDiscountsSlip)}
+                      onFocus={(e) => e.target.select()}
+                      className="w-full text-right font-black text-slate-900 text-sm focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Campos Editables: Anticipos, Faltas y Otros Descuentos */}
+                <div className="space-y-3 pt-1">
+                  <label className="block text-xs font-bold text-rose-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <Minus className="w-3.5 h-3.5 text-rose-600" /> Descuentos Específicos de Eventuales
+                  </label>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-100 transition shadow-xs">
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Anticipos (Bs)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        disabled={eventualPayroll?.is_closed}
+                        value={getDraftDiscounts(modalDiscountsSlip).anticipos}
+                        onChange={(e) => handleDiscountFieldChange(modalDiscountsSlip.id, "anticipos", e.target.value, modalDiscountsSlip)}
+                        onFocus={(e) => e.target.select()}
+                        className="w-full text-right font-black text-slate-900 text-sm focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-100 transition shadow-xs">
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Faltas (Bs)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        disabled={eventualPayroll?.is_closed}
+                        value={getDraftDiscounts(modalDiscountsSlip).faltas}
+                        onChange={(e) => handleDiscountFieldChange(modalDiscountsSlip.id, "faltas", e.target.value, modalDiscountsSlip)}
+                        onFocus={(e) => e.target.select()}
+                        className="w-full text-right font-black text-slate-900 text-sm focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-100 transition shadow-xs">
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Otros Desc. (Bs)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        disabled={eventualPayroll?.is_closed}
+                        value={getDraftDiscounts(modalDiscountsSlip).otros_descuentos}
+                        onChange={(e) => handleDiscountFieldChange(modalDiscountsSlip.id, "otros_descuentos", e.target.value, modalDiscountsSlip)}
+                        onFocus={(e) => e.target.select()}
+                        className="w-full text-right font-black text-slate-900 text-sm focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Previsualización en Vivo de Totales */}
+                {(() => {
+                  const draft = getDraftDiscounts(modalDiscountsSlip);
+                  const pAnt = parseFloat(draft.anticipos || "0") || 0;
+                  const pFlt = parseFloat(draft.faltas || "0") || 0;
+                  const pOtr = parseFloat(draft.otros_descuentos || "0") || 0;
+
+                  const pBonos = parseFloat(getDraftBonos(modalDiscountsSlip) || "0") || 0;
+                  const prevOtrosBonos = Number(modalDiscountsSlip.otros_bonos || 0);
+                  const totGanadoCalc = Number(modalDiscountsSlip.total_ganado || 0) - prevOtrosBonos + pBonos;
+
+                  // Gestora: si es permanente se mantiene fijo, si es eventual se recalcula al 12.71% de totGanadoCalc
+                  const gestoraCalc = modalDiscountsSlip.employee_tipo_contrato === "eventual"
+                    ? Math.round(totGanadoCalc * 0.1271 * 100) / 100
+                    : Number(modalDiscountsSlip.aporte_gestora || 0);
+
+                  const totDescCalc = gestoraCalc + Number(modalDiscountsSlip.rc_iva || 0) + pAnt + pFlt + pOtr;
+                  const liqPagCalc = totGanadoCalc - totDescCalc;
+
+                  return (
+                    <div className="bg-slate-900 text-white rounded-xl p-4 space-y-2 text-xs">
+                      <div className="flex justify-between items-center text-slate-300">
+                        <span>Total Ganado Estimado:</span>
+                        <span className="font-bold text-amber-300 text-sm">{formatBs(totGanadoCalc)} Bs.</span>
+                      </div>
+                      <div className="flex justify-between items-center text-slate-300 border-t border-slate-800 pt-1.5">
+                        <span>Total Descuentos Estimado:</span>
+                        <span className="font-bold text-rose-300 text-sm">{formatBs(totDescCalc)} Bs.</span>
+                      </div>
+                      <div className="flex justify-between items-center text-white border-t border-slate-700 pt-2 font-black text-sm">
+                        <span className="text-emerald-400">Líquido Pagable Estimado:</span>
+                        <span className="text-emerald-400 text-base">{formatBs(liqPagCalc)} Bs.</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Botones de acción */}
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => setModalDiscountsSlip(null)}
+                    disabled={savingDiscountsSlipId === modalDiscountsSlip.id}
+                    className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition font-semibold text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleSaveDiscounts(modalDiscountsSlip.id, undefined, getDraftBonos(modalDiscountsSlip))}
+                    disabled={savingDiscountsSlipId === modalDiscountsSlip.id || eventualPayroll?.is_closed}
+                    className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition shadow-md flex items-center gap-2 text-sm disabled:opacity-50"
+                  >
+                    {savingDiscountsSlipId === modalDiscountsSlip.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Guardando...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" /> Guardar Cambios
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
