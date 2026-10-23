@@ -5,7 +5,7 @@ from decimal import Decimal
 
 class VacationRecordCreate(BaseModel):
     employee_id: int
-    tipo: str # 'a_cuenta' | 'solicitada' | 'colectiva'
+    tipo: str # 'dias_pagados' | 'a_cuenta' | 'solicitada' | 'colectiva'
     fecha_inicio: date
     fecha_fin: date
     dias: Decimal
@@ -44,11 +44,12 @@ class EmployeeVacationSummary(BaseModel):
     antiguedad_formato: str
     escala_dias: int
     dias_acumulados: float
-    dias_a_cuenta: float
-    dias_solicitadas: float
-    dias_colectivas: float
-    total_dias_tomados: float
-    saldo_dias_pendientes: float
+    dias_a_cuenta: float = 0.0
+    dias_pagados: float = 0.0
+    dias_solicitadas: float = 0.0
+    dias_colectivas: float = 0.0
+    total_dias_tomados: float = 0.0
+    saldo_dias_pendientes: float = 0.0
     records: List[VacationRecordResponse] = []
 
     class Config:
@@ -61,10 +62,11 @@ class CompanyVacationSummary(BaseModel):
     tenant_empleador: Optional[str] = None
     tenant_empleador_ci: Optional[str] = None
     total_empleados: int
-    total_dias_acumulados: float
-    total_dias_a_cuenta: float
-    total_dias_solicitadas: float
-    total_dias_colectivas: float
-    total_dias_tomados: float
-    total_saldo_pendiente: float
+    total_dias_acumulados: float = 0.0
+    total_dias_a_cuenta: float = 0.0
+    total_dias_pagados: float = 0.0
+    total_dias_solicitadas: float = 0.0
+    total_dias_colectivas: float = 0.0
+    total_dias_tomados: float = 0.0
+    total_saldo_pendiente: float = 0.0
     employees: List[EmployeeVacationSummary] = []

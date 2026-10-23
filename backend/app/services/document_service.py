@@ -4518,7 +4518,7 @@ class DocumentService:
         return effective_xlsx
 
     @staticmethod
-    def generate_company_vacations_excel(vacation_data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
+    def generate_company_vacations_excel(vacation_data: dict, output_format: str = "xlsx", schema_name: str = None, desde: str = None, hasta: str = None) -> str:
         """
         Genera la Planilla General de Control de Vacaciones de la empresa en Excel y opcionalmente a PDF.
         """
@@ -4528,11 +4528,26 @@ class DocumentService:
         empresa = str(vacation_data.get('tenant_name', '') or '').upper()
         empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
         nit = str(vacation_data.get('tenant_nit') or "")
-        nro_patronal = str(vacation_data.get('tenant_nro_patronal') or "")
         rep_legal = str(vacation_data.get('tenant_empleador') or empresa).upper()
         rep_ci = str(vacation_data.get('tenant_empleador_ci') or nit)
         now_dt = datetime.now()
         fecha_rep = now_dt.strftime("%d/%m/%Y")
+
+        def _fmt_d(val, default):
+            if not val:
+                return default
+            val = str(val).strip()
+            if len(val) >= 10:
+                p = val[:10].split("-")
+                if len(p) == 3:
+                    return f"{p[2]}/{p[1]}/{p[0]}"
+                p_s = val[:10].split("/")
+                if len(p_s) == 3:
+                    return f"{p_s[0]}/{p_s[1]}/{p_s[2]}"
+            return val
+
+        desde_fmt = _fmt_d(desde or vacation_data.get('fecha_desde'), f"01/01/{now_dt.year}")
+        hasta_fmt = _fmt_d(hasta or vacation_data.get('fecha_hasta'), f"31/12/{now_dt.year}")
         
         employees = vacation_data.get('employees', [])
         
@@ -4577,7 +4592,7 @@ class DocumentService:
         
         fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
         fill_totales = PatternFill(start_color="DFDFDF", end_color="DFDFDF", fill_type="solid")
-        fill_highlight = PatternFill(start_color="E6FFFA", end_color="E6FFFA", fill_type="solid")
+        fill_highlight = PatternFill(start_color="DFDFDF", end_color="DFDFDF", fill_type="solid")
         
         thin_side = Side(style='thin', color='808080')
         border_cell = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
@@ -4586,30 +4601,23 @@ class DocumentService:
         ws.merge_cells('B2:D2')
         ws['B2'] = "NOMBRE O RAZÓN SOCIAL:"
         ws['B2'].font = font_h_bold
-        ws.merge_cells('E2:H2')
+        ws.merge_cells('E2:I2')
         ws['E2'] = empresa
         ws['E2'].font = font_h_val
 
-        ws.merge_cells('I2:K2')
-        ws['I2'] = "Nº PATRONAL (CAJA):"
-        ws['I2'].font = font_h_bold
-        ws.merge_cells('L2:O2')
-        ws['L2'] = nro_patronal
-        ws['L2'].font = font_h_val
+        ws.merge_cells('J2:L2')
+        ws['J2'] = "FECHA DE EMISIÓN:"
+        ws['J2'].font = font_h_bold
+        ws.merge_cells('M2:O2')
+        ws['M2'] = fecha_rep
+        ws['M2'].font = font_h_val
 
         ws.merge_cells('B3:D3')
         ws['B3'] = "Nº IDENTIFICACIÓN TRIBUTARIA (NIT):"
         ws['B3'].font = font_h_bold
-        ws.merge_cells('E3:H3')
+        ws.merge_cells('E3:I3')
         ws['E3'] = nit
         ws['E3'].font = font_h_val
-
-        ws.merge_cells('I3:K3')
-        ws['I3'] = "FECHA DE EMISIÓN:"
-        ws['I3'].font = font_h_bold
-        ws.merge_cells('L3:O3')
-        ws['L3'] = fecha_rep
-        ws['L3'].font = font_h_val
 
         ws.merge_cells('B5:O5')
         ws['B5'] = "PLANILLA GENERAL DE CONTROL DE VACACIONES"
@@ -4617,8 +4625,8 @@ class DocumentService:
         ws['B5'].alignment = Alignment(horizontal="center", vertical="center")
 
         ws.merge_cells('B6:O6')
-        ws['B6'] = "(Cómputo en Días Hábiles según Art. 44 de la Ley General del Trabajo de Bolivia)"
-        ws['B6'].font = Font(name="Arial", size=9, italic=True)
+        ws['B6'] = f"DEL {desde_fmt} AL {hasta_fmt}"
+        ws['B6'].font = Font(name="Arial", size=10, bold=True, color="334155")
         ws['B6'].alignment = Alignment(horizontal="center", vertical="center")
 
         headers = [
@@ -4631,7 +4639,7 @@ class DocumentService:
             ("H", "ANTIGÜEDAD\nLABORAL"),
             ("I", "ESCALA\n(DÍAS/AÑO)"),
             ("J", "DÍAS DERECHO\nACUMULADOS"),
-            ("K", "DÍAS A\nCUENTA"),
+            ("K", "DÍAS\nPAGADOS"),
             ("L", "DÍAS\nSOLICITADAS"),
             ("M", "DÍAS\nCOLECTIVAS"),
             ("N", "TOTAL DÍAS\nGOZADOS"),
@@ -4667,7 +4675,7 @@ class DocumentService:
                 ('H', emp.get('antiguedad_formato', ''), 'center', None, font_td),
                 ('I', emp.get('escala_dias', 15), 'center', None, font_td_bold),
                 ('J', emp.get('dias_acumulados', 0.0), 'right', '#,##0.0', font_td),
-                ('K', emp.get('dias_a_cuenta', 0.0), 'right', '#,##0.0', font_td),
+                ('K', emp.get('dias_pagados', emp.get('dias_a_cuenta', 0.0)), 'right', '#,##0.0', font_td),
                 ('L', emp.get('dias_solicitadas', 0.0), 'right', '#,##0.0', font_td),
                 ('M', emp.get('dias_colectivas', 0.0), 'right', '#,##0.0', font_td),
                 ('N', emp.get('total_dias_tomados', 0.0), 'right', '#,##0.0', font_td_bold),
@@ -4697,7 +4705,7 @@ class DocumentService:
             
         tot_cols = [
             ('J', vacation_data.get('total_dias_acumulados', 0.0)),
-            ('K', vacation_data.get('total_dias_a_cuenta', 0.0)),
+            ('K', vacation_data.get('total_dias_pagados', vacation_data.get('total_dias_a_cuenta', 0.0))),
             ('L', vacation_data.get('total_dias_solicitadas', 0.0)),
             ('M', vacation_data.get('total_dias_colectivas', 0.0)),
             ('N', vacation_data.get('total_dias_tomados', 0.0)),
@@ -4750,9 +4758,9 @@ class DocumentService:
         return effective_xlsx
 
     @staticmethod
-    def generate_employee_vacation_excel(vacation_data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
+    def generate_employee_vacation_excel(vacation_data: dict, output_format: str = "xlsx", schema_name: str = None, desde: str = None, hasta: str = None) -> str:
         """
-        Genera la Ficha Individual de Vacaciones del empleado en Excel y opcionalmente a PDF.
+        Genera la Ficha Individual de Vacaciones del empleado en Excel y opcionalmente a PDF con formato Kárdex.
         """
         exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "vacaciones"))
         os.makedirs(exports_dir, exist_ok=True)
@@ -4760,10 +4768,25 @@ class DocumentService:
         empresa = str(vacation_data.get('empresa_nombre', '') or '').upper()
         empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
         nit = str(vacation_data.get('empresa_nit') or "")
-        nro_patronal = str(vacation_data.get('numero_patronal') or "")
         rep_legal = str(vacation_data.get('representante_legal') or empresa).upper()
-        rep_ci = str(vacation_data.get('ci_representante') or nit)
         now_dt = datetime.now()
+        fecha_rep = now_dt.strftime("%d/%m/%Y")
+
+        def _fmt_d(val, default):
+            if not val:
+                return default
+            val = str(val).strip()
+            if len(val) >= 10:
+                p = val[:10].split("-")
+                if len(p) == 3:
+                    return f"{p[2]}/{p[1]}/{p[0]}"
+                p_s = val[:10].split("/")
+                if len(p_s) == 3:
+                    return f"{p_s[0]}/{p_s[1]}/{p_s[2]}"
+            return val
+
+        desde_fmt = _fmt_d(desde or vacation_data.get('fecha_desde'), f"01/01/{now_dt.year}")
+        hasta_fmt = _fmt_d(hasta or vacation_data.get('fecha_hasta'), f"31/12/{now_dt.year}")
         
         emp = vacation_data.get('employee', {})
         emp_name = str(emp.get('employee_name', '')).upper()
@@ -4779,17 +4802,18 @@ class DocumentService:
         ws.page_setup.fitToWidth = 1
         ws.page_setup.fitToHeight = 0
         ws.print_options.horizontalCentered = True
-        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.3, right=0.3, top=0.8, bottom=0.3)
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.3, right=0.3, top=0.6, bottom=0.3)
 
+        # 7 Columnas principales (B a H) perfectamente dimensionadas y responsivas para evitar cualquier corte
         col_widths = {
-            'A': 1.5,
-            'B': 5.0,
-            'C': 13.0,
-            'D': 13.0,
-            'E': 14.0,
-            'F': 10.0,
-            'G': 25.0,
-            'H': 15.0
+            'A': 2.0,   # Margen izquierdo
+            'B': 6.0,   # N°
+            'C': 25.0,  # FECHA / PERIODO (ej. 23/12/2022 al 30/12/2022)
+            'D': 18.0,  # TIPO DE VACACIÓN (ej. Derecho Acumulado, Colectiva, Solicitada, Días Pagados)
+            'E': 14.0,  # DÍAS GANADOS (+)
+            'F': 14.0,  # DÍAS TOMADOS (-)
+            'G': 15.0,  # SALDO RESTANTE (=)
+            'H': 36.0   # MOTIVO / DETALLE
         }
         for col_let, width in col_widths.items():
             ws.column_dimensions[col_let].width = width
@@ -4797,42 +4821,59 @@ class DocumentService:
         font_h_bold = Font(name="Arial", size=8.5, bold=True)
         font_h_val = Font(name="Arial", size=8.5)
         font_title_main = Font(name="Arial", size=13, bold=True)
-        font_box_title = Font(name="Arial", size=9, bold=True)
+        font_box_title = Font(name="Arial", size=8.5, bold=True)
         font_th = Font(name="Arial", size=8, bold=True)
         font_td = Font(name="Arial", size=8)
         font_td_bold = Font(name="Arial", size=8, bold=True)
         
         fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-        fill_box = PatternFill(start_color="F2F4F7", end_color="F2F4F7", fill_type="solid")
-        fill_highlight = PatternFill(start_color="E6FFFA", end_color="E6FFFA", fill_type="solid")
+        fill_box = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+        fill_totales = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
+        fill_highlight = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
         
-        thin_side = Side(style='thin', color='808080')
+        thin_side = Side(style='thin', color='94A3B8')
         border_cell = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+        double_bottom = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style='double', color='000000'))
 
-        ws.merge_cells('B2:D2')
+        # Encabezado Empresa
+        ws.row_dimensions[2].height = 18
+        ws.merge_cells('B2:C2')
         ws['B2'] = "EMPRESA:"
         ws['B2'].font = font_h_bold
-        ws.merge_cells('E2:H2')
-        ws['E2'] = empresa
-        ws['E2'].font = font_h_val
+        ws.merge_cells('D2:F2')
+        ws['D2'] = empresa
+        ws['D2'].font = font_h_val
+        ws['D2'].alignment = Alignment(horizontal="left", vertical="center", shrink_to_fit=True)
+        ws['G2'] = "FECHA EMISIÓN:"
+        ws['G2'].font = font_h_bold
+        ws['G2'].alignment = Alignment(horizontal="right", vertical="center")
+        ws['H2'] = fecha_rep
+        ws['H2'].font = font_h_val
 
-        ws.merge_cells('B3:D3')
-        ws['B3'] = "NIT / N° PATRONAL:"
+        ws.row_dimensions[3].height = 18
+        ws.merge_cells('B3:C3')
+        ws['B3'] = "NIT:"
         ws['B3'].font = font_h_bold
-        ws.merge_cells('E3:H3')
-        ws['E3'] = f"{nit}  /  {nro_patronal}"
-        ws['E3'].font = font_h_val
+        ws.merge_cells('D3:F3')
+        ws['D3'] = nit
+        ws['D3'].font = font_h_val
 
+        # Título
+        ws.row_dimensions[5].height = 24
         ws.merge_cells('B5:H5')
         ws['B5'] = "FICHA INDIVIDUAL DE CONTROL DE VACACIONES"
         ws['B5'].font = font_title_main
         ws['B5'].alignment = Alignment(horizontal="center", vertical="center")
 
+        # Rango de fechas
+        ws.row_dimensions[6].height = 18
         ws.merge_cells('B6:H6')
-        ws['B6'] = "(Ley General del Trabajo - Art. 44)"
-        ws['B6'].font = Font(name="Arial", size=9, italic=True)
+        ws['B6'] = f"DEL {desde_fmt} AL {hasta_fmt}"
+        ws['B6'].font = Font(name="Arial", size=9.5, bold=True, color="334155")
         ws['B6'].alignment = Alignment(horizontal="center", vertical="center")
 
+        # Datos del Trabajador
+        ws.row_dimensions[8].height = 20
         ws.merge_cells('B8:H8')
         ws['B8'] = "DATOS GENERALES DEL TRABAJADOR"
         ws['B8'].font = font_box_title
@@ -4840,115 +4881,298 @@ class DocumentService:
         ws['B8'].alignment = Alignment(horizontal="left", vertical="center")
 
         fields_emp = [
-            ("TRABAJADOR:", emp.get('employee_name', ''), "C.I.:", emp.get('employee_ci', '')),
-            ("CARGO:", emp.get('employee_cargo', ''), "FECHA INGRESO:", emp.get('fecha_ingreso', '')),
+            ("TRABAJADOR:", emp_name, "C.I.:", emp.get('employee_ci', '')),
+            ("CARGO / PUESTO:", emp.get('employee_cargo', ''), "F. INGRESO:", emp.get('fecha_ingreso', '')),
             ("ANTIGÜEDAD:", emp.get('antiguedad_formato', ''), "ESCALA LEGAL:", f"{emp.get('escala_dias', 15)} días/año")
         ]
         r_emp = 9
         for label1, val1, label2, val2 in fields_emp:
+            ws.row_dimensions[r_emp].height = 19
+            ws.merge_cells(f"B{r_emp}:C{r_emp}")
             ws[f"B{r_emp}"] = label1
             ws[f"B{r_emp}"].font = font_h_bold
-            ws.merge_cells(f"C{r_emp}:E{r_emp}")
-            ws[f"C{r_emp}"] = val1
-            ws[f"C{r_emp}"].font = font_h_val
+            ws[f"B{r_emp}"].alignment = Alignment(horizontal="left", vertical="center")
 
-            ws[f"F{r_emp}"] = label2
-            ws[f"F{r_emp}"].font = font_h_bold
-            ws.merge_cells(f"G{r_emp}:H{r_emp}")
-            ws[f"G{r_emp}"] = val2
-            ws[f"G{r_emp}"].font = font_h_val
+            ws.merge_cells(f"D{r_emp}:F{r_emp}")
+            ws[f"D{r_emp}"] = str(val1).upper()
+            ws[f"D{r_emp}"].font = font_td_bold if label1.startswith("TRABAJADOR") else font_h_val
+            ws[f"D{r_emp}"].alignment = Alignment(horizontal="left", vertical="center", shrink_to_fit=True)
+
+            ws[f"G{r_emp}"] = label2
+            ws[f"G{r_emp}"].font = font_h_bold
+            ws[f"G{r_emp}"].alignment = Alignment(horizontal="right", vertical="center")
+
+            ws[f"H{r_emp}"] = str(val2)
+            ws[f"H{r_emp}"].font = font_h_val
+            ws[f"H{r_emp}"].alignment = Alignment(horizontal="left", vertical="center", shrink_to_fit=True)
             r_emp += 1
 
+        # Resumen de Saldos - Diseño simplificado e intuitivo en 3 tarjetas
         r_bal_title = r_emp + 1
+        ws.row_dimensions[r_bal_title].height = 20
         ws.merge_cells(f"B{r_bal_title}:H{r_bal_title}")
-        ws[f"B{r_bal_title}"] = "ESTADO DE SALDOS DE VACACIÓN"
+        ws[f"B{r_bal_title}"] = "RESUMEN DE VACACIONES"
         ws[f"B{r_bal_title}"].font = font_box_title
         ws[f"B{r_bal_title}"].fill = fill_box
+        ws[f"B{r_bal_title}"].alignment = Alignment(horizontal="left", vertical="center")
 
-        r_bal = r_bal_title + 1
-        bal_items = [
-            ("DERECHO ACUMULADO", emp.get('dias_acumulados', 0.0)),
-            ("A CUENTA", emp.get('dias_a_cuenta', 0.0)),
-            ("SOLICITADAS", emp.get('dias_solicitadas', 0.0)),
-            ("COLECTIVAS", emp.get('dias_colectivas', 0.0)),
-            ("TOTAL GOZADOS", emp.get('total_dias_tomados', 0.0)),
-            ("SALDO DISPONIBLE", emp.get('saldo_dias_pendientes', 0.0))
-        ]
-        
-        for idx, (label, val) in enumerate(bal_items):
-            col_letter = ['B', 'D', 'F'][idx % 3]
-            next_col = ['C', 'E', 'H'][idx % 3]
-            row_b = r_bal + (idx // 3) * 2
-            
-            ws.merge_cells(f"{col_letter}{row_b}:{next_col}{row_b}")
-            ws[f"{col_letter}{row_b}"] = label
-            ws[f"{col_letter}{row_b}"].font = Font(name="Arial", size=7.5, bold=True)
-            ws[f"{col_letter}{row_b}"].alignment = Alignment(horizontal="center", vertical="center")
-            ws[f"{col_letter}{row_b}"].fill = fill_box
-            ws[f"{col_letter}{row_b}"].border = border_cell
+        r_b1 = r_bal_title + 1
+        ws.row_dimensions[r_b1].height = 16
+        ws.row_dimensions[r_b1+1].height = 22
 
-            ws.merge_cells(f"{col_letter}{row_b+1}:{next_col}{row_b+1}")
-            ws[f"{col_letter}{row_b+1}"] = f"{val:.1f} días"
-            ws[f"{col_letter}{row_b+1}"].font = Font(name="Arial", size=9, bold=True)
-            ws[f"{col_letter}{row_b+1}"].alignment = Alignment(horizontal="center", vertical="center")
-            ws[f"{col_letter}{row_b+1}"].border = border_cell
-            if label == "SALDO DISPONIBLE":
-                ws[f"{col_letter}{row_b+1}"].fill = fill_highlight
+        # 3 Cajas Principales Claras y Directas alineadas (Paleta sobria corporativa):
+        # Caja 1: DÍAS GANADOS (+) (B:C)
+        ws.merge_cells(f"B{r_b1}:C{r_b1}")
+        ws[f"B{r_b1}"] = "DÍAS GANADOS (+)"
+        ws[f"B{r_b1}"].font = Font(name="Arial", size=8.5, bold=True)
+        ws[f"B{r_b1}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"B{r_b1}"].fill = fill_box
+        for c in ['B', 'C']:
+            ws[f"{c}{r_b1}"].border = border_cell
 
-        r_hist_title = r_bal + 5
+        ws.merge_cells(f"B{r_b1+1}:C{r_b1+1}")
+        ws[f"B{r_b1+1}"] = f"{emp.get('dias_acumulados', 0.0):.1f} días"
+        ws[f"B{r_b1+1}"].font = Font(name="Arial", size=11.5, bold=True)
+        ws[f"B{r_b1+1}"].alignment = Alignment(horizontal="center", vertical="center")
+        for c in ['B', 'C']:
+            ws[f"{c}{r_b1+1}"].border = border_cell
+
+        # Caja 2: DÍAS TOMADOS (-) (D:F)
+        ws.merge_cells(f"D{r_b1}:F{r_b1}")
+        ws[f"D{r_b1}"] = "DÍAS TOMADOS (-)"
+        ws[f"D{r_b1}"].font = Font(name="Arial", size=8.5, bold=True)
+        ws[f"D{r_b1}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"D{r_b1}"].fill = fill_box
+        for c in ['D', 'E', 'F']:
+            ws[f"{c}{r_b1}"].border = border_cell
+
+        ws.merge_cells(f"D{r_b1+1}:F{r_b1+1}")
+        ws[f"D{r_b1+1}"] = f"{emp.get('total_dias_tomados', 0.0):.1f} días"
+        ws[f"D{r_b1+1}"].font = Font(name="Arial", size=11.5, bold=True)
+        ws[f"D{r_b1+1}"].alignment = Alignment(horizontal="center", vertical="center")
+        for c in ['D', 'E', 'F']:
+            ws[f"{c}{r_b1+1}"].border = border_cell
+
+        # Caja 3: SALDO DISPONIBLE (=) (G:H)
+        ws.merge_cells(f"G{r_b1}:H{r_b1}")
+        ws[f"G{r_b1}"] = "SALDO DISPONIBLE (=)"
+        ws[f"G{r_b1}"].font = Font(name="Arial", size=8.5, bold=True)
+        ws[f"G{r_b1}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"G{r_b1}"].fill = fill_box
+        for c in ['G', 'H']:
+            ws[f"{c}{r_b1}"].border = border_cell
+
+        ws.merge_cells(f"G{r_b1+1}:H{r_b1+1}")
+        ws[f"G{r_b1+1}"] = f"{emp.get('saldo_dias_pendientes', 0.0):.1f} días"
+        ws[f"G{r_b1+1}"].font = Font(name="Arial", size=12, bold=True)
+        ws[f"G{r_b1+1}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"G{r_b1+1}"].fill = fill_box
+        for c in ['G', 'H']:
+            ws[f"{c}{r_b1+1}"].border = border_cell
+
+        # Línea de detalle sutil (simple y sin saturar)
+        r_sub = r_b1 + 2
+        ws.row_dimensions[r_sub].height = 18
+        ws.merge_cells(f"B{r_sub}:H{r_sub}")
+        pagados_val = emp.get('dias_pagados', emp.get('dias_a_cuenta', 0.0))
+        solic_val = emp.get('dias_solicitadas', 0.0)
+        colect_val = emp.get('dias_colectivas', 0.0)
+        ws[f"B{r_sub}"] = f"Detalle de tomados:  {pagados_val:.1f} d pagados  •  {solic_val:.1f} d solicitadas  •  {colect_val:.1f} d colectivas"
+        ws[f"B{r_sub}"].font = Font(name="Arial", size=8, italic=True, color="475569")
+        ws[f"B{r_sub}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        # Helpers de formateo amigable
+        def _fmt_dmy(date_val: str) -> str:
+            if not date_val:
+                return "-"
+            s = str(date_val).strip()
+            if len(s) >= 10 and s[4] == '-' and s[7] == '-':
+                p = s[:10].split('-')
+                return f"{p[2]}/{p[1]}/{p[0]}"
+            return s
+
+        def _fmt_periodo(f_ini: str, f_fin: str, tipo_raw: str) -> str:
+            ini_fmt = _fmt_dmy(f_ini)
+            fin_fmt = _fmt_dmy(f_fin)
+            if tipo_raw in ("dias_pagados", "a_cuenta"):
+                return f"Liquidación / {ini_fmt}" if ini_fmt != "-" else "Liquidación (Pago)"
+            if not fin_fmt or ini_fmt == fin_fmt or fin_fmt == "-":
+                return ini_fmt
+            return f"{ini_fmt} al {fin_fmt}"
+
+        def _fmt_motivo(motivo_val: str, tipo_raw: str) -> str:
+            m = str(motivo_val or "").strip()
+            if not m or m == "-":
+                if tipo_raw in ("dias_pagados", "a_cuenta"):
+                    return "Compensación de días pagados"
+                elif tipo_raw == "colectiva":
+                    return "Vacaciones colectivas"
+                elif tipo_raw == "solicitada":
+                    return "Vacaciones solicitadas"
+                return "Vacaciones de personal"
+            m = m.replace("Vacaciones a_cuenta", "Compensación de días pagados")
+            m = m.replace("a_cuenta", "días pagados")
+            if m == "Vacaciones colectiva":
+                m = "Vacaciones colectivas"
+            elif m == "Vacaciones solicitada":
+                m = "Vacaciones solicitadas"
+            return m
+
+        # Historial Kardex
+        r_hist_title = r_sub + 2
+        ws.row_dimensions[r_hist_title].height = 20
         ws.merge_cells(f"B{r_hist_title}:H{r_hist_title}")
-        ws[f"B{r_hist_title}"] = "HISTORIAL DETALLADO DE VACACIONES GOZADAS"
+        ws[f"B{r_hist_title}"] = "KÁRDEX DE VACACIONES (HISTORIAL)"
         ws[f"B{r_hist_title}"].font = font_box_title
+        ws[f"B{r_hist_title}"].fill = fill_box
+        ws[f"B{r_hist_title}"].alignment = Alignment(horizontal="left", vertical="center")
 
         r_th = r_hist_title + 1
+        ws.row_dimensions[r_th].height = 22
         th_list = [
             ("B", "N°"),
-            ("C", "FECHA INICIO"),
-            ("D", "FECHA FIN"),
-            ("E", "TIPO"),
-            ("F", "DÍAS"),
-            ("G", "MOTIVO / OBSERVACIONES"),
-            ("H", "APROBADO POR")
+            ("C", "FECHA / PERIODO"),
+            ("D", "TIPO DE VACACIÓN"),
+            ("E", "DÍAS GANADOS (+)"),
+            ("F", "DÍAS TOMADOS (-)"),
+            ("G", "SALDO RESTANTE (=)"),
+            ("H", "MOTIVO / DETALLE")
         ]
         for c_let, txt in th_list:
             c = ws[f"{c_let}{r_th}"]
             c.value = txt
             c.font = font_th
             c.fill = fill_header
-            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             c.border = border_cell
 
+        # Fila 0 Apertura Kardex
         r_data = r_th + 1
-        if records:
-            for idx, r in enumerate(records, start=1):
-                tipo_str = {"a_cuenta": "A Cuenta", "solicitada": "Solicitada", "colectiva": "Colectiva"}.get(r.get('tipo', ''), r.get('tipo', ''))
+        dias_base = float(emp.get('dias_acumulados', 0.0))
+        cur_balance = dias_base
+
+        ws.row_dimensions[r_data].height = 19
+        ws[f"B{r_data}"] = "Inicio"
+        ws[f"B{r_data}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"B{r_data}"].font = font_td_bold
+        ws[f"B{r_data}"].border = border_cell
+
+        ws[f"C{r_data}"] = _fmt_dmy(emp.get('fecha_ingreso', ''))
+        ws[f"C{r_data}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"C{r_data}"].font = font_td
+        ws[f"C{r_data}"].border = border_cell
+
+        ws[f"D{r_data}"] = "Derecho Acumulado"
+        ws[f"D{r_data}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"D{r_data}"].font = font_td_bold
+        ws[f"D{r_data}"].border = border_cell
+
+        ws[f"E{r_data}"] = f"+{dias_base:.1f}"
+        ws[f"E{r_data}"].alignment = Alignment(horizontal="right", vertical="center")
+        ws[f"E{r_data}"].font = font_td_bold
+        ws[f"E{r_data}"].border = border_cell
+
+        ws[f"F{r_data}"] = "-"
+        ws[f"F{r_data}"].alignment = Alignment(horizontal="center", vertical="center")
+        ws[f"F{r_data}"].font = Font(name="Arial", size=8, color="94A3B8")
+        ws[f"F{r_data}"].border = border_cell
+
+        ws[f"G{r_data}"] = f"{cur_balance:.1f}"
+        ws[f"G{r_data}"].alignment = Alignment(horizontal="right", vertical="center")
+        ws[f"G{r_data}"].font = font_td_bold
+        ws[f"G{r_data}"].border = border_cell
+
+        ws[f"H{r_data}"] = f"Saldo inicial ganado por ley ({emp.get('antiguedad_formato', '')})"
+        ws[f"H{r_data}"].alignment = Alignment(horizontal="left", vertical="center", shrink_to_fit=True, wrap_text=True)
+        ws[f"H{r_data}"].font = Font(name="Arial", size=8, italic=True)
+        ws[f"H{r_data}"].border = border_cell
+
+        r_data += 1
+
+        sorted_records = sorted(records, key=lambda x: str(x.get('fecha_inicio', '')))
+
+        if sorted_records:
+            for idx, r in enumerate(sorted_records, start=1):
+                ws.row_dimensions[r_data].height = 19
+                dias_r = float(r.get('dias', 0))
+                cur_balance -= dias_r
+
+                tipo_raw = r.get('tipo', '')
+                tipo_str = {
+                    "dias_pagados": "Días Pagados",
+                    "a_cuenta": "Días Pagados",
+                    "solicitada": "Solicitada",
+                    "colectiva": "Colectiva"
+                }.get(tipo_raw, tipo_raw)
+
+                periodo_str = _fmt_periodo(r.get('fecha_inicio'), r.get('fecha_fin'), tipo_raw)
+                motivo_str = _fmt_motivo(r.get('motivo'), tipo_raw)
+
                 row_vals = [
-                    ('B', idx, 'center', font_td),
-                    ('C', str(r.get('fecha_inicio', '')), 'center', font_td),
-                    ('D', str(r.get('fecha_fin', '')), 'center', font_td),
-                    ('E', tipo_str, 'center', font_td_bold),
-                    ('F', float(r.get('dias', 0)), 'right', font_td_bold),
-                    ('G', str(r.get('motivo', '') or '-'), 'left', font_td),
-                    ('H', str(r.get('aprobado_por', '') or 'RRHH'), 'center', font_td)
+                    ('B', idx, 'center', font_td, None, None),
+                    ('C', periodo_str, 'center', font_td, None, True),
+                    ('D', tipo_str, 'center', font_td_bold, None, True),
+                    ('E', "-", 'center', Font(name="Arial", size=8, color="94A3B8"), None, None),
+                    ('F', f"-{dias_r:.1f}", 'right', font_td_bold, None, None),
+                    ('G', f"{cur_balance:.1f}", 'right', font_td_bold, None, None),
+                    ('H', motivo_str, 'left', font_td, None, True)
                 ]
-                for c_let, val, align, f_st in row_vals:
+                for c_let, val, align, f_st, f_fill, shrink in row_vals:
                     c = ws[f"{c_let}{r_data}"]
                     c.value = val
                     c.font = f_st
-                    c.alignment = Alignment(horizontal=align, vertical="center")
+                    c.alignment = Alignment(horizontal=align, vertical="center", shrink_to_fit=bool(shrink), wrap_text=bool(c_let == 'H'))
                     c.border = border_cell
-                    if c_let == 'F':
-                        c.number_format = '#,##0.0'
+                    if f_fill:
+                        c.fill = f_fill
                 r_data += 1
         else:
             ws.merge_cells(f"B{r_data}:H{r_data}")
             ws[f"B{r_data}"] = "No registra vacaciones tomadas a la fecha."
             ws[f"B{r_data}"].font = Font(name="Arial", size=8, italic=True)
             ws[f"B{r_data}"].alignment = Alignment(horizontal="center", vertical="center")
-            ws[f"B{r_data}"].border = border_cell
+            for c_let in ['B', 'C', 'D', 'E', 'F', 'G', 'H']:
+                ws[f"{c_let}{r_data}"].border = border_cell
             r_data += 1
 
+        # Fila de Totales Finales
+        ws.row_dimensions[r_data].height = 22
+        ws.merge_cells(f"B{r_data}:D{r_data}")
+        ws[f"B{r_data}"] = "TOTALES / SALDO DISPONIBLE FINAL:"
+        ws[f"B{r_data}"].font = font_td_bold
+        ws[f"B{r_data}"].alignment = Alignment(horizontal="right", vertical="center")
+        for col_l in ['B', 'C', 'D']:
+            ws[f"{col_l}{r_data}"].fill = fill_totales
+            ws[f"{col_l}{r_data}"].border = border_cell
+
+        ws[f"E{r_data}"] = f"+{dias_base:.1f}"
+        ws[f"E{r_data}"].font = Font(name="Arial", size=9, bold=True)
+        ws[f"E{r_data}"].alignment = Alignment(horizontal="right", vertical="center")
+        ws[f"E{r_data}"].fill = fill_totales
+        ws[f"E{r_data}"].border = double_bottom
+
+        ws[f"F{r_data}"] = f"-{emp.get('total_dias_tomados', 0.0):.1f}"
+        ws[f"F{r_data}"].font = Font(name="Arial", size=9, bold=True)
+        ws[f"F{r_data}"].alignment = Alignment(horizontal="right", vertical="center")
+        ws[f"F{r_data}"].fill = fill_totales
+        ws[f"F{r_data}"].border = double_bottom
+
+        ws[f"G{r_data}"] = f"{emp.get('saldo_dias_pendientes', 0.0):.1f}"
+        ws[f"G{r_data}"].font = Font(name="Arial", size=10, bold=True)
+        ws[f"G{r_data}"].alignment = Alignment(horizontal="right", vertical="center")
+        ws[f"G{r_data}"].fill = fill_totales
+        ws[f"G{r_data}"].border = double_bottom
+
+        ws[f"H{r_data}"] = "Días hábiles disponibles a la fecha"
+        ws[f"H{r_data}"].font = Font(name="Arial", size=8, italic=True)
+        ws[f"H{r_data}"].alignment = Alignment(horizontal="left", vertical="center", shrink_to_fit=True)
+        ws[f"H{r_data}"].fill = fill_totales
+        ws[f"H{r_data}"].border = border_cell
+
+        # Firmas separadas - Espacio central en blanco garantizado y celdas amplias sin desbordes
         f_row = r_data + 4
+        
+        # Firma Trabajador (B:D) - 49 de ancho
         ws.merge_cells(f"B{f_row}:D{f_row}")
         ws[f"B{f_row}"] = ""
         for c_let in ['B', 'C', 'D']:
@@ -4956,12 +5180,18 @@ class DocumentService:
         ws.merge_cells(f"B{f_row+1}:D{f_row+1}")
         ws[f"B{f_row+1}"] = emp_name
         ws[f"B{f_row+1}"].font = font_td_bold
-        ws[f"B{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
+        ws[f"B{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top", shrink_to_fit=True)
         ws.merge_cells(f"B{f_row+2}:D{f_row+2}")
         ws[f"B{f_row+2}"] = f"FIRMA TRABAJADOR - C.I. {emp.get('employee_ci', '')}"
         ws[f"B{f_row+2}"].font = Font(name="Arial", size=7.5)
-        ws[f"B{f_row+2}"].alignment = Alignment(horizontal="center", vertical="top")
+        ws[f"B{f_row+2}"].alignment = Alignment(horizontal="center", vertical="top", shrink_to_fit=True)
 
+        # Separador central (E) - 14 de ancho, totalmente vacío y sin bordes
+        for offset_r in range(3):
+            ws[f"E{f_row+offset_r}"].border = Border()
+            ws[f"E{f_row+offset_r}"].value = ""
+
+        # Firma Representante Legal / Empresa (F:H) - 65 de ancho
         ws.merge_cells(f"F{f_row}:H{f_row}")
         ws[f"F{f_row}"] = ""
         for c_let in ['F', 'G', 'H']:
@@ -4969,11 +5199,11 @@ class DocumentService:
         ws.merge_cells(f"F{f_row+1}:H{f_row+1}")
         ws[f"F{f_row+1}"] = rep_legal
         ws[f"F{f_row+1}"].font = font_td_bold
-        ws[f"F{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
+        ws[f"F{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top", shrink_to_fit=True)
         ws.merge_cells(f"F{f_row+2}:H{f_row+2}")
-        ws[f"F{f_row+2}"] = f"REPRESENTANTE LEGAL / RRHH"
+        ws[f"F{f_row+2}"] = "REPRESENTANTE LEGAL / ADMINISTRACIÓN"
         ws[f"F{f_row+2}"].font = Font(name="Arial", size=7.5)
-        ws[f"F{f_row+2}"].alignment = Alignment(horizontal="center", vertical="top")
+        ws[f"F{f_row+2}"].alignment = Alignment(horizontal="center", vertical="top", shrink_to_fit=True)
 
         fecha_slug = now_dt.strftime("%d_%m_%Y")
         xlsx_path = os.path.join(exports_dir, f"ficha_vacaciones_{emp_slug}_{fecha_slug}.xlsx")

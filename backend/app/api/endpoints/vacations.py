@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import text
 from datetime import date, datetime
+from typing import Optional
 import json
 import re
 
@@ -64,7 +65,7 @@ def get_company_vacation_summary(schema_name: str, db: Session = Depends(get_ten
 
     emp_summaries = []
     tot_acumulados = 0.0
-    tot_a_cuenta = 0.0
+    tot_pagados = 0.0
     tot_solicitadas = 0.0
     tot_colectivas = 0.0
     tot_tomados = 0.0
@@ -74,14 +75,14 @@ def get_company_vacation_summary(schema_name: str, db: Session = Depends(get_ten
         calc = VacationService.calculate_accumulated_vacation_days(emp.fecha_ingreso)
         recs = records_by_emp.get(emp.id, [])
         
-        a_cuenta = sum(float(r.dias) for r in recs if r.tipo == "a_cuenta")
+        pagados = sum(float(r.dias) for r in recs if r.tipo in ("dias_pagados", "a_cuenta"))
         solicitadas = sum(float(r.dias) for r in recs if r.tipo == "solicitada")
         colectivas = sum(float(r.dias) for r in recs if r.tipo == "colectiva")
-        tomados = a_cuenta + solicitadas + colectivas
+        tomados = pagados + solicitadas + colectivas
         saldo = calc["dias_acumulados"] - tomados
 
         tot_acumulados += calc["dias_acumulados"]
-        tot_a_cuenta += a_cuenta
+        tot_pagados += pagados
         tot_solicitadas += solicitadas
         tot_colectivas += colectivas
         tot_tomados += tomados
@@ -124,7 +125,8 @@ def get_company_vacation_summary(schema_name: str, db: Session = Depends(get_ten
             antiguedad_formato=calc["antiguedad_formato"],
             escala_dias=calc["escala_dias"],
             dias_acumulados=calc["dias_acumulados"],
-            dias_a_cuenta=round(a_cuenta, 1),
+            dias_a_cuenta=round(pagados, 1),
+            dias_pagados=round(pagados, 1),
             dias_solicitadas=round(solicitadas, 1),
             dias_colectivas=round(colectivas, 1),
             total_dias_tomados=round(tomados, 1),
@@ -140,7 +142,8 @@ def get_company_vacation_summary(schema_name: str, db: Session = Depends(get_ten
         tenant_empleador_ci=t_emp_ci,
         total_empleados=len(employees),
         total_dias_acumulados=round(tot_acumulados, 1),
-        total_dias_a_cuenta=round(tot_a_cuenta, 1),
+        total_dias_a_cuenta=round(tot_pagados, 1),
+        total_dias_pagados=round(tot_pagados, 1),
         total_dias_solicitadas=round(tot_solicitadas, 1),
         total_dias_colectivas=round(tot_colectivas, 1),
         total_dias_tomados=round(tot_tomados, 1),
@@ -158,10 +161,10 @@ def get_employee_vacation_summary(schema_name: str, employee_id: int, db: Sessio
     calc = VacationService.calculate_accumulated_vacation_days(emp.fecha_ingreso)
     recs = db.query(VacationRecord).filter(VacationRecord.employee_id == employee_id).order_by(VacationRecord.fecha_inicio.desc()).all()
     
-    a_cuenta = sum(float(r.dias) for r in recs if r.tipo == "a_cuenta")
+    pagados = sum(float(r.dias) for r in recs if r.tipo in ("dias_pagados", "a_cuenta"))
     solicitadas = sum(float(r.dias) for r in recs if r.tipo == "solicitada")
     colectivas = sum(float(r.dias) for r in recs if r.tipo == "colectiva")
-    tomados = a_cuenta + solicitadas + colectivas
+    tomados = pagados + solicitadas + colectivas
     saldo = calc["dias_acumulados"] - tomados
 
     serialized_records = []
@@ -201,7 +204,8 @@ def get_employee_vacation_summary(schema_name: str, employee_id: int, db: Sessio
         antiguedad_formato=calc["antiguedad_formato"],
         escala_dias=calc["escala_dias"],
         dias_acumulados=calc["dias_acumulados"],
-        dias_a_cuenta=round(a_cuenta, 1),
+        dias_a_cuenta=round(pagados, 1),
+        dias_pagados=round(pagados, 1),
         dias_solicitadas=round(solicitadas, 1),
         dias_colectivas=round(colectivas, 1),
         total_dias_tomados=round(tomados, 1),
@@ -216,17 +220,18 @@ def create_vacation_record(schema_name: str, payload: VacationRecordCreate, db: 
     if not emp:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
 
+    tipo = "dias_pagados" if payload.tipo in ("dias_pagados", "a_cuenta") else payload.tipo
     gestion = payload.gestion or payload.fecha_inicio.year
     fechas_json = json.dumps(payload.fechas_detalle or [])
 
     new_record = VacationRecord(
         employee_id=payload.employee_id,
-        tipo=payload.tipo,
+        tipo=tipo,
         fecha_inicio=payload.fecha_inicio,
         fecha_fin=payload.fecha_fin,
         dias=payload.dias,
         fechas_detalle=fechas_json,
-        motivo=payload.motivo or "Vacaciones de personal",
+        motivo=payload.motivo or ("Días de vacación pagados" if tipo == "dias_pagados" else "Vacaciones de personal"),
         gestion=gestion,
         aprobado_por=payload.aprobado_por
     )
@@ -262,9 +267,20 @@ def delete_vacation_record(schema_name: str, record_id: int, db: Session = Depen
 
 @router.get("/export/company/excel")
 @router.get("/export/company/excel/", include_in_schema=False)
-def export_company_vacation_excel(schema_name: str, db: Session = Depends(get_tenant_db)):
+def export_company_vacation_excel(
+    schema_name: str, 
+    desde: Optional[str] = Query(None), 
+    hasta: Optional[str] = Query(None), 
+    db: Session = Depends(get_tenant_db)
+):
     summary = get_company_vacation_summary(schema_name=schema_name, db=db)
-    file_path = DocumentService.generate_company_vacations_excel(summary.model_dump(), output_format="xlsx", schema_name=schema_name)
+    file_path = DocumentService.generate_company_vacations_excel(
+        summary.model_dump(), 
+        output_format="xlsx", 
+        schema_name=schema_name,
+        desde=desde,
+        hasta=hasta
+    )
     empresa_slug = DocumentService._slugify(schema_name)
     now_str = datetime.now().strftime("%d-%m-%Y")
     filename = f"control_vacaciones_{empresa_slug}_{now_str}.xlsx"
@@ -272,9 +288,20 @@ def export_company_vacation_excel(schema_name: str, db: Session = Depends(get_te
 
 @router.get("/export/company/pdf")
 @router.get("/export/company/pdf/", include_in_schema=False)
-def export_company_vacation_pdf(schema_name: str, db: Session = Depends(get_tenant_db)):
+def export_company_vacation_pdf(
+    schema_name: str, 
+    desde: Optional[str] = Query(None), 
+    hasta: Optional[str] = Query(None), 
+    db: Session = Depends(get_tenant_db)
+):
     summary = get_company_vacation_summary(schema_name=schema_name, db=db)
-    file_path = DocumentService.generate_company_vacations_excel(summary.model_dump(), output_format="pdf", schema_name=schema_name)
+    file_path = DocumentService.generate_company_vacations_excel(
+        summary.model_dump(), 
+        output_format="pdf", 
+        schema_name=schema_name,
+        desde=desde,
+        hasta=hasta
+    )
     empresa_slug = DocumentService._slugify(schema_name)
     now_str = datetime.now().strftime("%d-%m-%Y")
     filename = f"control_vacaciones_{empresa_slug}_{now_str}.pdf"
@@ -282,14 +309,19 @@ def export_company_vacation_pdf(schema_name: str, db: Session = Depends(get_tena
 
 @router.get("/export/employee/{employee_id}/excel")
 @router.get("/export/employee/{employee_id}/excel/", include_in_schema=False)
-def export_employee_vacation_excel(schema_name: str, employee_id: int, db: Session = Depends(get_tenant_db)):
+def export_employee_vacation_excel(
+    schema_name: str, 
+    employee_id: int, 
+    desde: Optional[str] = Query(None), 
+    hasta: Optional[str] = Query(None), 
+    db: Session = Depends(get_tenant_db)
+):
     emp_summary = get_employee_vacation_summary(schema_name=schema_name, employee_id=employee_id, db=db)
     with engine.connect() as conn:
         result = conn.execute(
             text(f"SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = '{schema_name}'")
         ).fetchone()
         t_name = result[0] if result else "Empresa"
-        t_patronal = result[1] if result and result[1] else "No asignado"
         t_nit = result[2] if result and result[2] else ""
         t_emp_nombres = result[3] if result and result[3] else ""
         t_emp_paterno = result[4] if result and result[4] else ""
@@ -300,13 +332,18 @@ def export_employee_vacation_excel(schema_name: str, employee_id: int, db: Sessi
     payload = {
         "empresa_nombre": t_name,
         "empresa_nit": t_nit,
-        "numero_patronal": t_patronal,
         "representante_legal": rep_legal,
         "ci_representante": t_emp_ci,
         "employee": emp_summary.model_dump()
     }
 
-    file_path = DocumentService.generate_employee_vacation_excel(payload, output_format="xlsx", schema_name=schema_name)
+    file_path = DocumentService.generate_employee_vacation_excel(
+        payload, 
+        output_format="xlsx", 
+        schema_name=schema_name,
+        desde=desde,
+        hasta=hasta
+    )
     empresa_slug = DocumentService._slugify(schema_name)
     emp_slug = DocumentService._slugify(emp_summary.employee_name)
     now_str = datetime.now().strftime("%d-%m-%Y")
@@ -315,14 +352,19 @@ def export_employee_vacation_excel(schema_name: str, employee_id: int, db: Sessi
 
 @router.get("/export/employee/{employee_id}/pdf")
 @router.get("/export/employee/{employee_id}/pdf/", include_in_schema=False)
-def export_employee_vacation_pdf(schema_name: str, employee_id: int, db: Session = Depends(get_tenant_db)):
+def export_employee_vacation_pdf(
+    schema_name: str, 
+    employee_id: int, 
+    desde: Optional[str] = Query(None), 
+    hasta: Optional[str] = Query(None), 
+    db: Session = Depends(get_tenant_db)
+):
     emp_summary = get_employee_vacation_summary(schema_name=schema_name, employee_id=employee_id, db=db)
     with engine.connect() as conn:
         result = conn.execute(
             text(f"SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = '{schema_name}'")
         ).fetchone()
         t_name = result[0] if result else "Empresa"
-        t_patronal = result[1] if result and result[1] else "No asignado"
         t_nit = result[2] if result and result[2] else ""
         t_emp_nombres = result[3] if result and result[3] else ""
         t_emp_paterno = result[4] if result and result[4] else ""
@@ -333,13 +375,18 @@ def export_employee_vacation_pdf(schema_name: str, employee_id: int, db: Session
     payload = {
         "empresa_nombre": t_name,
         "empresa_nit": t_nit,
-        "numero_patronal": t_patronal,
         "representante_legal": rep_legal,
         "ci_representante": t_emp_ci,
         "employee": emp_summary.model_dump()
     }
 
-    file_path = DocumentService.generate_employee_vacation_excel(payload, output_format="pdf", schema_name=schema_name)
+    file_path = DocumentService.generate_employee_vacation_excel(
+        payload, 
+        output_format="pdf", 
+        schema_name=schema_name,
+        desde=desde,
+        hasta=hasta
+    )
     empresa_slug = DocumentService._slugify(schema_name)
     emp_slug = DocumentService._slugify(emp_summary.employee_name)
     now_str = datetime.now().strftime("%d-%m-%Y")
