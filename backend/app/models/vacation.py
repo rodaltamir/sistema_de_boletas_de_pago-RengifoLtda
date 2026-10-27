@@ -12,9 +12,10 @@ class VacationRecord(Base):
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey("tenant.employees.id"), nullable=False, index=True)
     
-    tipo = Column(String(50), nullable=False) # 'a_cuenta' | 'solicitada' | 'colectiva'
-    fecha_inicio = Column(Date, nullable=False)
+    tipo = Column(String(50), nullable=False) # 'dias_pagados' | 'a_cuenta' | 'solicitada' | 'colectiva'
+    fecha_inicio = Column(Date, nullable=False, index=True)
     fecha_fin = Column(Date, nullable=False)
+    fecha_solicitud = Column(Date, nullable=True) # Fecha en que se realizó / solicitó la vacación (opcional)
     dias = Column(Numeric(5, 1), nullable=False) # Cantidad de días hábiles computados
     fechas_detalle = Column(Text, nullable=True) # Lista serializada JSON con fechas exactas: '["2026-10-15", ...]'
     

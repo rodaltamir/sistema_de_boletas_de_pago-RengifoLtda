@@ -41,10 +41,15 @@ def sort_code_key(code_val, fallback_id=0):
 
 @router.get("/summary", response_model=CompanyVacationSummary)
 @router.get("/summary/", response_model=CompanyVacationSummary, include_in_schema=False)
-def get_company_vacation_summary(schema_name: str, db: Session = Depends(get_tenant_db)):
+def get_company_vacation_summary(
+    schema_name: str, 
+    desde: Optional[str] = Query(None), 
+    hasta: Optional[str] = Query(None), 
+    db: Session = Depends(get_tenant_db)
+):
     with engine.connect() as conn:
         result = conn.execute(
-            text(f"SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = '{schema_name}'")
+            text("SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = :s").bindparams(s=schema_name)
         ).fetchone()
         t_name = result[0] if result else "Empresa"
         t_patronal = result[1] if result and result[1] else "No asignado"
@@ -54,6 +59,13 @@ def get_company_vacation_summary(schema_name: str, db: Session = Depends(get_ten
         t_emp_materno = result[5] if result and result[5] else ""
         t_emp_ci = result[6] if result and result[6] else ""
         rep_legal = f"{t_emp_paterno} {t_emp_materno} {t_emp_nombres}".strip() or t_name
+
+    cutoff_date = None
+    if hasta and len(hasta) >= 10:
+        try:
+            cutoff_date = date.fromisoformat(hasta[:10])
+        except Exception:
+            cutoff_date = None
 
     employees = db.query(Employee).filter(Employee.is_active == True).all()
     employees = sorted(employees, key=lambda e: sort_code_key(e.internal_code, e.id))
@@ -72,7 +84,7 @@ def get_company_vacation_summary(schema_name: str, db: Session = Depends(get_ten
     tot_saldo = 0.0
 
     for emp in employees:
-        calc = VacationService.calculate_accumulated_vacation_days(emp.fecha_ingreso)
+        calc = VacationService.calculate_accumulated_vacation_days(emp.fecha_ingreso, reference_date=cutoff_date)
         recs = records_by_emp.get(emp.id, [])
         
         pagados = sum(float(r.dias) for r in recs if r.tipo in ("dias_pagados", "a_cuenta"))
@@ -106,6 +118,7 @@ def get_company_vacation_summary(schema_name: str, db: Session = Depends(get_ten
                 dias=float(r.dias),
                 fechas_detalle=fechas,
                 motivo=r.motivo,
+                fecha_solicitud=r.fecha_solicitud,
                 gestion=r.gestion,
                 aprobado_por=r.aprobado_por,
                 created_at=str(r.created_at) if r.created_at else None
@@ -131,6 +144,8 @@ def get_company_vacation_summary(schema_name: str, db: Session = Depends(get_ten
             dias_colectivas=round(colectivas, 1),
             total_dias_tomados=round(tomados, 1),
             saldo_dias_pendientes=round(saldo, 1),
+            fecha_desde=desde,
+            fecha_hasta=hasta,
             records=serialized_records
         ))
 
@@ -140,6 +155,8 @@ def get_company_vacation_summary(schema_name: str, db: Session = Depends(get_ten
         tenant_nro_patronal=t_patronal,
         tenant_empleador=rep_legal,
         tenant_empleador_ci=t_emp_ci,
+        fecha_desde=desde,
+        fecha_hasta=hasta,
         total_empleados=len(employees),
         total_dias_acumulados=round(tot_acumulados, 1),
         total_dias_a_cuenta=round(tot_pagados, 1),
@@ -153,12 +170,25 @@ def get_company_vacation_summary(schema_name: str, db: Session = Depends(get_ten
 
 @router.get("/employee/{employee_id}", response_model=EmployeeVacationSummary)
 @router.get("/employee/{employee_id}/", response_model=EmployeeVacationSummary, include_in_schema=False)
-def get_employee_vacation_summary(schema_name: str, employee_id: int, db: Session = Depends(get_tenant_db)):
+def get_employee_vacation_summary(
+    schema_name: str, 
+    employee_id: int, 
+    desde: Optional[str] = Query(None),
+    hasta: Optional[str] = Query(None),
+    db: Session = Depends(get_tenant_db)
+):
     emp = db.query(Employee).filter(Employee.id == employee_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
         
-    calc = VacationService.calculate_accumulated_vacation_days(emp.fecha_ingreso)
+    cutoff_date = None
+    if hasta and len(hasta) >= 10:
+        try:
+            cutoff_date = date.fromisoformat(hasta[:10])
+        except Exception:
+            cutoff_date = None
+
+    calc = VacationService.calculate_accumulated_vacation_days(emp.fecha_ingreso, reference_date=cutoff_date)
     recs = db.query(VacationRecord).filter(VacationRecord.employee_id == employee_id).order_by(VacationRecord.fecha_inicio.desc()).all()
     
     pagados = sum(float(r.dias) for r in recs if r.tipo in ("dias_pagados", "a_cuenta"))
@@ -185,6 +215,7 @@ def get_employee_vacation_summary(schema_name: str, employee_id: int, db: Sessio
             dias=float(r.dias),
             fechas_detalle=fechas,
             motivo=r.motivo,
+            fecha_solicitud=r.fecha_solicitud,
             gestion=r.gestion,
             aprobado_por=r.aprobado_por,
             created_at=str(r.created_at) if r.created_at else None
@@ -210,7 +241,45 @@ def get_employee_vacation_summary(schema_name: str, employee_id: int, db: Sessio
         dias_colectivas=round(colectivas, 1),
         total_dias_tomados=round(tomados, 1),
         saldo_dias_pendientes=round(saldo, 1),
+        fecha_desde=desde,
+        fecha_hasta=hasta,
         records=serialized_records
+    )
+
+@router.get("/employee/{employee_id}/kardex-detallado")
+@router.get("/employee/{employee_id}/kardex-detallado/", include_in_schema=False)
+def get_employee_kardex_detallado(
+    schema_name: str,
+    employee_id: int,
+    desde: Optional[str] = Query(None),
+    hasta: Optional[str] = Query(None),
+    db: Session = Depends(get_tenant_db)
+):
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+
+    recs = db.query(VacationRecord).filter(VacationRecord.employee_id == employee_id).all()
+
+    desde_dt = None
+    if desde and len(desde) >= 10:
+        try:
+            desde_dt = date.fromisoformat(desde[:10])
+        except Exception:
+            pass
+
+    hasta_dt = None
+    if hasta and len(hasta) >= 10:
+        try:
+            hasta_dt = date.fromisoformat(hasta[:10])
+        except Exception:
+            pass
+
+    return VacationService.build_kardex_detailed_by_month(
+        emp.fecha_ingreso,
+        recs,
+        desde=desde_dt,
+        hasta=hasta_dt
     )
 
 @router.post("/record", response_model=VacationRecordResponse)
@@ -232,6 +301,7 @@ def create_vacation_record(schema_name: str, payload: VacationRecordCreate, db: 
         dias=payload.dias,
         fechas_detalle=fechas_json,
         motivo=payload.motivo or ("Días de vacación pagados" if tipo == "dias_pagados" else "Vacaciones de personal"),
+        fecha_solicitud=payload.fecha_solicitud,
         gestion=gestion,
         aprobado_por=payload.aprobado_por
     )
@@ -249,9 +319,68 @@ def create_vacation_record(schema_name: str, payload: VacationRecordCreate, db: 
         dias=float(new_record.dias),
         fechas_detalle=payload.fechas_detalle or [],
         motivo=new_record.motivo,
+        fecha_solicitud=new_record.fecha_solicitud,
         gestion=new_record.gestion,
         aprobado_por=new_record.aprobado_por,
         created_at=str(new_record.created_at) if new_record.created_at else None
+    )
+
+@router.put("/record/{record_id}", response_model=VacationRecordResponse)
+@router.put("/record/{record_id}/", response_model=VacationRecordResponse, include_in_schema=False)
+def update_vacation_record(
+    schema_name: str,
+    record_id: int,
+    payload: VacationRecordCreate,
+    db: Session = Depends(get_tenant_db)
+):
+    record = db.query(VacationRecord).filter(VacationRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Registro de vacación no encontrado")
+
+    emp = db.query(Employee).filter(Employee.id == payload.employee_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+
+    tipo = "dias_pagados" if payload.tipo in ("dias_pagados", "a_cuenta") else payload.tipo
+    gestion = payload.gestion or payload.fecha_inicio.year
+    fechas_json = json.dumps(payload.fechas_detalle or [])
+
+    record.employee_id = payload.employee_id
+    record.tipo = tipo
+    record.fecha_inicio = payload.fecha_inicio
+    record.fecha_fin = payload.fecha_fin
+    record.dias = payload.dias
+    record.fechas_detalle = fechas_json
+    record.motivo = payload.motivo or ("Días de vacación pagados" if tipo == "dias_pagados" else "Vacaciones de personal")
+    record.fecha_solicitud = payload.fecha_solicitud
+    record.gestion = gestion
+    if payload.aprobado_por is not None:
+        record.aprobado_por = payload.aprobado_por
+
+    db.commit()
+    db.refresh(record)
+
+    fechas = []
+    if record.fechas_detalle:
+        try:
+            fechas = json.loads(record.fechas_detalle)
+        except Exception:
+            fechas = []
+
+    return VacationRecordResponse(
+        id=record.id,
+        employee_id=record.employee_id,
+        employee_name=f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().upper(),
+        tipo=record.tipo,
+        fecha_inicio=record.fecha_inicio,
+        fecha_fin=record.fecha_fin,
+        dias=float(record.dias),
+        fechas_detalle=fechas,
+        motivo=record.motivo,
+        fecha_solicitud=record.fecha_solicitud,
+        gestion=record.gestion,
+        aprobado_por=record.aprobado_por,
+        created_at=str(record.created_at) if record.created_at else None
     )
 
 @router.delete("/record/{record_id}")
@@ -273,7 +402,7 @@ def export_company_vacation_excel(
     hasta: Optional[str] = Query(None), 
     db: Session = Depends(get_tenant_db)
 ):
-    summary = get_company_vacation_summary(schema_name=schema_name, db=db)
+    summary = get_company_vacation_summary(schema_name=schema_name, desde=desde, hasta=hasta, db=db)
     file_path = DocumentService.generate_company_vacations_excel(
         summary.model_dump(), 
         output_format="xlsx", 
@@ -294,7 +423,7 @@ def export_company_vacation_pdf(
     hasta: Optional[str] = Query(None), 
     db: Session = Depends(get_tenant_db)
 ):
-    summary = get_company_vacation_summary(schema_name=schema_name, db=db)
+    summary = get_company_vacation_summary(schema_name=schema_name, desde=desde, hasta=hasta, db=db)
     file_path = DocumentService.generate_company_vacations_excel(
         summary.model_dump(), 
         output_format="pdf", 
@@ -316,10 +445,10 @@ def export_employee_vacation_excel(
     hasta: Optional[str] = Query(None), 
     db: Session = Depends(get_tenant_db)
 ):
-    emp_summary = get_employee_vacation_summary(schema_name=schema_name, employee_id=employee_id, db=db)
+    emp_summary = get_employee_vacation_summary(schema_name=schema_name, employee_id=employee_id, desde=desde, hasta=hasta, db=db)
     with engine.connect() as conn:
         result = conn.execute(
-            text(f"SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = '{schema_name}'")
+            text("SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = :s").bindparams(s=schema_name)
         ).fetchone()
         t_name = result[0] if result else "Empresa"
         t_nit = result[2] if result and result[2] else ""
@@ -359,10 +488,10 @@ def export_employee_vacation_pdf(
     hasta: Optional[str] = Query(None), 
     db: Session = Depends(get_tenant_db)
 ):
-    emp_summary = get_employee_vacation_summary(schema_name=schema_name, employee_id=employee_id, db=db)
+    emp_summary = get_employee_vacation_summary(schema_name=schema_name, employee_id=employee_id, desde=desde, hasta=hasta, db=db)
     with engine.connect() as conn:
         result = conn.execute(
-            text(f"SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = '{schema_name}'")
+            text("SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = :s").bindparams(s=schema_name)
         ).fetchone()
         t_name = result[0] if result else "Empresa"
         t_nit = result[2] if result and result[2] else ""

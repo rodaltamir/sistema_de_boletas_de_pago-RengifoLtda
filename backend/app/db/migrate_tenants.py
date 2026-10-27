@@ -167,13 +167,15 @@ def migrate_tenants():
                         tipo VARCHAR(50) NOT NULL,
                         fecha_inicio DATE NOT NULL,
                         fecha_fin DATE NOT NULL,
+                        fecha_solicitud DATE,
                         dias NUMERIC(5, 1) NOT NULL,
                         fechas_detalle TEXT,
                         motivo VARCHAR(255),
                         gestion INTEGER NOT NULL,
                         aprobado_por VARCHAR(100),
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                    )
+                    );
+                    ALTER TABLE "{schema}".vacation_records ADD COLUMN IF NOT EXISTS fecha_solicitud DATE;
                 '''))
                 
                 # 8. Sembrar departamentos predeterminados si no existen

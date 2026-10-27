@@ -8,6 +8,7 @@ class VacationRecordCreate(BaseModel):
     tipo: str # 'dias_pagados' | 'a_cuenta' | 'solicitada' | 'colectiva'
     fecha_inicio: date
     fecha_fin: date
+    fecha_solicitud: Optional[date] = None
     dias: Decimal
     fechas_detalle: Optional[List[str]] = []
     motivo: Optional[str] = None
@@ -21,6 +22,7 @@ class VacationRecordResponse(BaseModel):
     tipo: str
     fecha_inicio: date
     fecha_fin: date
+    fecha_solicitud: Optional[date] = None
     dias: float
     fechas_detalle: Optional[List[str]] = []
     motivo: Optional[str] = None
@@ -38,6 +40,8 @@ class EmployeeVacationSummary(BaseModel):
     employee_ci: str
     employee_cargo: str
     fecha_ingreso: str
+    fecha_desde: Optional[str] = None
+    fecha_hasta: Optional[str] = None
     antiguedad_anios: int
     antiguedad_meses: int
     antiguedad_dias: int
@@ -61,6 +65,8 @@ class CompanyVacationSummary(BaseModel):
     tenant_nro_patronal: Optional[str] = None
     tenant_empleador: Optional[str] = None
     tenant_empleador_ci: Optional[str] = None
+    fecha_desde: Optional[str] = None
+    fecha_hasta: Optional[str] = None
     total_empleados: int
     total_dias_acumulados: float = 0.0
     total_dias_a_cuenta: float = 0.0
