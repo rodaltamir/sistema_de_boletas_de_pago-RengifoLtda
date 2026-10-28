@@ -78,6 +78,36 @@ interface KardexItem {
   kardexIndex?: number | string;
 }
 
+interface DetailedKardexItem {
+  id: string;
+  recordId?: number;
+  mesKey: string;
+  mesLabel: string;
+  fecha: string;
+  fecha_fin: string;
+  tipo: string;
+  tipoLabel: string;
+  diasGanados: number;
+  diasTomados: number;
+  saldoRestante: number;
+  motivo?: string;
+  fecha_solicitud?: string | null;
+  diasEspecificos: string[];
+  diasEspecificosFormato: string;
+  isRecord: boolean;
+  isApertura?: boolean;
+  kardexIndex?: number | string;
+}
+
+interface MonthlySummaryItem {
+  mesKey: string;
+  mesLabel: string;
+  diasGanados: number;
+  diasTomados: number;
+  saldoCierre: number;
+  count: number;
+}
+
 
 interface EmployeeVacationSummary {
   employee_id: number;
@@ -198,6 +228,7 @@ function VacacionesContent() {
 
   // Modal Ficha Individual y Periodo Evaluado
   const [viewingEmployee, setViewingEmployee] = useState<EmployeeVacationSummary | null>(null);
+  const [kardexViewMode, setKardexViewMode] = useState<"general" | "detallado">("general");
   const [modalPeriodMode, setModalPeriodMode] = useState<"principal" | "historico" | "gestion" | "personalizado">("principal");
   const [modalFechaDesde, setModalFechaDesde] = useState<string>("");
   const [modalFechaHasta, setModalFechaHasta] = useState<string>("");
@@ -219,6 +250,27 @@ function VacacionesContent() {
       return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
     }
     return val;
+  };
+
+  const formatKardexPeriodo = (fechaIni?: string, fechaFin?: string) => {
+    if (!fechaIni) return "-";
+    if (!fechaFin || fechaIni === fechaFin) {
+      return formatDMY(fechaIni);
+    }
+    const p1 = fechaIni.split("-").map(Number);
+    const p2 = fechaFin.split("-").map(Number);
+    if (p1.length === 3 && p2.length === 3) {
+      // Rango dentro del mismo mes y año: simplificar directamente al mes y año
+      if (p1[0] === p2[0] && p1[1] === p2[1]) {
+        return `${MONTH_NAMES[p1[1] - 1]} ${p1[0]}`;
+      }
+      // Rango que abarca meses distintos del mismo año
+      if (p1[0] === p2[0]) {
+        return `${MONTH_NAMES[p1[1] - 1]} a ${MONTH_NAMES[p2[1] - 1]} ${p1[0]}`;
+      }
+      return `${MONTH_NAMES[p1[1] - 1]} ${p1[0]} a ${MONTH_NAMES[p2[1] - 1]} ${p2[0]}`;
+    }
+    return `${formatDMY(fechaIni)} al ${formatDMY(fechaFin)}`;
   };
 
   const cleanMotivo = (motivo?: string, tipo?: string, fechaSol?: string | null) => {
@@ -259,6 +311,33 @@ function VacacionesContent() {
       return formatYMD(lastDayFeb);
     }
     return formatYMD(d);
+  };
+
+  const expandRecordDates = (fIniStr: string, fFinStr: string, diasTot: number, fechasDetalle?: string[]) => {
+    if (fechasDetalle && fechasDetalle.length > 0) {
+      return [...fechasDetalle].sort();
+    }
+    const result: string[] = [];
+    if (!fIniStr) return result;
+    const partsIni = fIniStr.split("-").map(Number);
+    const partsFin = (fFinStr || fIniStr).split("-").map(Number);
+    if (partsIni.length !== 3 || partsFin.length !== 3) {
+      return [fIniStr];
+    }
+    const cur = new Date(partsIni[0], partsIni[1] - 1, partsIni[2]);
+    const end = new Date(partsFin[0], partsFin[1] - 1, partsFin[2]);
+
+    while (cur <= end && result.length < diasTot) {
+      const day = cur.getDay();
+      if (day !== 0 && day !== 6) {
+        result.push(formatYMD(cur));
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    if (result.length === 0 && fIniStr) {
+      result.push(fIniStr);
+    }
+    return result;
   };
 
   // Kárdex unificado y ordenado según especificación:
@@ -448,6 +527,198 @@ function VacacionesContent() {
       saldoFinal
     };
   }, [viewingEmployee, fechaDesde, fechaHasta, modalFechaDesde, modalFechaHasta]);
+
+  // Kárdex Detallado por Mes y Días en Específico:
+  const kardexDetailedData = useMemo(() => {
+    if (!viewingEmployee || !kardexData.apertura) {
+      return {
+        apertura: null,
+        timeline: [] as DetailedKardexItem[],
+        resumenMensual: [] as MonthlySummaryItem[]
+      };
+    }
+
+    const hireDateStr = viewingEmployee.fecha_ingreso;
+    const todayStr = formatYMD(new Date());
+    const activeDesde = modalFechaDesde || fechaDesde || hireDateStr;
+    const activeHasta = modalFechaHasta || fechaHasta || todayStr;
+    const cutoffDate = activeHasta;
+    const startDate = activeDesde;
+
+    const detailedEvents: DetailedKardexItem[] = [];
+
+    // 1. Derechos Anuales de Antigüedad
+    const annivList = kardexData.timeline.filter(e => e.tipo === "derecho_anual");
+    annivList.forEach(ev => {
+      const parts = ev.fecha.split("-").map(Number);
+      const mIdx = parts[1] - 1;
+      const y = parts[0];
+      const mKey = `${parts[0]}-${String(parts[1]).padStart(2, "0")}`;
+      const mLabel = `${MONTH_NAMES[mIdx]} ${y}`;
+      const dObj = new Date(parts[0], mIdx, parts[2]);
+      const dayIdx = dObj.getDay();
+      const dayName = WEEK_DAYS[dayIdx === 0 ? 6 : dayIdx - 1] || "";
+      const espStr = `• ${dayName} ${formatDMY(ev.fecha)} (Vacación Devengada)`;
+
+      detailedEvents.push({
+        id: ev.id,
+        recordId: ev.recordId,
+        mesKey: mKey,
+        mesLabel: mLabel,
+        fecha: ev.fecha,
+        fecha_fin: ev.fecha_fin,
+        tipo: "derecho_anual",
+        tipoLabel: "Derecho Anual",
+        diasGanados: ev.diasGanados,
+        diasTomados: 0,
+        saldoRestante: 0,
+        motivo: ev.motivo,
+        fecha_solicitud: null,
+        diasEspecificos: [ev.fecha],
+        diasEspecificosFormato: espStr,
+        isRecord: false
+      });
+    });
+
+    // 2. Registros de vacaciones tomadas o compensaciones
+    const recsList = kardexData.timeline.filter(e => e.isRecord);
+    recsList.forEach(ev => {
+      const isPagado = ev.tipo === "dias_pagados" || ev.tipo === "a_cuenta";
+      const parts = ev.fecha.split("-").map(Number);
+      const mIdx = parts[1] - 1;
+      const y = parts[0];
+      const mKey = `${parts[0]}-${String(parts[1]).padStart(2, "0")}`;
+      const mLabel = `${MONTH_NAMES[mIdx]} ${y}`;
+
+      if (isPagado) {
+        detailedEvents.push({
+          id: ev.id,
+          recordId: ev.recordId,
+          mesKey: mKey,
+          mesLabel: mLabel,
+          fecha: ev.fecha,
+          fecha_fin: ev.fecha_fin,
+          tipo: "dias_pagados",
+          tipoLabel: "Días Pagados",
+          diasGanados: 0,
+          diasTomados: ev.diasTomados,
+          saldoRestante: 0,
+          motivo: ev.motivo,
+          fecha_solicitud: ev.fecha_solicitud,
+          diasEspecificos: [],
+          diasEspecificosFormato: "No aplica (Días pagados / compensación económica en dinero)",
+          isRecord: true
+        });
+      } else {
+        const origRec = (viewingEmployee.records || []).find(r => r.id === ev.recordId);
+        const allDates = expandRecordDates(
+          ev.fecha,
+          ev.fecha_fin,
+          ev.diasTomados,
+          origRec?.fechas_detalle
+        );
+
+        let rangeDates = allDates.filter(d => d >= startDate && d <= cutoffDate);
+        if (rangeDates.length === 0) {
+          rangeDates = allDates;
+        }
+
+        const byMonth: Record<string, string[]> = {};
+        rangeDates.forEach(dStr => {
+          const mk = dStr.substring(0, 7);
+          if (!byMonth[mk]) byMonth[mk] = [];
+          byMonth[mk].push(dStr);
+        });
+
+        Object.keys(byMonth).sort().forEach(mk => {
+          const [mY, mM] = mk.split("-").map(Number);
+          const monthLabel = `${MONTH_NAMES[mM - 1]} ${mY}`;
+          const mDates = byMonth[mk];
+          const diasCount = mDates.length;
+
+          const chipsStr = mDates.map(dStr => {
+            const [dy, dm, dd] = dStr.split("-").map(Number);
+            const dObj = new Date(dy, dm - 1, dd);
+            const dayIdx = dObj.getDay();
+            const dName = WEEK_DAYS[dayIdx === 0 ? 6 : dayIdx - 1] || "";
+            return `• ${dName} ${dd}/${String(dm).padStart(2, "0")}`;
+          }).join("\n");
+
+          const espStr = diasCount > 0
+            ? chipsStr
+            : "Sin desglose de fechas específicas";
+
+          detailedEvents.push({
+            id: `${ev.id}-${mk}`,
+            recordId: ev.recordId,
+            mesKey: mk,
+            mesLabel: monthLabel,
+            fecha: mDates[0] || ev.fecha,
+            fecha_fin: mDates[mDates.length - 1] || ev.fecha_fin,
+            tipo: ev.tipo,
+            tipoLabel: ev.tipoLabel,
+            diasGanados: 0,
+            diasTomados: diasCount,
+            saldoRestante: 0,
+            motivo: ev.motivo,
+            fecha_solicitud: ev.fecha_solicitud,
+            diasEspecificos: mDates,
+            diasEspecificosFormato: espStr,
+            isRecord: true
+          });
+        });
+      }
+    });
+
+    detailedEvents.sort((a, b) => {
+      const cmpDate = a.fecha.localeCompare(b.fecha);
+      if (cmpDate !== 0) return cmpDate;
+      const aType = a.tipo === "derecho_anual" ? 0 : 1;
+      const bType = b.tipo === "derecho_anual" ? 0 : 1;
+      if (aType !== bType) return aType - bType;
+      const cmpSol = (a.fecha_solicitud || "").localeCompare(b.fecha_solicitud || "");
+      if (cmpSol !== 0) return cmpSol;
+      return (a.recordId || 0) - (b.recordId || 0);
+    });
+
+    let cur = kardexData.apertura.saldoRestante;
+    detailedEvents.forEach(ev => {
+      cur = Math.round((cur + ev.diasGanados - ev.diasTomados) * 10) / 10;
+      ev.saldoRestante = cur;
+    });
+
+    const detailedTimelineWithIdx = detailedEvents.map((e, idx) => ({
+      ...e,
+      kardexIndex: idx + 1
+    }));
+
+    const monthlyMap: Record<string, MonthlySummaryItem> = {};
+    detailedTimelineWithIdx.forEach(dev => {
+      const mk = dev.mesKey;
+      if (!monthlyMap[mk]) {
+        monthlyMap[mk] = {
+          mesKey: mk,
+          mesLabel: dev.mesLabel,
+          diasGanados: 0,
+          diasTomados: 0,
+          saldoCierre: 0,
+          count: 0
+        };
+      }
+      monthlyMap[mk].diasGanados = Math.round((monthlyMap[mk].diasGanados + dev.diasGanados) * 10) / 10;
+      monthlyMap[mk].diasTomados = Math.round((monthlyMap[mk].diasTomados + dev.diasTomados) * 10) / 10;
+      monthlyMap[mk].saldoCierre = dev.saldoRestante;
+      monthlyMap[mk].count += 1;
+    });
+
+    const resumenMensual = Object.values(monthlyMap);
+
+    return {
+      apertura: kardexData.apertura,
+      timeline: detailedTimelineWithIdx,
+      resumenMensual
+    };
+  }, [viewingEmployee, kardexData, modalFechaDesde, modalFechaHasta, fechaDesde, fechaHasta]);
 
   const fetchSummary = useCallback(async (customDesde?: string, customHasta?: string) => {
     if (!tenantSchema) return;
@@ -2066,6 +2337,11 @@ function VacacionesContent() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 bg-teal-500/10 border border-teal-500/20 text-teal-300 rounded-xl text-[11px] font-medium mr-2">
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                    <span>Excel incluye <strong>Kárdex General</strong> (Hoja 1) y <strong>Detallado</strong> (Hoja 2)</span>
+                  </div>
+
                   <button
                     onClick={() => handleExportEmployee(viewingEmployee.employee_id, "excel", modalFechaDesde, modalFechaHasta)}
                     disabled={exportingEmpExcel}
@@ -2411,178 +2687,433 @@ function VacacionesContent() {
                   </div>
                 )}
 
-                {/* Historial de Registros - Formato Kárdex */}
-                <div className="bg-slate-800/80 rounded-2xl border border-white/10 overflow-hidden">
-                  <div className="p-4 border-b border-white/10 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                    <div>
-                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-teal-400" />
-                        Historial y Kárdex de Vacaciones ({kardexData.timeline.length + (kardexData.apertura ? 1 : 0)})
-                      </h4>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Del {formatDMY(modalFechaDesde || fechaDesde)} al {formatDMY(modalFechaHasta || fechaHasta)} • Movimientos registrados en el periodo seleccionado.
-                      </p>
+                {/* Historial de Registros - Selector de Formato Kárdex */}
+                <div className="bg-slate-800/80 rounded-2xl border border-white/10 overflow-hidden shadow-lg">
+                  <div className="p-4 border-b border-white/10 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                      {/* Pestañas de Selección Kárdex General vs Detallado */}
+                      <div className="flex items-center gap-1 bg-slate-900/90 p-1.5 rounded-xl border border-white/10 shadow-xs">
+                        <button
+                          type="button"
+                          onClick={() => setKardexViewMode("general")}
+                          className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
+                            kardexViewMode === "general"
+                              ? "bg-teal-600 text-white shadow-md"
+                              : "text-slate-400 hover:text-white hover:bg-white/5"
+                          }`}
+                          title="Ver formato oficial unificado por movimiento"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Kárdex General</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setKardexViewMode("detallado")}
+                          className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
+                            kardexViewMode === "detallado"
+                              ? "bg-teal-600 text-white shadow-md"
+                              : "text-slate-400 hover:text-white hover:bg-white/5"
+                          }`}
+                          title="Ver formato desglosado por mes con días específicos tomados"
+                        >
+                          <CalendarDays className="w-3.5 h-3.5" />
+                          <span>Kárdex Detallado por Mes</span>
+                        </button>
+                      </div>
+
+                      <div className="border-l border-white/10 pl-3 hidden sm:block">
+                        <span className="text-xs font-bold text-white block">
+                          {kardexViewMode === "general" ? "Formato Oficial por Movimiento" : "Formato Desglosado con Días en Específico"}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          {kardexViewMode === "general"
+                            ? `${kardexData.timeline.length + (kardexData.apertura ? 1 : 0)} movimientos • Del ${formatDMY(modalFechaDesde || fechaDesde)} al ${formatDMY(modalFechaHasta || fechaHasta)}`
+                            : `${kardexDetailedData.timeline.length + (kardexDetailedData.apertura ? 1 : 0)} filas desglosadas por mes • Del ${formatDMY(modalFechaDesde || fechaDesde)} al ${formatDMY(modalFechaHasta || fechaHasta)}`}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 w-full xl:w-auto justify-between xl:justify-end">
                       <button
                         onClick={() => {
                           handleOpenRegisterModal(viewingEmployee.employee_id);
                         }}
-                        className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm"
+                        className="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm ml-auto cursor-pointer"
                       >
-                        <Plus className="w-3.5 h-3.5" /> Agregar Nuevo
+                        <Plus className="w-3.5 h-3.5" /> Agregar Registro
                       </button>
                     </div>
                   </div>
 
-                  <div className="w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-slate-900/60 text-slate-400 uppercase tracking-wider font-bold border-b border-white/10 text-[11px]">
-                          <th className="p-3 pl-4 text-center w-12">N°</th>
-                          <th className="p-3">Fecha / Periodo</th>
-                          <th className="p-3">Tipo de Vacación</th>
-                          <th className="p-3 text-right">Días Ganados (+)</th>
-                          <th className="p-3 text-right">Días Tomados (-)</th>
-                          <th className="p-3 text-right">Saldo Restante (=)</th>
-                          <th className="p-3">Motivo / Detalle</th>
-                          <th className="p-3 pr-4 text-center w-20">Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5 text-slate-300">
-                        {/* Fila 0 de Apertura de Kárdex */}
-                        {kardexData.apertura && (
-                          <tr className="bg-slate-900/40 font-medium border-b border-white/10">
-                            <td className="p-3 pl-4 text-center text-slate-400 font-mono font-bold">
-                              {kardexData.apertura.kardexIndex}
-                            </td>
-                            <td className="p-3 font-mono text-slate-300">
-                              {kardexData.apertura.tipo === "saldo_anterior"
-                                ? `Previo al ${formatDMY(kardexData.apertura.fecha)}`
-                                : `${formatDMY(kardexData.apertura.fecha)} (Ingreso)`}
-                            </td>
-                            <td className="p-3">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
-                                kardexData.apertura.tipo === "saldo_anterior"
-                                  ? "bg-slate-700/60 text-slate-200 border border-slate-600"
-                                  : "bg-teal-500/20 text-teal-300 border border-teal-500/30"
-                              }`}>
-                                {kardexData.apertura.tipoLabel}
-                              </span>
-                            </td>
-                            <td className="p-3 text-right font-mono font-bold text-slate-200">
-                              {kardexData.apertura.diasGanados > 0 ? `+${kardexData.apertura.diasGanados.toFixed(1)} d` : "-"}
-                            </td>
-                            <td className="p-3 text-right font-mono text-slate-500">
-                              -
-                            </td>
-                            <td className="p-3 text-right font-mono font-bold text-slate-200 text-sm">
-                              {kardexData.apertura.saldoRestante.toFixed(1)} d
-                            </td>
-                            <td className="p-3 text-slate-400 italic">
-                              {kardexData.apertura.motivo}
-                            </td>
-                            <td className="p-3 pr-4 text-center text-slate-500">-</td>
+                  {kardexViewMode === "general" ? (
+                    /* ================= TABLA KÁRDEX GENERAL ================= */
+                    <div className="w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-900/60 text-slate-400 uppercase tracking-wider font-bold border-b border-white/10 text-[11px]">
+                            <th className="p-3 pl-4 text-center w-12">N°</th>
+                            <th className="p-3">Fecha / Periodo</th>
+                            <th className="p-3">Tipo de Vacación</th>
+                            <th className="p-3 text-right">Días Ganados (+)</th>
+                            <th className="p-3 text-right">Días Tomados (-)</th>
+                            <th className="p-3 text-right">Saldo Restante (=)</th>
+                            <th className="p-3">Motivo / Detalle</th>
+                            <th className="p-3 pr-4 text-center w-20">Acción</th>
                           </tr>
-                        )}
-
-                        {kardexData.timeline.length === 0 ? (
-                          <tr>
-                            <td colSpan={8} className="p-6 text-center text-slate-500 italic">
-                              No registra movimientos de vacación en el periodo evaluado.
-                            </td>
-                          </tr>
-                        ) : (
-                          kardexData.timeline.map((r) => (
-                            <tr key={r.id} className="hover:bg-white/5 transition">
-                              <td className="p-3 pl-4 text-center font-mono font-bold text-slate-400">
-                                {r.kardexIndex}
+                        </thead>
+                        <tbody className="divide-y divide-white/5 text-slate-300">
+                          {/* Fila 0 de Apertura de Kárdex */}
+                          {kardexData.apertura && (
+                            <tr className="bg-slate-900/40 font-medium border-b border-white/10">
+                              <td className="p-3 pl-4 text-center text-slate-400 font-mono font-bold">
+                                {kardexData.apertura.kardexIndex}
                               </td>
-                              <td className="p-3 font-mono text-slate-200">
-                                {r.tipo === "derecho_anual"
-                                  ? formatDMY(r.fecha)
-                                  : r.tipo === "dias_pagados" || r.tipo === "a_cuenta" 
-                                  ? `Compensación (${formatDMY(r.fecha)})` 
-                                  : `${formatDMY(r.fecha)} al ${formatDMY(r.fecha_fin)}`}
+                              <td className="p-3 font-mono text-slate-300">
+                                {kardexData.apertura.tipo === "saldo_anterior"
+                                  ? `Previo al ${formatDMY(kardexData.apertura.fecha)}`
+                                  : `${formatDMY(kardexData.apertura.fecha)} (Ingreso)`}
                               </td>
                               <td className="p-3">
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
-                                  r.tipo === "derecho_anual"
-                                    ? "bg-slate-700/60 text-slate-100 border border-slate-500/40"
-                                    : r.tipo === "dias_pagados" || r.tipo === "a_cuenta"
-                                    ? "bg-slate-800 text-slate-200 border border-slate-700"
-                                    : r.tipo === "colectiva"
-                                    ? "bg-purple-900/30 text-purple-200 border border-purple-700/30"
-                                    : "bg-blue-900/30 text-blue-200 border border-blue-700/30"
+                                  kardexData.apertura.tipo === "saldo_anterior"
+                                    ? "bg-slate-700/60 text-slate-200 border border-slate-600"
+                                    : "bg-teal-500/20 text-teal-300 border border-teal-500/30"
                                 }`}>
-                                  {r.tipoLabel}
+                                  {kardexData.apertura.tipoLabel}
                                 </span>
                               </td>
                               <td className="p-3 text-right font-mono font-bold text-slate-200">
-                                {r.diasGanados > 0 ? `+${r.diasGanados.toFixed(1)} d` : "-"}
+                                {kardexData.apertura.diasGanados > 0 ? `+${kardexData.apertura.diasGanados.toFixed(1)} d` : "-"}
                               </td>
-                              <td className="p-3 text-right font-mono font-bold text-slate-300">
-                                {r.diasTomados > 0 ? `-${r.diasTomados.toFixed(1)} d` : "-"}
+                              <td className="p-3 text-right font-mono text-slate-500">
+                                -
                               </td>
-                              <td className="p-3 text-right font-mono font-black text-white">
-                                {r.saldoRestante.toFixed(1)} d
+                              <td className="p-3 text-right font-mono font-bold text-slate-200 text-sm">
+                                {kardexData.apertura.saldoRestante.toFixed(1)} d
                               </td>
-                              <td className="p-3 text-slate-300">
-                                {r.tipo === "derecho_anual"
-                                  ? r.motivo
-                                  : cleanMotivo(r.motivo, r.tipo, r.fecha_solicitud)}
+                              <td className="p-3 text-slate-400 italic">
+                                {kardexData.apertura.motivo}
                               </td>
-                              <td className="p-3 pr-4 text-center">
-                                {r.isRecord && r.recordId ? (
-                                  <div className="flex items-center justify-center gap-1">
-                                    <button
-                                      onClick={() => {
-                                        const origRec = (viewingEmployee.records || []).find(rec => rec.id === r.recordId);
-                                        handleOpenEditModal(origRec || r);
-                                      }}
-                                      className="p-1.5 text-slate-400 hover:text-teal-400 hover:bg-teal-500/10 rounded-lg transition"
-                                      title="Editar este registro de vacación"
-                                    >
-                                      <Pencil className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteRecord(r.recordId!, viewingEmployee.employee_id)}
-                                      className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
-                                      title="Eliminar este registro"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <span className="text-slate-600">-</span>
-                                )}
+                              <td className="p-3 pr-4 text-center text-slate-500">-</td>
+                            </tr>
+                          )}
+
+                          {kardexData.timeline.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="p-6 text-center text-slate-500 italic">
+                                No registra movimientos de vacación en el periodo evaluado.
                               </td>
                             </tr>
-                          ))
+                          ) : (
+                            kardexData.timeline.map((r) => {
+                              const isColectiva = r.tipo === "colectiva";
+                              const isSolicitada = r.tipo === "solicitada";
+                              const rowBg = isColectiva
+                                ? "bg-rose-500/10 hover:bg-rose-500/15"
+                                : isSolicitada
+                                ? "bg-emerald-500/10 hover:bg-emerald-500/15"
+                                : "hover:bg-white/5";
+                              return (
+                                <tr key={r.id} className={`${rowBg} transition`}>
+                                  <td className="p-3 pl-4 text-center font-mono font-bold text-slate-400">
+                                    {r.kardexIndex}
+                                  </td>
+                                  <td className="p-3 font-mono text-slate-200">
+                                    {r.tipo === "derecho_anual"
+                                      ? formatDMY(r.fecha)
+                                      : r.tipo === "dias_pagados" || r.tipo === "a_cuenta" 
+                                      ? `Compensación (${formatDMY(r.fecha)})` 
+                                      : formatKardexPeriodo(r.fecha, r.fecha_fin)}
+                                  </td>
+                                  <td className="p-3">
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
+                                      r.tipo === "derecho_anual"
+                                        ? "bg-slate-700/60 text-slate-100 border border-slate-500/40"
+                                        : r.tipo === "dias_pagados" || r.tipo === "a_cuenta"
+                                        ? "bg-slate-800 text-slate-200 border border-slate-700"
+                                        : isColectiva
+                                        ? "bg-rose-950/60 text-rose-200 border border-rose-700/40"
+                                        : "bg-emerald-950/60 text-emerald-200 border border-emerald-700/40"
+                                    }`}>
+                                      {r.tipoLabel}
+                                    </span>
+                                  </td>
+                                <td className="p-3 text-right font-mono font-bold text-slate-200">
+                                  {r.diasGanados > 0 ? `+${r.diasGanados.toFixed(1)} d` : "-"}
+                                </td>
+                                <td className="p-3 text-right font-mono font-bold text-slate-300">
+                                  {r.diasTomados > 0 ? `-${r.diasTomados.toFixed(1)} d` : "-"}
+                                </td>
+                                <td className="p-3 text-right font-mono font-black text-white">
+                                  {r.saldoRestante.toFixed(1)} d
+                                </td>
+                                <td className="p-3 text-slate-300">
+                                  {r.tipo === "derecho_anual"
+                                    ? r.motivo
+                                    : cleanMotivo(r.motivo, r.tipo, r.fecha_solicitud)}
+                                </td>
+                                <td className="p-3 pr-4 text-center">
+                                  {r.isRecord && r.recordId ? (
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button
+                                        onClick={() => {
+                                          const origRec = (viewingEmployee.records || []).find(rec => rec.id === r.recordId);
+                                          handleOpenEditModal(origRec || r);
+                                        }}
+                                        className="p-1.5 text-slate-400 hover:text-teal-400 hover:bg-teal-500/10 rounded-lg transition cursor-pointer"
+                                        title="Editar este registro de vacación"
+                                      >
+                                        <Pencil className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteRecord(r.recordId!, viewingEmployee.employee_id)}
+                                        className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+                                        title="Eliminar este registro"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-600">-</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
                         )}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-slate-900/90 font-bold border-t-2 border-white/20 text-white">
-                          <td colSpan={3} className="p-3 pl-4 text-right uppercase tracking-wider text-slate-300 text-[11px]">
-                            Totales y Saldo Final:
-                          </td>
-                          <td className="p-3 text-right font-mono font-bold text-slate-200">
-                            +{kardexData.hasSaldoAnterior ? kardexData.totalComputablePeriodo.toFixed(1) : kardexData.totGanados.toFixed(1)} d
-                          </td>
-                          <td className="p-3 text-right font-mono font-black text-slate-300">
-                            -{kardexData.hasSaldoAnterior ? kardexData.tomadosPeriodo.toFixed(1) : kardexData.totTomados.toFixed(1)} d
-                          </td>
-                          <td className="p-3 text-right font-mono font-black text-white text-sm">
-                            {(kardexData.hasSaldoAnterior ? kardexData.saldoFinalPeriodo : kardexData.saldoFinal).toFixed(1)} d
-                          </td>
-                          <td colSpan={2} className="p-3 text-teal-400 font-bold text-[11px]">
-                            Saldo disponible
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-slate-900/90 font-bold border-t-2 border-white/20 text-white">
+                            <td colSpan={3} className="p-3 pl-4 text-right uppercase tracking-wider text-slate-300 text-[11px]">
+                              Totales y Saldo Final:
+                            </td>
+                            <td className="p-3 text-right font-mono font-bold text-slate-200">
+                              +{kardexData.hasSaldoAnterior ? kardexData.totalComputablePeriodo.toFixed(1) : kardexData.totGanados.toFixed(1)} d
+                            </td>
+                            <td className="p-3 text-right font-mono font-black text-slate-300">
+                              -{kardexData.hasSaldoAnterior ? kardexData.tomadosPeriodo.toFixed(1) : kardexData.totTomados.toFixed(1)} d
+                            </td>
+                            <td className="p-3 text-right font-mono font-black text-white text-sm">
+                              {(kardexData.hasSaldoAnterior ? kardexData.saldoFinalPeriodo : kardexData.saldoFinal).toFixed(1)} d
+                            </td>
+                            <td colSpan={2} className="p-3 text-teal-400 font-bold text-[11px]">
+                              Saldo disponible
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  ) : (
+                    /* ================= TABLA KÁRDEX DETALLADO POR MES ================= */
+                    <div>
+                      {/* Tarjetas de Resumen Consolidado por Mes */}
+                      {kardexDetailedData.resumenMensual.length > 0 && (
+                        <div className="p-4 bg-slate-900/50 border-b border-white/10">
+                          <span className="text-[11px] font-bold text-teal-400 uppercase tracking-wider block mb-2.5">
+                            Desglose Mensual Consolidado (Justificación Mes a Mes)
+                          </span>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                            {kardexDetailedData.resumenMensual.map((m) => (
+                              <div key={m.mesKey} className="bg-slate-800/90 border border-white/10 rounded-xl p-2.5 shadow-xs">
+                                <span className="text-xs font-bold text-white block truncate">{m.mesLabel}</span>
+                                <div className="flex items-center justify-between text-[11px] mt-1.5 text-slate-300 font-mono">
+                                  <span>{m.diasGanados > 0 ? `+${m.diasGanados}d ` : ""}{m.diasTomados > 0 ? `-${m.diasTomados}d` : m.diasGanados === 0 ? "0d" : ""}</span>
+                                  <span className="font-bold text-teal-300 bg-teal-500/10 px-1.5 py-0.5 rounded border border-teal-500/20">
+                                    {m.saldoCierre.toFixed(1)} d
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tabla Detallada con Días Específicos sin Scroll Horizontal */}
+                      <div className="w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-slate-900/60 text-slate-400 uppercase tracking-wider font-bold border-b border-white/10 text-[11px]">
+                              <th className="p-3 pl-4 text-center w-12">N°</th>
+                              <th className="p-3 w-36">Mes</th>
+                              <th className="p-3 w-32">Concepto</th>
+                              <th className="p-3">Días en Específico Computados</th>
+                              <th className="p-3 text-right w-24">Ganados (+)</th>
+                              <th className="p-3 text-right w-24">Tomados (-)</th>
+                              <th className="p-3 text-right w-28">Saldo (=)</th>
+                              <th className="p-3">Motivo / Solicitud</th>
+                              <th className="p-3 pr-4 text-center w-20">Acción</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/5 text-slate-300">
+                            {/* Fila 0 de Apertura */}
+                            {kardexDetailedData.apertura && (
+                              <tr className="bg-slate-900/40 font-medium border-b border-white/10">
+                                <td className="p-3 pl-4 text-center text-slate-400 font-mono font-bold">
+                                  {kardexDetailedData.apertura.kardexIndex}
+                                </td>
+                                <td className="p-3 font-bold text-teal-300">
+                                  {kardexDetailedData.apertura.tipo === "saldo_anterior" ? "Saldo Inicial" : "Ingreso"}
+                                </td>
+                                <td className="p-3">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-slate-700/60 text-slate-200 border border-slate-600">
+                                    {kardexDetailedData.apertura.tipoLabel}
+                                  </span>
+                                </td>
+                                <td className="p-3 font-mono text-slate-300">
+                                  {kardexDetailedData.apertura.tipo === "saldo_anterior"
+                                    ? `Acumulado previo al ${formatDMY(kardexDetailedData.apertura.fecha)}`
+                                    : `${formatDMY(kardexDetailedData.apertura.fecha)} (Ingreso a la empresa)`}
+                                </td>
+                                <td className="p-3 text-right font-mono font-bold text-slate-200">
+                                  {kardexDetailedData.apertura.diasGanados > 0 ? `+${kardexDetailedData.apertura.diasGanados.toFixed(1)} d` : "-"}
+                                </td>
+                                <td className="p-3 text-right font-mono text-slate-500">-</td>
+                                <td className="p-3 text-right font-mono font-bold text-slate-200 text-sm">
+                                  {kardexDetailedData.apertura.saldoRestante.toFixed(1)} d
+                                </td>
+                                <td className="p-3 text-slate-400 italic">
+                                  {kardexDetailedData.apertura.motivo}
+                                </td>
+                                <td className="p-3 pr-4 text-center text-slate-500">-</td>
+                              </tr>
+                            )}
+
+                            {kardexDetailedData.timeline.length === 0 ? (
+                              <tr>
+                                <td colSpan={9} className="p-6 text-center text-slate-500 italic">
+                                  No registra movimientos desglosados en el periodo evaluado.
+                                </td>
+                              </tr>
+                            ) : (
+                              kardexDetailedData.timeline.map((r) => {
+                                const isColectiva = r.tipo === "colectiva";
+                                const isSolicitada = r.tipo === "solicitada";
+                                const rowBg = isColectiva
+                                  ? "bg-rose-500/10 hover:bg-rose-500/15"
+                                  : isSolicitada
+                                  ? "bg-emerald-500/10 hover:bg-emerald-500/15"
+                                  : "hover:bg-white/5";
+                                return (
+                                  <tr key={r.id} className={`${rowBg} transition`}>
+                                    <td className="p-3 pl-4 text-center font-mono font-bold text-slate-400">
+                                      {r.kardexIndex}
+                                    </td>
+                                    <td className="p-3 font-bold text-slate-200">
+                                      <span className="bg-slate-900/70 border border-teal-500/30 px-2 py-0.5 rounded-md text-[11px] font-mono text-teal-300 inline-block">
+                                        {r.mesLabel}
+                                      </span>
+                                    </td>
+                                    <td className="p-3">
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
+                                        r.tipo === "derecho_anual"
+                                          ? "bg-slate-700/60 text-slate-100 border border-slate-500/40"
+                                          : r.tipo === "dias_pagados" || r.tipo === "a_cuenta"
+                                          ? "bg-slate-800 text-slate-200 border border-slate-700"
+                                          : isColectiva
+                                          ? "bg-rose-950/60 text-rose-200 border border-rose-700/40"
+                                          : "bg-emerald-950/60 text-emerald-200 border border-emerald-700/40"
+                                      }`}>
+                                        {r.tipoLabel}
+                                      </span>
+                                    </td>
+                                  <td className="p-3">
+                                    {r.tipo === "derecho_anual" ? (
+                                      <span className="text-xs text-teal-300 font-semibold inline-flex items-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0"></span>
+                                        <span>{r.diasEspecificosFormato.replace(/^•\s*/, "")}</span>
+                                      </span>
+                                    ) : r.tipo === "dias_pagados" || r.tipo === "a_cuenta" ? (
+                                      <span className="text-xs text-slate-400 italic block">
+                                        {r.diasEspecificosFormato}
+                                      </span>
+                                    ) : (
+                                      <div className="flex flex-col gap-1 py-0.5">
+                                        {r.diasEspecificos && r.diasEspecificos.length > 0 ? (
+                                          r.diasEspecificos.map((dStr, idx) => {
+                                            const [dy, dm, dd] = dStr.split("-").map(Number);
+                                            const dObj = new Date(dy, dm - 1, dd);
+                                            const dayIdx = dObj.getDay();
+                                            const dName = WEEK_DAYS[dayIdx === 0 ? 6 : dayIdx - 1] || "";
+                                            return (
+                                              <div key={idx} className="flex items-center gap-1.5 text-xs text-amber-200">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
+                                                <span className="font-mono font-medium">{dName} {dd}/{String(dm).padStart(2, "0")}/{dy}</span>
+                                              </div>
+                                            );
+                                          })
+                                        ) : (
+                                          <span className="text-xs text-slate-400 italic">{r.diasEspecificosFormato}</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="p-3 text-right font-mono font-bold text-slate-200">
+                                    {r.diasGanados > 0 ? `+${r.diasGanados.toFixed(1)} d` : "-"}
+                                  </td>
+                                  <td className="p-3 text-right font-mono font-bold text-slate-300">
+                                    {r.diasTomados > 0 ? `-${r.diasTomados.toFixed(1)} d` : "-"}
+                                  </td>
+                                  <td className="p-3 text-right font-mono font-black text-white">
+                                    {r.saldoRestante.toFixed(1)} d
+                                  </td>
+                                  <td className="p-3 text-slate-300">
+                                    {r.tipo === "derecho_anual"
+                                      ? r.motivo
+                                      : cleanMotivo(r.motivo, r.tipo, r.fecha_solicitud)}
+                                  </td>
+                                  <td className="p-3 pr-4 text-center">
+                                    {r.isRecord && r.recordId ? (
+                                      <div className="flex items-center justify-center gap-1">
+                                        <button
+                                          onClick={() => {
+                                            const origRec = (viewingEmployee.records || []).find(rec => rec.id === r.recordId);
+                                            handleOpenEditModal(origRec || r);
+                                          }}
+                                          className="p-1.5 text-slate-400 hover:text-teal-400 hover:bg-teal-500/10 rounded-lg transition cursor-pointer"
+                                          title="Editar este registro de vacación"
+                                        >
+                                          <Pencil className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteRecord(r.recordId!, viewingEmployee.employee_id)}
+                                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
+                                          title="Eliminar este registro"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-600">-</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-slate-900/90 font-bold border-t-2 border-white/20 text-white">
+                              <td colSpan={4} className="p-3 pl-4 text-right uppercase tracking-wider text-slate-300 text-[11px]">
+                                Totales y Saldo Final:
+                              </td>
+                              <td className="p-3 text-right font-mono font-bold text-slate-200">
+                                +{kardexData.hasSaldoAnterior ? kardexData.totalComputablePeriodo.toFixed(1) : kardexData.totGanados.toFixed(1)} d
+                              </td>
+                              <td className="p-3 text-right font-mono font-black text-slate-300">
+                                -{kardexData.hasSaldoAnterior ? kardexData.tomadosPeriodo.toFixed(1) : kardexData.totTomados.toFixed(1)} d
+                              </td>
+                              <td className="p-3 text-right font-mono font-black text-white text-sm">
+                                {(kardexData.hasSaldoAnterior ? kardexData.saldoFinalPeriodo : kardexData.saldoFinal).toFixed(1)} d
+                              </td>
+                              <td colSpan={2} className="p-3 text-teal-400 font-bold text-[11px]">
+                                Saldo disponible
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
               </div>

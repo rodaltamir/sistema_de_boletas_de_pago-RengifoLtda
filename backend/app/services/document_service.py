@@ -4831,6 +4831,10 @@ class DocumentService:
         fill_totales = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
         fill_highlight = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
         
+        # Fills suaves para tipos de vacación (rojo muy leve para colectivas, verde muy leve para solicitadas)
+        fill_colectiva = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+        fill_solicitada = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")
+        
         thin_side = Side(style='thin', color='94A3B8')
         border_cell = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
         double_bottom = Border(left=thin_side, right=thin_side, top=thin_side, bottom=Side(style='double', color='000000'))
@@ -5087,11 +5091,21 @@ class DocumentService:
             return s
 
         def _fmt_periodo(f_ini, f_fin, tipo_raw: str) -> str:
-            ini_fmt = _fmt_dmy(f_ini)
-            fin_fmt = _fmt_dmy(f_fin)
-            if not fin_fmt or ini_fmt == fin_fmt or fin_fmt == "-":
-                return ini_fmt
-            return f"{ini_fmt} al {fin_fmt}"
+            d_ini = _parse_date(f_ini)
+            d_fin = _parse_date(f_fin)
+            if not d_ini and not d_fin:
+                return "-"
+            if not d_fin or d_ini == d_fin:
+                return _fmt_dmy(d_ini)
+            # Rango dentro del mismo mes y año: simplificar directamente al nombre del mes y año (ej: "Diciembre 2022")
+            if d_ini and d_fin and d_ini.year == d_fin.year and d_ini.month == d_fin.month:
+                return f"{VacationService.MESES_ES[d_ini.month]} {d_ini.year}"
+            # Rango que abarca meses distintos del mismo año (ej: "Enero a Diciembre 2023")
+            if d_ini and d_fin and d_ini.year == d_fin.year:
+                return f"{VacationService.MESES_ES[d_ini.month]} a {VacationService.MESES_ES[d_fin.month]} {d_ini.year}"
+            if d_ini and d_fin:
+                return f"{VacationService.MESES_ES[d_ini.month]} {d_ini.year} a {VacationService.MESES_ES[d_fin.month]} {d_fin.year}"
+            return f"{_fmt_dmy(d_ini)} al {_fmt_dmy(d_fin)}"
 
         def _fmt_motivo(motivo_val: str, tipo_raw: str, fecha_sol = None) -> str:
             m = str(motivo_val or "").strip()
@@ -5201,14 +5215,14 @@ class DocumentService:
             if timeline:
                 for idx, ev in enumerate(timeline, start=1):
                     ws.row_dimensions[r_data].height = 19
-                    if ev.get("tipo") == "derecho_anual":
+                    tipo_raw = ev.get("tipo", "")
+                    if tipo_raw == "derecho_anual":
                         periodo_str = _fmt_dmy(ev.get("fecha"))
                         tipo_str = "Derecho Anual"
                         ganados_str = f"+{ev.get('dias_ganados', 0.0):.1f}"
                         tomados_str = "-"
                         motivo_str = ev.get("motivo", "")
                     else:
-                        tipo_raw = ev.get("tipo", "")
                         tipo_str = ev.get("tipo_label", tipo_raw)
                         periodo_str = _fmt_periodo(ev.get("fecha"), ev.get("fecha_fin"), tipo_raw)
                         ganados_str = "-"
@@ -5217,14 +5231,21 @@ class DocumentService:
 
                     saldo_str = f"{ev.get('saldo_restante', 0.0):.1f}"
 
+                    # Fondo de fila suave según el tipo (rojo muy leve para colectivas, verde muy leve para solicitadas)
+                    row_fill = None
+                    if tipo_raw == "colectiva":
+                        row_fill = fill_colectiva
+                    elif tipo_raw == "solicitada":
+                        row_fill = fill_solicitada
+
                     row_vals = [
-                        ('B', idx, 'center', font_td, None, None),
-                        ('C', periodo_str, 'center', font_td, None, True),
-                        ('D', tipo_str, 'center', font_td_bold, None, True),
-                        ('E', ganados_str, 'right' if ganados_str != '-' else 'center', font_td_bold if ganados_str != '-' else Font(name="Arial", size=8, color="94A3B8"), None, None),
-                        ('F', tomados_str, 'right' if tomados_str != '-' else 'center', font_td_bold if tomados_str != '-' else Font(name="Arial", size=8, color="94A3B8"), None, None),
-                        ('G', saldo_str, 'right', font_td_bold, None, None),
-                        ('H', motivo_str, 'left', font_td, None, True)
+                        ('B', idx, 'center', font_td, row_fill, None),
+                        ('C', periodo_str, 'center', font_td, row_fill, True),
+                        ('D', tipo_str, 'center', font_td_bold, row_fill, True),
+                        ('E', ganados_str, 'right' if ganados_str != '-' else 'center', font_td_bold if ganados_str != '-' else Font(name="Arial", size=8, color="94A3B8"), row_fill, None),
+                        ('F', tomados_str, 'right' if tomados_str != '-' else 'center', font_td_bold if tomados_str != '-' else Font(name="Arial", size=8, color="94A3B8"), row_fill, None),
+                        ('G', saldo_str, 'right', font_td_bold, row_fill, None),
+                        ('H', motivo_str, 'left', font_td, row_fill, True)
                     ]
                     for c_let, val, align, f_st, f_fill, shrink in row_vals:
                         c = ws[f"{c_let}{r_data}"]
@@ -5374,7 +5395,7 @@ class DocumentService:
             # Título y Subtítulo
             ws_det.row_dimensions[5].height = 24
             ws_det.merge_cells('B5:I5')
-            ws_det['B5'] = "KÁRDEX DETALLADO DE VACACIONES (POR MES Y DÍAS EN ESPECÍFICO)"
+            ws_det['B5'] = "KÁRDEX DETALLADO DE VACACIONES"
             ws_det['B5'].font = font_title_main
             ws_det['B5'].alignment = Alignment(horizontal="center", vertical="center")
 
@@ -5399,13 +5420,16 @@ class DocumentService:
             ]
             r_d_emp = 9
             for l1, v1, l2, v2 in emp_items_det:
-                ws_det.row_dimensions[r_d_emp].height = 16
+                ws_det.row_dimensions[r_d_emp].height = 18
+                ws_det.merge_cells(f"B{r_d_emp}:C{r_d_emp}")
                 ws_det[f"B{r_d_emp}"] = l1
                 ws_det[f"B{r_d_emp}"].font = font_h_bold
-                ws_det.merge_cells(f"C{r_d_emp}:E{r_d_emp}")
-                ws_det[f"C{r_d_emp}"] = str(v1)
-                ws_det[f"C{r_d_emp}"].font = font_h_val
-                ws_det[f"C{r_d_emp}"].alignment = Alignment(horizontal="left", vertical="center", shrink_to_fit=True)
+                ws_det[f"B{r_d_emp}"].alignment = Alignment(horizontal="left", vertical="center")
+
+                ws_det.merge_cells(f"D{r_d_emp}:E{r_d_emp}")
+                ws_det[f"D{r_d_emp}"] = str(v1).upper() if l1.startswith("TRABAJADOR") else str(v1)
+                ws_det[f"D{r_d_emp}"].font = font_td_bold if l1.startswith("TRABAJADOR") else font_h_val
+                ws_det[f"D{r_d_emp}"].alignment = Alignment(horizontal="left", vertical="center", shrink_to_fit=True)
 
                 ws_det.merge_cells(f"F{r_d_emp}:G{r_d_emp}")
                 ws_det[f"F{r_d_emp}"] = l2
@@ -5552,16 +5576,24 @@ class DocumentService:
             det_timeline = kardex_det.get("timeline", [])
             for idx_d, dev in enumerate(det_timeline, start=1):
                 f_esp_txt = str(dev.get("dias_especificos_formato", ""))
-                h_val = 30 if len(f_esp_txt) > 70 else 20
+                num_lines = max(1, f_esp_txt.count("\n") + 1)
+                h_val = max(20, num_lines * 14 + 6)
                 ws_det.row_dimensions[r_d_row].height = h_val
                 gan_val = f"+{dev['dias_ganados']:.1f}" if dev['dias_ganados'] > 0 else "-"
                 tom_val = f"-{dev['dias_tomados']:.1f}" if dev['dias_tomados'] > 0 else "-"
                 mot_val = _fmt_motivo(dev.get("motivo"), dev.get("tipo", ""), dev.get("fecha_solicitud"))
 
+                det_tipo_raw = dev.get("tipo", "")
+                det_row_fill = None
+                if det_tipo_raw == "colectiva":
+                    det_row_fill = fill_colectiva
+                elif det_tipo_raw == "solicitada":
+                    det_row_fill = fill_solicitada
+
                 row_vals_det = [
                     ('B', idx_d, 'center', font_td, False, True),
                     ('C', dev.get("mes_label", ""), 'center', font_td_bold, False, True),
-                    ('D', dev.get("tipo_label", ""), 'center', font_td, False, True),
+                    ('D', dev.get("tipo_label", ""), 'center', font_td_bold if det_row_fill else font_td, False, True),
                     ('E', f_esp_txt, 'left', font_td, True, False),
                     ('F', gan_val, 'right' if gan_val != '-' else 'center', font_td_bold if gan_val != '-' else Font(name="Arial", size=8, color="94A3B8"), False, False),
                     ('G', tom_val, 'right' if tom_val != '-' else 'center', font_td_bold if tom_val != '-' else Font(name="Arial", size=8, color="94A3B8"), False, False),
@@ -5574,6 +5606,8 @@ class DocumentService:
                     cell_d.font = fn
                     cell_d.alignment = Alignment(horizontal=al, vertical="center", wrap_text=wp, shrink_to_fit=sh)
                     cell_d.border = border_cell
+                    if det_row_fill:
+                        cell_d.fill = det_row_fill
                 r_d_row += 1
 
             # Totales en Hoja Detallada - 100% Cuadrados y Concordantes

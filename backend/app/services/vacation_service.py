@@ -129,6 +129,7 @@ class VacationService:
                     "id": f"anniv-{y}",
                     "fecha": anniv_date,
                     "fecha_fin": anniv_date,
+                    "periodo_formato": anniv_date.strftime("%d/%m/%Y"),
                     "tipo": "derecho_anual",
                     "tipo_label": "Derecho Anual",
                     "dias_ganados": float(scale_days),
@@ -191,10 +192,25 @@ class VacationService:
             elif not isinstance(r_fechas, list):
                 r_fechas = []
 
+            if r_ini and r_fin:
+                if r_ini == r_fin:
+                    p_fmt = r_ini.strftime("%d/%m/%Y")
+                elif r_ini.year == r_fin.year and r_ini.month == r_fin.month:
+                    p_fmt = f"{VacationService.MESES_ES[r_ini.month]} {r_ini.year}"
+                elif r_ini.year == r_fin.year:
+                    p_fmt = f"{VacationService.MESES_ES[r_ini.month]} a {VacationService.MESES_ES[r_fin.month]} {r_ini.year}"
+                else:
+                    p_fmt = f"{VacationService.MESES_ES[r_ini.month]} {r_ini.year} a {VacationService.MESES_ES[r_fin.month]} {r_fin.year}"
+            elif r_ini:
+                p_fmt = r_ini.strftime("%d/%m/%Y")
+            else:
+                p_fmt = "-"
+
             rec_events.append({
                 "id": r_id,
                 "fecha": r_ini,
                 "fecha_fin": r_fin,
+                "periodo_formato": p_fmt,
                 "tipo": r_tipo,
                 "tipo_label": tipo_label,
                 "dias_ganados": 0.0,
@@ -223,6 +239,7 @@ class VacationService:
         if anniv_pre or recs_pre:
             apertura = {
                 "fecha": start_date,
+                "periodo_formato": f"Previo al {start_date.strftime('%d/%m/%Y')}",
                 "tipo": "saldo_anterior",
                 "tipo_label": "Saldo Anterior",
                 "dias_ganados": ganados_pre,
@@ -235,6 +252,7 @@ class VacationService:
         else:
             apertura = {
                 "fecha": fecha_ingreso,
+                "periodo_formato": fecha_ingreso.strftime("%d/%m/%Y"),
                 "tipo": "ingreso",
                 "tipo_label": "Ingreso a la Empresa",
                 "dias_ganados": 0.0,
@@ -386,7 +404,7 @@ class VacationService:
                 m_label = f"{VacationService.MESES_ES[f_ev.month]} {f_ev.year}"
                 f_str = f_ev.strftime("%d/%m/%Y")
                 dia_sem = VacationService.DIAS_SEMANA_ES[f_ev.weekday()]
-                esp_str = f"{dia_sem} {f_ev.strftime('%d/%m/%Y')} (Día Aniversario)"
+                esp_str = f"• {dia_sem} {f_ev.strftime('%d/%m/%Y')} (Vacación Devengada)"
 
                 detailed_events.append({
                     "id": ev["id"],
@@ -459,10 +477,10 @@ class VacationService:
                     dias_count = float(len(m_dates))
                     dias_strs = [d.strftime("%d/%m/%Y") for d in m_dates]
 
-                    # Formateo detallado explícito y completo de TODOS los días específicos del mes
-                    chips_preview = [f"{VacationService.DIAS_SEMANA_ES[d.weekday()]} {d.strftime('%d/%m/%Y')}" for d in m_dates]
+                    # Formateo detallado explícito con viñetas de cada día específico del mes (sin total redundante)
+                    chips_preview = [f"• {VacationService.DIAS_SEMANA_ES[d.weekday()]} {d.strftime('%d/%m/%Y')}" for d in m_dates]
                     if chips_preview:
-                        esp_str = ", ".join(chips_preview) + f" ({dias_count:.1f} d)"
+                        esp_str = "\n".join(chips_preview)
                     else:
                         esp_str = "Sin desglose de fechas específicas"
 
