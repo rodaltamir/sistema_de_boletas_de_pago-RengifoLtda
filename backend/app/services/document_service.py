@@ -5775,3 +5775,804 @@ class DocumentService:
             return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
 
         return effective_xlsx
+
+    @staticmethod
+    def _render_single_payment_receipt(ws, start_r: int, data: dict, copia_label: str = None) -> int:
+        trabajador_nombre = str(data.get('trabajador_nombre', '')).strip().upper()
+        trabajador_ci = str(data.get('trabajador_ci', '')).strip()
+        empleador_nombre = str(data.get('empleador_nombre', '')).strip().upper()
+        empleador_rol = str(data.get('empleador_rol', 'propietario')).strip()
+        empleador_ci = str(data.get('empleador_ci', '')).strip()
+
+        recibo_nro = str(data.get('recibo_nro', '001')).strip()
+        total_ganado = float(data.get('total_ganado', 0.0))
+        salario_diario = float(data.get('salario_diario', (total_ganado / 30.0) if total_ganado > 0 else 0.0))
+        dias_pagados = float(data.get('dias_pagados', 0.0))
+        importe_cancelado = float(data.get('importe_cancelado', salario_diario * dias_pagados))
+        lugar_fecha = str(data.get('lugar_fecha', '')).strip()
+        if not lugar_fecha:
+            now_dt = datetime.now()
+            meses_es = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+            lugar_fecha = f"La Paz, {now_dt.day} de {meses_es[now_dt.month - 1]} de {now_dt.year}"
+
+        entero = int(importe_cancelado)
+        centavos = int(round((importe_cancelado - entero) * 100))
+        monto_literal = f"{DocumentService._numero_a_letras(entero).title()} {centavos:02d}/100"
+
+        dias_int = int(dias_pagados)
+        if dias_int == dias_pagados:
+            dias_str = f"{dias_int} ({DocumentService._numero_a_letras(dias_int).lower()})"
+        else:
+            dias_str = f"{dias_pagados:g}"
+
+        font_header_nro = Font(name="Arial", size=9, bold=True)
+        font_title = Font(name="Arial", size=12, bold=True, color="0F172A")
+        font_body = Font(name="Arial", size=9.5)
+        font_body_bold = Font(name="Arial", size=9.5, bold=True)
+        font_sub = Font(name="Arial", size=9)
+        font_sub_bold = Font(name="Arial", size=9.5, bold=True)
+
+        thin_side = Side(style='thin', color='475569')
+        border_box = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+
+        firmas_en_blanco = bool(data.get('firmas_en_blanco', True))
+
+        r = start_r
+        # Fila 1: RECIBO N.º a la derecha (F:G) con marco limpio (sin etiquetas de ORIGINAL/COPIA)
+        ws.row_dimensions[r].height = 20
+        ws.merge_cells(f"F{r}:G{r}")
+        ws[f"F{r}"] = f"RECIBO N.º {recibo_nro}"
+        ws[f"F{r}"].font = font_header_nro
+        ws[f"F{r}"].alignment = Alignment(horizontal="center", vertical="center")
+        for c_let in ['F', 'G']:
+            ws[f"{c_let}{r}"].border = border_box
+
+        # Espaciador
+        r += 1
+        ws.row_dimensions[r].height = 6
+
+        # Fila 2: Título Principal
+        r += 1
+        ws.row_dimensions[r].height = 22
+        ws.merge_cells(f"B{r}:G{r}")
+        ws[f"B{r}"] = "RECIBO DE PAGO DE VACACIONES"
+        ws[f"B{r}"].font = font_title
+        ws[f"B{r}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        # Espaciador
+        r += 1
+        ws.row_dimensions[r].height = 6
+
+        # Fila 3: Declaración con C.I. y altura 52pt para que jamás se corte el texto
+        r += 1
+        ws.row_dimensions[r].height = 52
+        ws.merge_cells(f"B{r}:G{r}")
+        ci_phrase = f" con C.I. {trabajador_ci}" if trabajador_ci else ""
+        decl_text = (
+            f"Yo, {trabajador_nombre}{ci_phrase}, declaro haber recibido de {empleador_nombre}, {empleador_rol}, "
+            f"la suma de Bs {importe_cancelado:,.2f} ({monto_literal} Bolivianos) por concepto de pago "
+            f"de {dias_str} días de vacaciones devengadas."
+        )
+        ws[f"B{r}"] = decl_text
+        ws[f"B{r}"].font = font_body
+        ws[f"B{r}"].alignment = Alignment(horizontal="justify", vertical="top", wrap_text=True)
+
+        # Espaciador
+        r += 1
+        ws.row_dimensions[r].height = 6
+
+        # Fila 4: Detalle
+        r += 1
+        ws.row_dimensions[r].height = 16
+        ws[f"B{r}"] = "Detalle:"
+        ws[f"B{r}"].font = font_body_bold
+
+        items = [
+            ("•  Total ganado mensual:", f"Bs {total_ganado:,.2f}"),
+            ("•  Salario diario:", f"Bs {total_ganado:,.2f} ÷ 30 = Bs {salario_diario:,.2f}"),
+            ("•  Días de vacaciones pagados:", f"{dias_pagados:g} días"),
+            ("•  Importe cancelado:", f"Bs {importe_cancelado:,.2f}")
+        ]
+
+        for label, val in items:
+            r += 1
+            ws.row_dimensions[r].height = 17
+            ws.merge_cells(f"B{r}:D{r}")
+            ws[f"B{r}"] = label
+            ws[f"B{r}"].font = font_body_bold if "Importe" in label else font_body
+            ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+
+            ws.merge_cells(f"E{r}:G{r}")
+            ws[f"E{r}"] = val
+            ws[f"E{r}"].font = font_body_bold
+            ws[f"E{r}"].alignment = Alignment(horizontal="left", vertical="center")
+
+        # Espaciador
+        r += 1
+        ws.row_dimensions[r].height = 6
+
+        # Fila 5: Conformidad
+        r += 1
+        ws.row_dimensions[r].height = 18
+        ws.merge_cells(f"B{r}:G{r}")
+        ws[f"B{r}"] = "En constancia de conformidad con el pago recibido, firmo el presente documento."
+        ws[f"B{r}"].font = font_body
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+
+        # Fila 6: Lugar y fecha
+        r += 1
+        ws.row_dimensions[r].height = 18
+        ws.merge_cells(f"B{r}:G{r}")
+        ws[f"B{r}"] = f"Lugar y fecha: {lugar_fecha}"
+        ws[f"B{r}"].font = font_body
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+
+        # Espaciador
+        r += 1
+        ws.row_dimensions[r].height = 8
+
+        # Fila 7: Encabezado de Firmas
+        r += 1
+        ws.row_dimensions[r].height = 18
+        ws.merge_cells(f"B{r}:D{r}")
+        ws[f"B{r}"] = "TRABAJADOR"
+        ws[f"B{r}"].font = font_sub_bold
+        ws[f"B{r}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells(f"E{r}:G{r}")
+        ws[f"E{r}"] = "EMPLEADOR"
+        ws[f"E{r}"].font = font_sub_bold
+        ws[f"E{r}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        dots_pay_nombre = "." * 125
+        dots_pay_ci = "." * 130
+        dots_pay_firma = "." * 127
+        font_dot_pay = Font(name="Arial", size=8.0, bold=False, color="475569")
+
+        # Fila 8: Nombre
+        r += 1
+        ws.row_dimensions[r].height = 18
+        ws.merge_cells(f"B{r}:D{r}")
+        ws.merge_cells(f"E{r}:G{r}")
+        if firmas_en_blanco:
+            ws[f"B{r}"] = f"Nombre: {dots_pay_nombre}"
+            ws[f"E{r}"] = f"Nombre: {dots_pay_nombre}"
+            ws[f"B{r}"].font = font_dot_pay
+            ws[f"E{r}"].font = font_dot_pay
+        else:
+            ws[f"B{r}"] = f"Nombre: {trabajador_nombre}"
+            ws[f"E{r}"] = f"Nombre: {empleador_nombre}"
+            ws[f"B{r}"].font = font_sub
+            ws[f"E{r}"].font = font_sub
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        ws[f"E{r}"].alignment = Alignment(horizontal="left", vertical="center")
+
+        # Fila 9: C.I.
+        r += 1
+        ws.row_dimensions[r].height = 18
+        ws.merge_cells(f"B{r}:D{r}")
+        ws.merge_cells(f"E{r}:G{r}")
+        if firmas_en_blanco:
+            ws[f"B{r}"] = f"C.I.: {dots_pay_ci}"
+            ws[f"E{r}"] = f"C.I.: {dots_pay_ci}"
+            ws[f"B{r}"].font = font_dot_pay
+            ws[f"E{r}"].font = font_dot_pay
+        else:
+            ws[f"B{r}"] = f"C.I.: {trabajador_ci}"
+            rol_label = empleador_rol.capitalize() if empleador_rol else "Propietario"
+            ci_str = f": {empleador_ci}" if empleador_ci else ""
+            ws[f"E{r}"] = f"{rol_label}{ci_str}"
+            ws[f"B{r}"].font = font_sub
+            ws[f"E{r}"].font = font_sub
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        ws[f"E{r}"].alignment = Alignment(horizontal="left", vertical="center")
+
+        # Fila 10: Firma
+        r += 1
+        ws.row_dimensions[r].height = 18
+        ws.merge_cells(f"B{r}:D{r}")
+        ws.merge_cells(f"E{r}:G{r}")
+        if firmas_en_blanco:
+            ws[f"B{r}"] = f"Firma: {dots_pay_firma}"
+            ws[f"E{r}"] = f"Firma: {dots_pay_firma}"
+            ws[f"B{r}"].font = font_dot_pay
+            ws[f"E{r}"].font = font_dot_pay
+        else:
+            ws[f"B{r}"] = "Firma: ____________________________________"
+            ws[f"E{r}"] = "Firma: ____________________________________"
+            ws[f"B{r}"].font = font_sub
+            ws[f"E{r}"].font = font_sub
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        ws[f"E{r}"].alignment = Alignment(horizontal="left", vertical="center")
+
+        return r
+
+    @staticmethod
+    def generate_vacation_payment_receipt_excel(data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
+        """
+        Genera el Recibo de Pago de Vacaciones con dos boletas idénticas
+        en una sola página Carta Vertical (Superior e Inferior)
+        con línea de corte central, simétrica y aprovechando toda la hoja sin cortes de texto.
+        """
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "vacaciones"))
+        os.makedirs(exports_dir, exist_ok=True)
+
+        empresa = str(data.get('empresa_nombre', '') or '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
+        trabajador_nombre = str(data.get('trabajador_nombre', '')).strip().upper()
+        emp_slug = DocumentService._slugify(trabajador_nombre)
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Recibo de Vacaciones"
+
+        # Configuración Carta Vertical: exactamente 1 página vertical ajustada
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+        ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+        ws.print_options.horizontalCentered = True
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(
+            left=0.45, right=0.45, top=0.35, bottom=0.35, header=0.1, footer=0.1
+        )
+
+        # Grilla de 6 columnas simétricas (B:D izquierda, E:G derecha)
+        ws.column_dimensions['A'].width = 3.0
+        ws.column_dimensions['B'].width = 16.0
+        ws.column_dimensions['C'].width = 17.0
+        ws.column_dimensions['D'].width = 16.0
+        ws.column_dimensions['E'].width = 16.0
+        ws.column_dimensions['F'].width = 17.0
+        ws.column_dimensions['G'].width = 16.0
+        ws.column_dimensions['H'].width = 3.0
+
+        # 1. Renderizar Recibo Superior (Mitad 1)
+        end_r1 = DocumentService._render_single_payment_receipt(ws, start_r=2, data=data)
+
+        # 2. Separador de Corte central
+        r_cut = end_r1 + 2
+        ws.row_dimensions[r_cut - 1].height = 10
+        ws.row_dimensions[r_cut].height = 18
+        ws.merge_cells(f"B{r_cut}:G{r_cut}")
+        c_cut = ws[f"B{r_cut}"]
+        c_cut.value = "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
+        c_cut.font = Font(name="Arial", size=8.5, italic=True, color="64748B")
+        c_cut.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[r_cut + 1].height = 10
+
+        # 3. Renderizar Recibo Inferior (Mitad 2)
+        DocumentService._render_single_payment_receipt(ws, start_r=r_cut + 2, data=data)
+
+        now_dt = datetime.now()
+        fecha_slug = now_dt.strftime("%d_%m_%Y")
+        xlsx_path = os.path.join(exports_dir, f"recibo_pago_vacaciones_{emp_slug}_{fecha_slug}.xlsx")
+        effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
+
+        if output_format.lower() == "pdf":
+            pdf_path = os.path.join(exports_dir, f"recibo_pago_vacaciones_{emp_slug}_{fecha_slug}.pdf")
+            return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
+
+        return effective_xlsx
+
+    @staticmethod
+    def _render_single_solicitadas_ficha(ws, start_r: int, data: dict, copia_label: str = None) -> int:
+        trabajador_nombre = str(data.get('trabajador_nombre', '')).strip().upper()
+        trabajador_cargo = str(data.get('trabajador_cargo', '')).strip().upper()
+        trabajador_ci = str(data.get('trabajador_ci', '')).strip()
+        fecha_ingreso = str(data.get('fecha_ingreso', '')).strip()
+        tipo_doc = str(data.get('tipo_doc', 'SOLICITADAS - COLECTIVAS')).upper()
+        records = data.get('records', [])
+        observaciones = str(data.get('observaciones', '') or '').strip()
+        responsable_nombre = str(data.get('responsable_nombre', '') or '').strip().upper()
+        now_dt = datetime.now()
+        fecha_str = str(data.get('fecha', now_dt.strftime("%d/%m/%Y"))).strip()
+        total_dias = sum(float(r.get('dias', 0.0)) for r in records)
+
+        font_title = Font(name="Arial", size=9.5, bold=True, color="0F172A")
+        font_sec_hdr = Font(name="Arial", size=7.5, bold=True, color="1E293B")
+        font_lbl_bold = Font(name="Arial", size=7.5, bold=True, color="334155")
+        font_val = Font(name="Arial", size=7.5, color="0F172A")
+        font_th = Font(name="Arial", size=7.5, bold=True, color="1E293B")
+        font_td = Font(name="Arial", size=7.0, color="0F172A")
+        font_td_bold = Font(name="Arial", size=7.0, bold=True, color="0F172A")
+        font_conf = Font(name="Arial", size=7.0, color="1E293B")
+        font_dot_standard = Font(name="Arial", size=7.5, bold=False, color="475569")
+
+        fill_hdr = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+        thin_side = Side(style='thin', color='CBD5E1')
+        border_cell = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+
+        r = start_r
+        # Cabecera con fecha del documento a la derecha (sin etiquetas de ORIGINAL/COPIA)
+        ws.row_dimensions[r].height = 12
+        ws.merge_cells(f"B{r}:H{r}")
+        ws[f"B{r}"] = f"Fecha: {fecha_str}"
+        ws[f"B{r}"].font = font_val
+        ws[f"B{r}"].alignment = Alignment(horizontal="right", vertical="center")
+
+        # Título
+        r += 1
+        ws.row_dimensions[r].height = 15
+        ws.merge_cells(f"B{r}:H{r}")
+        ws[f"B{r}"] = f"FICHA DE VACACIONES {tipo_doc}"
+        ws[f"B{r}"].font = font_title
+        ws[f"B{r}"].alignment = Alignment(horizontal="center", vertical="center")
+
+        # Datos Trabajador
+        r += 1
+        ws.row_dimensions[r].height = 12
+        ws.merge_cells(f"B{r}:H{r}")
+        ws[f"B{r}"] = "DATOS DEL TRABAJADOR / INFORMACIÓN"
+        ws[f"B{r}"].font = font_sec_hdr
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        for cl in ['B', 'C', 'D', 'E', 'F', 'G', 'H']:
+            ws[f"{cl}{r}"].fill = fill_hdr
+            ws[f"{cl}{r}"].border = border_cell
+
+        r += 1
+        ws.row_dimensions[r].height = 12
+        ws.merge_cells(f"B{r}:C{r}")
+        ws[f"B{r}"] = "Nombre del trabajador:"
+        ws[f"B{r}"].font = font_lbl_bold
+        ws.merge_cells(f"D{r}:H{r}")
+        ws[f"D{r}"] = trabajador_nombre
+        ws[f"D{r}"].font = font_val
+        for cl in ['B', 'C', 'D', 'E', 'F', 'G', 'H']:
+            ws[f"{cl}{r}"].border = border_cell
+
+        r += 1
+        ws.row_dimensions[r].height = 12
+        ws.merge_cells(f"B{r}:C{r}")
+        ws[f"B{r}"] = "Cargo:"
+        ws[f"B{r}"].font = font_lbl_bold
+        ws.merge_cells(f"D{r}:E{r}")
+        ws[f"D{r}"] = trabajador_cargo
+        ws[f"D{r}"].font = font_val
+
+        ws[f"F{r}"] = "C.I.:"
+        ws[f"F{r}"].font = font_lbl_bold
+        ws.merge_cells(f"G{r}:H{r}")
+        ws[f"G{r}"] = f"{trabajador_ci}   (Ingreso: {fecha_ingreso})"
+        ws[f"G{r}"].font = font_val
+        for cl in ['B', 'C', 'D', 'E', 'F', 'G', 'H']:
+            ws[f"{cl}{r}"].border = border_cell
+
+        # Detalle de Vacaciones
+        r += 1
+        ws.row_dimensions[r].height = 12
+        ws.merge_cells(f"B{r}:H{r}")
+        ws[f"B{r}"] = f"DETALLE DE VACACIONES {tipo_doc}"
+        ws[f"B{r}"].font = font_sec_hdr
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+
+        # Cabecera Tabla
+        r += 1
+        ws.row_dimensions[r].height = 13
+        cols = [
+            ("B", "N°", Alignment(horizontal="center", vertical="center")),
+            ("C", "Fecha Inicio", Alignment(horizontal="center", vertical="center")),
+            ("D", "Fecha Fin", Alignment(horizontal="center", vertical="center")),
+            ("E", "Días", Alignment(horizontal="right", vertical="center")),
+            ("F", "Tipo", Alignment(horizontal="center", vertical="center")),
+            ("G", "Motivo / Detalle", Alignment(horizontal="left", vertical="center")),
+            ("H", "Solicitud", Alignment(horizontal="center", vertical="center")),
+        ]
+        for col_let, text_val, align in cols:
+            cell = ws[f"{col_let}{r}"]
+            cell.value = text_val
+            cell.font = font_th
+            cell.fill = fill_hdr
+            cell.alignment = align
+            cell.border = border_cell
+
+        if not records:
+            r += 1
+            ws.row_dimensions[r].height = 14
+            ws.merge_cells(f"B{r}:H{r}")
+            ws[f"B{r}"] = "No existen registros de vacaciones solicitadas o colectivas."
+            ws[f"B{r}"].font = Font(name="Arial", size=7.0, italic=True)
+            ws[f"B{r}"].alignment = Alignment(horizontal="center", vertical="center")
+            for c_x in ['B', 'C', 'D', 'E', 'F', 'G', 'H']:
+                ws[f"{c_x}{r}"].border = border_cell
+        else:
+            for idx, rec in enumerate(records, start=1):
+                r += 1
+                ws.row_dimensions[r].height = 11.5
+                tipo_lbl = "Solicitada" if rec.get('tipo') == "solicitada" else ("Colectiva" if rec.get('tipo') == "colectiva" else str(rec.get('tipo', '')))
+                f_ini = rec.get('fecha_inicio', '')
+                if len(str(f_ini)) >= 10 and '-' in str(f_ini):
+                    p = str(f_ini)[:10].split('-')
+                    f_ini = f"{p[2]}/{p[1]}/{p[0]}"
+                f_fin = rec.get('fecha_fin', '')
+                if len(str(f_fin)) >= 10 and '-' in str(f_fin):
+                    p = str(f_fin)[:10].split('-')
+                    f_fin = f"{p[2]}/{p[1]}/{p[0]}"
+                f_sol = rec.get('fecha_solicitud', '') or '-'
+                if len(str(f_sol)) >= 10 and '-' in str(f_sol):
+                    p = str(f_sol)[:10].split('-')
+                    f_sol = f"{p[2]}/{p[1]}/{p[0]}"
+
+                row_vals = [
+                    ("B", idx, Alignment(horizontal="center", vertical="center")),
+                    ("C", str(f_ini), Alignment(horizontal="center", vertical="center")),
+                    ("D", str(f_fin), Alignment(horizontal="center", vertical="center")),
+                    ("E", float(rec.get('dias', 0.0)), Alignment(horizontal="right", vertical="center")),
+                    ("F", tipo_lbl, Alignment(horizontal="center", vertical="center")),
+                    ("G", str(rec.get('motivo', '') or '-'), Alignment(horizontal="left", vertical="center", shrink_to_fit=True)),
+                    ("H", str(f_sol), Alignment(horizontal="center", vertical="center")),
+                ]
+                for col_let, v, al in row_vals:
+                    c = ws[f"{col_let}{r}"]
+                    c.value = v
+                    c.font = font_td_bold if col_let == 'E' else font_td
+                    c.alignment = al
+                    c.border = border_cell
+
+        # Fila Total
+        r += 1
+        ws.row_dimensions[r].height = 12
+        ws.merge_cells(f"B{r}:D{r}")
+        ws[f"B{r}"] = "TOTAL DÍAS REGISTRADOS:"
+        ws[f"B{r}"].font = font_th
+        ws[f"B{r}"].alignment = Alignment(horizontal="right", vertical="center")
+        for cl in ['B', 'C', 'D']:
+            ws[f"{cl}{r}"].border = border_cell
+            ws[f"{cl}{r}"].fill = fill_hdr
+
+        ws[f"E{r}"] = total_dias
+        ws[f"E{r}"].font = font_td_bold
+        ws[f"E{r}"].alignment = Alignment(horizontal="right", vertical="center")
+        ws[f"E{r}"].border = border_cell
+        ws[f"E{r}"].fill = fill_hdr
+
+        ws.merge_cells(f"F{r}:H{r}")
+        ws[f"F{r}"] = "días computados"
+        ws[f"F{r}"].font = font_td
+        ws[f"F{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        for cl in ['F', 'G', 'H']:
+            ws[f"{cl}{r}"].border = border_cell
+            ws[f"{cl}{r}"].fill = fill_hdr
+
+        # Observaciones con líneas de puntos para completar a mano
+        r += 1
+        ws.row_dimensions[r].height = 12
+        dots_obs_line1 = "." * 220
+        dots_obs_line2 = "." * 270
+        if observaciones:
+            ws.merge_cells(f"B{r}:C{r}")
+            ws[f"B{r}"] = "Observaciones:"
+            ws[f"B{r}"].font = font_lbl_bold
+            ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+            ws.merge_cells(f"D{r}:H{r}")
+            ws[f"D{r}"] = observaciones
+            ws[f"D{r}"].font = font_val
+            ws[f"D{r}"].alignment = Alignment(horizontal="left", vertical="center")
+            r += 1
+            ws.row_dimensions[r].height = 11
+            ws.merge_cells(f"B{r}:H{r}")
+            ws[f"B{r}"] = dots_obs_line2
+            ws[f"B{r}"].font = font_dot_standard
+            ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        else:
+            ws.merge_cells(f"B{r}:C{r}")
+            ws[f"B{r}"] = "Observaciones:"
+            ws[f"B{r}"].font = font_lbl_bold
+            ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+            ws.merge_cells(f"D{r}:H{r}")
+            ws[f"D{r}"] = dots_obs_line1
+            ws[f"D{r}"].font = font_dot_standard
+            ws[f"D{r}"].alignment = Alignment(horizontal="left", vertical="center")
+            r += 1
+            ws.row_dimensions[r].height = 11
+            ws.merge_cells(f"B{r}:H{r}")
+            ws[f"B{r}"] = dots_obs_line2
+            ws[f"B{r}"].font = font_dot_standard
+            ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+
+        # CONFORMIDAD
+        r += 1
+        ws.row_dimensions[r].height = 11
+        ws.merge_cells(f"B{r}:H{r}")
+        ws[f"B{r}"] = "CONFORMIDAD"
+        ws[f"B{r}"].font = font_sec_hdr
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+
+        r += 1
+        ws.row_dimensions[r].height = 18
+        ws.merge_cells(f"B{r}:H{r}")
+        conf_text = (
+            f"Declaro mi conformidad con el registro de {total_dias:g} días de vacación consignados "
+            f"en la presente ficha, firmando al pie para constancia y fines administrativos correspondientes."
+        )
+        ws[f"B{r}"] = conf_text
+        ws[f"B{r}"].font = font_conf
+        ws[f"B{r}"].alignment = Alignment(horizontal="justify", vertical="top", wrap_text=True)
+
+        # Tablas de Firma 100% simétricas (B:F = 47.0, G:H = 47.0)
+        r += 1
+        ws.row_dimensions[r].height = 12
+        ws.merge_cells(f"B{r}:F{r}")
+        ws[f"B{r}"] = "Firma del trabajador"
+        ws[f"B{r}"].font = font_th
+        ws[f"B{r}"].fill = fill_hdr
+        ws[f"B{r}"].alignment = Alignment(horizontal="center", vertical="center")
+        for cl in ['B', 'C', 'D', 'E', 'F']:
+            ws[f"{cl}{r}"].border = border_cell
+
+        ws.merge_cells(f"G{r}:H{r}")
+        ws[f"G{r}"] = "Firma del responsable"
+        ws[f"G{r}"].font = font_th
+        ws[f"G{r}"].fill = fill_hdr
+        ws[f"G{r}"].alignment = Alignment(horizontal="center", vertical="center")
+        for cl in ['G', 'H']:
+            ws[f"{cl}{r}"].border = border_cell
+
+        firmas_en_blanco = bool(data.get('firmas_en_blanco', True))
+        dots_sig_nombre = "." * 115
+        dots_sig_fecha = "." * 118
+        dots_sig_firma = "." * 118
+
+        r += 1
+        ws.row_dimensions[r].height = 12
+        ws.merge_cells(f"B{r}:F{r}")
+        ws[f"B{r}"] = f"Nombre: {dots_sig_nombre}" if firmas_en_blanco else f"Nombre: {trabajador_nombre}"
+        ws[f"B{r}"].font = font_dot_standard if firmas_en_blanco else font_val
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        for cl in ['B', 'C', 'D', 'E', 'F']:
+            ws[f"{cl}{r}"].border = border_cell
+
+        ws.merge_cells(f"G{r}:H{r}")
+        ws[f"G{r}"] = f"Nombre: {dots_sig_nombre}" if firmas_en_blanco else f"Nombre: {responsable_nombre}"
+        ws[f"G{r}"].font = font_dot_standard if firmas_en_blanco else font_val
+        ws[f"G{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        for cl in ['G', 'H']:
+            ws[f"{cl}{r}"].border = border_cell
+
+        r += 1
+        ws.row_dimensions[r].height = 12
+        ws.merge_cells(f"B{r}:F{r}")
+        ws[f"B{r}"] = f"Fecha: {dots_sig_fecha}" if firmas_en_blanco else f"Fecha: {fecha_str}"
+        ws[f"B{r}"].font = font_dot_standard if firmas_en_blanco else font_val
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        for cl in ['B', 'C', 'D', 'E', 'F']:
+            ws[f"{cl}{r}"].border = border_cell
+
+        ws.merge_cells(f"G{r}:H{r}")
+        ws[f"G{r}"] = f"Fecha: {dots_sig_fecha}" if firmas_en_blanco else f"Fecha: {fecha_str}"
+        ws[f"G{r}"].font = font_dot_standard if firmas_en_blanco else font_val
+        ws[f"G{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        for cl in ['G', 'H']:
+            ws[f"{cl}{r}"].border = border_cell
+
+        r += 1
+        ws.row_dimensions[r].height = 16
+        ws.merge_cells(f"B{r}:F{r}")
+        ws[f"B{r}"] = f"Firma: {dots_sig_firma}" if firmas_en_blanco else "Firma: ________________________"
+        ws[f"B{r}"].font = font_dot_standard if firmas_en_blanco else font_val
+        ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        for cl in ['B', 'C', 'D', 'E', 'F']:
+            ws[f"{cl}{r}"].border = border_cell
+
+        ws.merge_cells(f"G{r}:H{r}")
+        ws[f"G{r}"] = f"Firma: {dots_sig_firma}" if firmas_en_blanco else "Firma: ________________________"
+        ws[f"G{r}"].font = font_dot_standard if firmas_en_blanco else font_val
+        ws[f"G{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        for cl in ['G', 'H']:
+            ws[f"{cl}{r}"].border = border_cell
+
+        return r
+
+    @staticmethod
+    def generate_vacation_solicitadas_colectivas_excel(data: dict, output_format: str = "xlsx", schema_name: str = None) -> str:
+        """
+        Genera la Ficha de Vacaciones Solicitadas - Colectivas.
+        Genera dos copias en una sola página Carta Vertical (Superior e Inferior)
+        separadas por la línea de corte central, idéntico al recibo y boleta de pago.
+        """
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "vacaciones"))
+        os.makedirs(exports_dir, exist_ok=True)
+
+        empresa = str(data.get('empresa_nombre', '') or '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
+        trabajador_nombre = str(data.get('trabajador_nombre', '')).strip().upper()
+        emp_slug = DocumentService._slugify(trabajador_nombre)
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Ficha Vacaciones"
+
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+        ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+        ws.print_options.horizontalCentered = True
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.4, right=0.4, top=0.3, bottom=0.3, header=0.1, footer=0.1)
+
+        ws.column_dimensions['A'].width = 2.0
+        ws.column_dimensions['B'].width = 4.0   # N°
+        ws.column_dimensions['C'].width = 11.5  # Fecha Inicio
+        ws.column_dimensions['D'].width = 11.5  # Fecha Fin
+        ws.column_dimensions['E'].width = 6.0   # Días
+        ws.column_dimensions['F'].width = 14.0  # Tipo
+        ws.column_dimensions['G'].width = 34.0  # Motivo / Detalle
+        ws.column_dimensions['H'].width = 13.0  # Solicitud
+
+        # 1. Renderizar Mitad Superior
+        end_r1 = DocumentService._render_single_solicitadas_ficha(ws, start_r=2, data=data)
+
+        # 2. Separador de Corte central
+        r_cut = end_r1 + 2
+        ws.row_dimensions[r_cut - 1].height = 8
+        ws.row_dimensions[r_cut].height = 14
+        ws.merge_cells(f"B{r_cut}:H{r_cut}")
+        c_cut = ws[f"B{r_cut}"]
+        c_cut.value = "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
+        c_cut.font = Font(name="Arial", size=8, italic=True, color="64748B")
+        c_cut.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[r_cut + 1].height = 8
+
+        # 3. Renderizar Mitad Inferior
+        DocumentService._render_single_solicitadas_ficha(ws, start_r=r_cut + 2, data=data)
+
+        now_dt = datetime.now()
+        fecha_slug = now_dt.strftime("%d_%m_%Y")
+        xlsx_path = os.path.join(exports_dir, f"ficha_vacaciones_solicitadas_{emp_slug}_{fecha_slug}.xlsx")
+        effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
+
+        if output_format.lower() == "pdf":
+            pdf_path = os.path.join(exports_dir, f"ficha_vacaciones_solicitadas_{emp_slug}_{fecha_slug}.pdf")
+            return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
+
+        return effective_xlsx
+
+    @staticmethod
+    def generate_vacation_payment_receipts_batch_excel(receipts_list: list[dict], output_format: str = "xlsx", schema_name: str = None) -> str:
+        """
+        Genera el lote general de Recibos de Pago de Vacaciones para todos los empleados de la empresa.
+        Formato de impresión continua:
+        - 2 empleados por página Carta Vertical (Empleado 1 en la mitad superior, corte central, Empleado 2 en la mitad inferior).
+        - Salto de página automático para las siguientes hojas.
+        """
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "vacaciones"))
+        os.makedirs(exports_dir, exist_ok=True)
+
+        if not receipts_list:
+            raise ValueError("No hay recibos de vacaciones para exportar en lote.")
+
+        empresa = str(receipts_list[0].get('empresa_nombre', '') or '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Recibos Vacaciones Lote"
+
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+        ws.print_options.horizontalCentered = True
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(
+            left=0.45, right=0.45, top=0.35, bottom=0.35, header=0.1, footer=0.1
+        )
+
+        ws.column_dimensions['A'].width = 3.0
+        ws.column_dimensions['B'].width = 16.0
+        ws.column_dimensions['C'].width = 17.0
+        ws.column_dimensions['D'].width = 16.0
+        ws.column_dimensions['E'].width = 16.0
+        ws.column_dimensions['F'].width = 17.0
+        ws.column_dimensions['G'].width = 16.0
+        ws.column_dimensions['H'].width = 3.0
+
+        curr_r = 2
+        for i in range(0, len(receipts_list), 2):
+            emp1 = receipts_list[i]
+            end_r1 = DocumentService._render_single_payment_receipt(ws, start_r=curr_r, data=emp1)
+
+            if i + 1 < len(receipts_list):
+                emp2 = receipts_list[i + 1]
+                r_cut = end_r1 + 2
+                ws.row_dimensions[r_cut - 1].height = 10
+                ws.row_dimensions[r_cut].height = 18
+                ws.merge_cells(f"B{r_cut}:G{r_cut}")
+                c_cut = ws[f"B{r_cut}"]
+                c_cut.value = "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
+                c_cut.font = Font(name="Arial", size=8.5, italic=True, color="64748B")
+                c_cut.alignment = Alignment(horizontal="center", vertical="center")
+                ws.row_dimensions[r_cut + 1].height = 10
+
+                end_r2 = DocumentService._render_single_payment_receipt(ws, start_r=r_cut + 2, data=emp2)
+                ws.row_breaks.append(Break(id=end_r2 + 1))
+                curr_r = end_r2 + 3
+            else:
+                ws.row_breaks.append(Break(id=end_r1 + 1))
+                curr_r = end_r1 + 3
+
+        now_dt = datetime.now()
+        fecha_slug = now_dt.strftime("%d_%m_%Y")
+        xlsx_path = os.path.join(exports_dir, f"recibos_vacaciones_lote_empresa_{empresa_slug}_{fecha_slug}.xlsx")
+        effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
+
+        if output_format.lower() == "pdf":
+            pdf_path = os.path.join(exports_dir, f"recibos_vacaciones_lote_empresa_{empresa_slug}_{fecha_slug}.pdf")
+            return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
+
+        return effective_xlsx
+
+    @staticmethod
+    def generate_vacation_solicitadas_colectivas_batch_excel(fichas_list: list[dict], output_format: str = "xlsx", schema_name: str = None) -> str:
+        """
+        Genera el lote general de Fichas de Vacaciones Solicitadas y Colectivas para todos los empleados de la empresa.
+        Formato de impresión continua:
+        - 2 empleados por página Carta Vertical (Empleado 1 en la mitad superior, corte central, Empleado 2 en la mitad inferior).
+        - Salto de página automático para las siguientes hojas.
+        """
+        exports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "exports", "vacaciones"))
+        os.makedirs(exports_dir, exist_ok=True)
+
+        if not fichas_list:
+            raise ValueError("No hay fichas de vacaciones para exportar en lote.")
+
+        empresa = str(fichas_list[0].get('empresa_nombre', '') or '').upper()
+        empresa_slug = DocumentService._slugify(schema_name if schema_name else empresa)
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Fichas Vacaciones Lote"
+
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+        ws.print_options.horizontalCentered = True
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(
+            left=0.4, right=0.4, top=0.3, bottom=0.3, header=0.1, footer=0.1
+        )
+
+        ws.column_dimensions['A'].width = 2.0
+        ws.column_dimensions['B'].width = 4.0   # N°
+        ws.column_dimensions['C'].width = 11.5  # Fecha Inicio
+        ws.column_dimensions['D'].width = 11.5  # Fecha Fin
+        ws.column_dimensions['E'].width = 6.0   # Días
+        ws.column_dimensions['F'].width = 14.0  # Tipo
+        ws.column_dimensions['G'].width = 34.0  # Motivo / Detalle
+        ws.column_dimensions['H'].width = 13.0  # Solicitud
+
+        curr_r = 2
+        for i in range(0, len(fichas_list), 2):
+            emp1 = fichas_list[i]
+            end_r1 = DocumentService._render_single_solicitadas_ficha(ws, start_r=curr_r, data=emp1)
+
+            if i + 1 < len(fichas_list):
+                emp2 = fichas_list[i + 1]
+                r_cut = end_r1 + 2
+                ws.row_dimensions[r_cut - 1].height = 8
+                ws.row_dimensions[r_cut].height = 14
+                ws.merge_cells(f"B{r_cut}:H{r_cut}")
+                c_cut = ws[f"B{r_cut}"]
+                c_cut.value = "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
+                c_cut.font = Font(name="Arial", size=8, italic=True, color="64748B")
+                c_cut.alignment = Alignment(horizontal="center", vertical="center")
+                ws.row_dimensions[r_cut + 1].height = 8
+
+                end_r2 = DocumentService._render_single_solicitadas_ficha(ws, start_r=r_cut + 2, data=emp2)
+                ws.row_breaks.append(Break(id=end_r2 + 1))
+                curr_r = end_r2 + 3
+            else:
+                ws.row_breaks.append(Break(id=end_r1 + 1))
+                curr_r = end_r1 + 3
+
+        now_dt = datetime.now()
+        fecha_slug = now_dt.strftime("%d_%m_%Y")
+        xlsx_path = os.path.join(exports_dir, f"fichas_vacaciones_lote_empresa_{empresa_slug}_{fecha_slug}.xlsx")
+        effective_xlsx = DocumentService._safe_save_workbook(wb, xlsx_path)
+
+        if output_format.lower() == "pdf":
+            pdf_path = os.path.join(exports_dir, f"fichas_vacaciones_lote_empresa_{empresa_slug}_{fecha_slug}.pdf")
+            return DocumentService._convert_excel_to_pdf(effective_xlsx, pdf_path)
+
+        return effective_xlsx

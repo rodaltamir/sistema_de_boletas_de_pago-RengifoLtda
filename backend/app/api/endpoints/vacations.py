@@ -132,6 +132,7 @@ def get_company_vacation_summary(
             employee_ci=f"{emp.documento_identidad.strip()}{ext}".strip(),
             employee_cargo=emp.ocupacion,
             fecha_ingreso=str(emp.fecha_ingreso),
+            haber_basico=float(emp.haber_basico or 0.0),
             antiguedad_anios=calc["anios"],
             antiguedad_meses=calc["meses"],
             antiguedad_dias=calc["dias"],
@@ -229,6 +230,7 @@ def get_employee_vacation_summary(
         employee_ci=f"{emp.documento_identidad.strip()}{ext}".strip(),
         employee_cargo=emp.ocupacion,
         fecha_ingreso=str(emp.fecha_ingreso),
+        haber_basico=float(emp.haber_basico or 0.0),
         antiguedad_anios=calc["anios"],
         antiguedad_meses=calc["meses"],
         antiguedad_dias=calc["dias"],
@@ -521,3 +523,412 @@ def export_employee_vacation_pdf(
     now_str = datetime.now().strftime("%d-%m-%Y")
     filename = f"ficha_vacaciones_{emp_slug}_{empresa_slug}_{now_str}.pdf"
     return FileResponse(path=file_path, filename=filename, media_type="application/pdf")
+
+@router.get("/recibo-pago/{employee_id}/{format}")
+@router.get("/recibo-pago/{employee_id}/{format}/", include_in_schema=False)
+def export_recibo_pago_vacaciones(
+    schema_name: str,
+    employee_id: int,
+    format: str,
+    record_id: Optional[int] = Query(None),
+    dias: Optional[float] = Query(None),
+    total_ganado: Optional[float] = Query(None),
+    recibo_nro: Optional[str] = Query("001"),
+    lugar_fecha: Optional[str] = Query(None),
+    empleador_nombre: Optional[str] = Query(None),
+    empleador_rol: Optional[str] = Query("propietario"),
+    empleador_ci: Optional[str] = Query(None),
+    firmas_en_blanco: Optional[bool] = Query(True),
+    db: Session = Depends(get_tenant_db)
+):
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT name, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = :s").bindparams(s=schema_name)
+        ).fetchone()
+        t_name = result[0] if result else "Empresa"
+        t_nit = result[1] if result and result[1] else ""
+        t_emp_nombres = result[2] if result and result[2] else ""
+        t_emp_paterno = result[3] if result and result[3] else ""
+        t_emp_materno = result[4] if result and result[4] else ""
+        t_emp_ci = result[5] if result and result[5] else ""
+        rep_legal = f"{t_emp_paterno} {t_emp_materno} {t_emp_nombres}".strip() or t_name
+
+    rec = None
+    if record_id:
+        rec = db.query(VacationRecord).filter(VacationRecord.id == record_id).first()
+
+    if dias is not None:
+        effective_dias = dias
+    elif rec:
+        effective_dias = float(rec.dias)
+    else:
+        recs_pagados = db.query(VacationRecord).filter(
+            VacationRecord.employee_id == employee_id,
+            VacationRecord.tipo.in_(["dias_pagados", "a_cuenta"])
+        ).all()
+        effective_dias = sum(float(r.dias) for r in recs_pagados) if recs_pagados else 0.0
+
+    tg = total_ganado if (total_ganado is not None and total_ganado > 0) else float(emp.haber_basico or 0.0)
+    sd = tg / 30.0 if tg > 0 else 0.0
+    importe = sd * effective_dias
+
+    ext = f" {emp.ext_ci.strip()}" if emp.ext_ci else ""
+    trabajador_ci = f"{emp.documento_identidad.strip()}{ext}".strip()
+    trabajador_nombre = f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().upper()
+
+    final_empleador_nombre = empleador_nombre or rep_legal
+    final_empleador_ci = empleador_ci or t_emp_ci
+    final_empleador_rol = empleador_rol or "propietario"
+
+    payload = {
+        "empresa_nombre": t_name,
+        "empresa_nit": t_nit,
+        "recibo_nro": recibo_nro or "001",
+        "trabajador_nombre": trabajador_nombre,
+        "trabajador_ci": trabajador_ci,
+        "trabajador_cargo": emp.ocupacion,
+        "empleador_nombre": final_empleador_nombre,
+        "empleador_rol": final_empleador_rol,
+        "empleador_ci": final_empleador_ci,
+        "total_ganado": tg,
+        "salario_diario": sd,
+        "dias_pagados": effective_dias,
+        "importe_cancelado": importe,
+        "lugar_fecha": lugar_fecha or "",
+        "firmas_en_blanco": firmas_en_blanco
+    }
+
+    out_fmt = "xlsx" if format.lower() == "excel" else "pdf"
+    file_path = DocumentService.generate_vacation_payment_receipt_excel(
+        payload,
+        output_format=out_fmt,
+        schema_name=schema_name
+    )
+
+    emp_slug = DocumentService._slugify(trabajador_nombre)
+    empresa_slug = DocumentService._slugify(schema_name)
+    now_str = datetime.now().strftime("%d-%m-%Y")
+    
+    if out_fmt == "xlsx":
+        filename = f"recibo_vacaciones_{emp_slug}_{empresa_slug}_{now_str}.xlsx"
+        return FileResponse(path=file_path, filename=filename, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    else:
+        filename = f"recibo_vacaciones_{emp_slug}_{empresa_slug}_{now_str}.pdf"
+        return FileResponse(path=file_path, filename=filename, media_type="application/pdf")
+
+@router.get("/ficha-solicitadas/{employee_id}/{format}")
+@router.get("/ficha-solicitadas/{employee_id}/{format}/", include_in_schema=False)
+def export_ficha_vacaciones_solicitadas(
+    schema_name: str,
+    employee_id: int,
+    format: str,
+    tipo: Optional[str] = Query("todas"),
+    record_ids: Optional[str] = Query(None),
+    observaciones: Optional[str] = Query(None),
+    responsable_nombre: Optional[str] = Query(None),
+    fecha: Optional[str] = Query(None),
+    firmas_en_blanco: Optional[bool] = Query(True),
+    db: Session = Depends(get_tenant_db)
+):
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT name, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = :s").bindparams(s=schema_name)
+        ).fetchone()
+        t_name = result[0] if result else "Empresa"
+        t_nit = result[1] if result and result[1] else ""
+        t_emp_nombres = result[2] if result and result[2] else ""
+        t_emp_paterno = result[3] if result and result[3] else ""
+        t_emp_materno = result[4] if result and result[4] else ""
+        t_emp_ci = result[5] if result and result[5] else ""
+        rep_legal = f"{t_emp_paterno} {t_emp_materno} {t_emp_nombres}".strip() or t_name
+
+    query = db.query(VacationRecord).filter(VacationRecord.employee_id == employee_id)
+
+    if record_ids:
+        try:
+            ids = [int(x.strip()) for x in record_ids.split(",") if x.strip()]
+            query = query.filter(VacationRecord.id.in_(ids))
+        except Exception:
+            pass
+    elif tipo and tipo != "todas":
+        query = query.filter(VacationRecord.tipo == tipo)
+    else:
+        query = query.filter(VacationRecord.tipo.in_(["solicitada", "colectiva"]))
+
+    recs = query.order_by(VacationRecord.fecha_inicio.asc()).all()
+
+    ext = f" {emp.ext_ci.strip()}" if emp.ext_ci else ""
+    trabajador_ci = f"{emp.documento_identidad.strip()}{ext}".strip()
+    trabajador_nombre = f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().upper()
+
+    serialized_records = []
+    for r in recs:
+        serialized_records.append({
+            "id": r.id,
+            "tipo": r.tipo,
+            "fecha_inicio": str(r.fecha_inicio),
+            "fecha_fin": str(r.fecha_fin),
+            "dias": float(r.dias),
+            "motivo": r.motivo or ("Vacación Solicitada" if r.tipo == "solicitada" else "Vacación Colectiva"),
+            "fecha_solicitud": str(r.fecha_solicitud) if r.fecha_solicitud else ""
+        })
+
+    tipo_doc_label = "SOLICITADAS - COLECTIVAS"
+    if tipo == "solicitada":
+        tipo_doc_label = "SOLICITADAS"
+    elif tipo == "colectiva":
+        tipo_doc_label = "COLECTIVAS"
+
+    payload = {
+        "empresa_nombre": t_name,
+        "empresa_nit": t_nit,
+        "trabajador_nombre": trabajador_nombre,
+        "trabajador_cargo": emp.ocupacion,
+        "trabajador_ci": trabajador_ci,
+        "fecha_ingreso": str(emp.fecha_ingreso),
+        "tipo_doc": tipo_doc_label,
+        "records": serialized_records,
+        "observaciones": observaciones or "",
+        "responsable_nombre": responsable_nombre or rep_legal,
+        "fecha": fecha or datetime.now().strftime("%d/%m/%Y"),
+        "firmas_en_blanco": firmas_en_blanco
+    }
+
+    out_fmt = "xlsx" if format.lower() == "excel" else "pdf"
+    file_path = DocumentService.generate_vacation_solicitadas_colectivas_excel(
+        payload,
+        output_format=out_fmt,
+        schema_name=schema_name
+    )
+
+    emp_slug = DocumentService._slugify(trabajador_nombre)
+    empresa_slug = DocumentService._slugify(schema_name)
+    now_str = datetime.now().strftime("%d-%m-%Y")
+
+    if out_fmt == "xlsx":
+        filename = f"ficha_vacaciones_{emp_slug}_{empresa_slug}_{now_str}.xlsx"
+        return FileResponse(path=file_path, filename=filename, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    else:
+        filename = f"ficha_vacaciones_{emp_slug}_{empresa_slug}_{now_str}.pdf"
+        return FileResponse(path=file_path, filename=filename, media_type="application/pdf")
+
+@router.get("/export/lote/recibos-pago/{format}")
+@router.get("/export/lote/recibos-pago/{format}/", include_in_schema=False)
+def export_lote_recibos_pago_vacaciones(
+    schema_name: str,
+    format: str,
+    lugar_fecha: Optional[str] = Query(None),
+    empleador_nombre: Optional[str] = Query(None),
+    empleador_rol: Optional[str] = Query("propietario"),
+    empleador_ci: Optional[str] = Query(None),
+    firmas_en_blanco: Optional[bool] = Query(True),
+    solo_con_pagos: Optional[bool] = Query(True),
+    db: Session = Depends(get_tenant_db)
+):
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT name, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = :s").bindparams(s=schema_name)
+        ).fetchone()
+        t_name = result[0] if result else "Empresa"
+        t_nit = result[1] if result and result[1] else ""
+        t_emp_nombres = result[2] if result and result[2] else ""
+        t_emp_paterno = result[3] if result and result[3] else ""
+        t_emp_materno = result[4] if result and result[4] else ""
+        t_emp_ci = result[5] if result and result[5] else ""
+        rep_legal = f"{t_emp_paterno} {t_emp_materno} {t_emp_nombres}".strip() or t_name
+
+    final_empleador_nombre = empleador_nombre or rep_legal
+    final_empleador_ci = empleador_ci or t_emp_ci
+    final_empleador_rol = empleador_rol or "propietario"
+
+    employees = db.query(Employee).filter(Employee.is_active == True).all()
+    employees = sorted(employees, key=lambda e: sort_code_key(e.internal_code, e.id))
+
+    all_paid_records = db.query(VacationRecord).filter(
+        VacationRecord.tipo.in_(["dias_pagados", "a_cuenta"])
+    ).order_by(VacationRecord.fecha_inicio.asc()).all()
+
+    paid_by_emp = {}
+    for r in all_paid_records:
+        paid_by_emp.setdefault(r.employee_id, []).append(r)
+
+    receipts_list = []
+    receipt_idx = 1
+    for emp in employees:
+        emp_paid_recs = paid_by_emp.get(emp.id, [])
+        effective_dias = sum(float(r.dias) for r in emp_paid_recs)
+
+        if solo_con_pagos and effective_dias <= 0:
+            continue
+
+        tg = float(emp.haber_basico or 0.0)
+        sd = tg / 30.0 if tg > 0 else 0.0
+        importe = sd * effective_dias
+
+        ext = f" {emp.ext_ci.strip()}" if emp.ext_ci else ""
+        trabajador_ci = f"{emp.documento_identidad.strip()}{ext}".strip()
+        trabajador_nombre = f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().upper()
+
+        recibo_nro_str = f"{receipt_idx:04d}"
+        receipt_idx += 1
+
+        receipts_list.append({
+            "empresa_nombre": t_name,
+            "empresa_nit": t_nit,
+            "recibo_nro": recibo_nro_str,
+            "trabajador_nombre": trabajador_nombre,
+            "trabajador_ci": trabajador_ci,
+            "trabajador_cargo": emp.ocupacion,
+            "empleador_nombre": final_empleador_nombre,
+            "empleador_rol": final_empleador_rol,
+            "empleador_ci": final_empleador_ci,
+            "total_ganado": tg,
+            "salario_diario": sd,
+            "dias_pagados": effective_dias,
+            "importe_cancelado": importe,
+            "lugar_fecha": lugar_fecha or "",
+            "firmas_en_blanco": firmas_en_blanco
+        })
+
+    if not receipts_list:
+        raise HTTPException(
+            status_code=404, 
+            detail="No se encontraron empleados con vacaciones pagadas para generar recibos en lote."
+        )
+
+    out_fmt = "xlsx" if format.lower() == "excel" else "pdf"
+    file_path = DocumentService.generate_vacation_payment_receipts_batch_excel(
+        receipts_list,
+        output_format=out_fmt,
+        schema_name=schema_name
+    )
+
+    empresa_slug = DocumentService._slugify(schema_name)
+    now_str = datetime.now().strftime("%d-%m-%Y")
+
+    if out_fmt == "xlsx":
+        filename = f"recibos_vacaciones_lote_empresa_{empresa_slug}_{now_str}.xlsx"
+        return FileResponse(path=file_path, filename=filename, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    else:
+        filename = f"recibos_vacaciones_lote_empresa_{empresa_slug}_{now_str}.pdf"
+        return FileResponse(path=file_path, filename=filename, media_type="application/pdf")
+
+@router.get("/export/lote/fichas-solicitadas/{format}")
+@router.get("/export/lote/fichas-solicitadas/{format}/", include_in_schema=False)
+def export_lote_fichas_solicitadas(
+    schema_name: str,
+    format: str,
+    tipo: Optional[str] = Query("todas"),
+    observaciones: Optional[str] = Query(None),
+    responsable_nombre: Optional[str] = Query(None),
+    fecha: Optional[str] = Query(None),
+    firmas_en_blanco: Optional[bool] = Query(True),
+    solo_con_vacaciones: Optional[bool] = Query(True),
+    db: Session = Depends(get_tenant_db)
+):
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT name, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = :s").bindparams(s=schema_name)
+        ).fetchone()
+        t_name = result[0] if result else "Empresa"
+        t_nit = result[1] if result and result[1] else ""
+        t_emp_nombres = result[2] if result and result[2] else ""
+        t_emp_paterno = result[3] if result and result[3] else ""
+        t_emp_materno = result[4] if result and result[4] else ""
+        t_emp_ci = result[5] if result and result[5] else ""
+        rep_legal = f"{t_emp_paterno} {t_emp_materno} {t_emp_nombres}".strip() or t_name
+
+    final_responsable = responsable_nombre or rep_legal
+    fecha_doc = fecha or datetime.now().strftime("%d/%m/%Y")
+
+    employees = db.query(Employee).filter(Employee.is_active == True).all()
+    employees = sorted(employees, key=lambda e: sort_code_key(e.internal_code, e.id))
+
+    record_query = db.query(VacationRecord)
+    if tipo == "solicitada":
+        record_query = record_query.filter(VacationRecord.tipo == "solicitada")
+    elif tipo == "colectiva":
+        record_query = record_query.filter(VacationRecord.tipo == "colectiva")
+    else:
+        record_query = record_query.filter(VacationRecord.tipo.in_(["solicitada", "colectiva"]))
+
+    all_vac_records = record_query.order_by(VacationRecord.fecha_inicio.asc()).all()
+
+    vac_by_emp = {}
+    for r in all_vac_records:
+        vac_by_emp.setdefault(r.employee_id, []).append(r)
+
+    tipo_doc_label = "SOLICITADAS - COLECTIVAS"
+    if tipo == "solicitada":
+        tipo_doc_label = "SOLICITADAS"
+    elif tipo == "colectiva":
+        tipo_doc_label = "COLECTIVAS"
+
+    fichas_list = []
+    for emp in employees:
+        emp_recs = vac_by_emp.get(emp.id, [])
+
+        if solo_con_vacaciones and not emp_recs:
+            continue
+
+        ext = f" {emp.ext_ci.strip()}" if emp.ext_ci else ""
+        trabajador_ci = f"{emp.documento_identidad.strip()}{ext}".strip()
+        trabajador_nombre = f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().upper()
+
+        serialized_records = []
+        for r in emp_recs:
+            serialized_records.append({
+                "id": r.id,
+                "tipo": r.tipo,
+                "fecha_inicio": str(r.fecha_inicio),
+                "fecha_fin": str(r.fecha_fin),
+                "dias": float(r.dias),
+                "motivo": r.motivo or ("Vacación Solicitada" if r.tipo == "solicitada" else "Vacación Colectiva"),
+                "fecha_solicitud": str(r.fecha_solicitud) if r.fecha_solicitud else ""
+            })
+
+        fichas_list.append({
+            "empresa_nombre": t_name,
+            "empresa_nit": t_nit,
+            "trabajador_nombre": trabajador_nombre,
+            "trabajador_cargo": emp.ocupacion,
+            "trabajador_ci": trabajador_ci,
+            "fecha_ingreso": str(emp.fecha_ingreso),
+            "tipo_doc": tipo_doc_label,
+            "records": serialized_records,
+            "observaciones": observaciones or "",
+            "responsable_nombre": final_responsable,
+            "fecha": fecha_doc,
+            "firmas_en_blanco": firmas_en_blanco
+        })
+
+    if not fichas_list:
+        raise HTTPException(
+            status_code=404,
+            detail="No se encontraron empleados con vacaciones solicitadas/colectivas para generar fichas en lote."
+        )
+
+    out_fmt = "xlsx" if format.lower() == "excel" else "pdf"
+    file_path = DocumentService.generate_vacation_solicitadas_colectivas_batch_excel(
+        fichas_list,
+        output_format=out_fmt,
+        schema_name=schema_name
+    )
+
+    empresa_slug = DocumentService._slugify(schema_name)
+    now_str = datetime.now().strftime("%d-%m-%Y")
+
+    if out_fmt == "xlsx":
+        filename = f"fichas_vacaciones_lote_empresa_{empresa_slug}_{now_str}.xlsx"
+        return FileResponse(path=file_path, filename=filename, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    else:
+        filename = f"fichas_vacaciones_lote_empresa_{empresa_slug}_{now_str}.pdf"
+        return FileResponse(path=file_path, filename=filename, media_type="application/pdf")

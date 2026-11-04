@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useMemo, useCallback } from "react";
+import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -34,7 +34,11 @@ import {
   CalendarCheck,
   CalendarRange,
   Banknote,
-  Pencil
+  Pencil,
+  Printer,
+  Receipt,
+  FileCheck,
+  ChevronDown
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { getApiUrl } from "@/utils/api";
@@ -116,6 +120,7 @@ interface EmployeeVacationSummary {
   employee_ci: string;
   employee_cargo: string;
   fecha_ingreso: string;
+  haber_basico?: number;
   antiguedad_anios: number;
   antiguedad_meses: number;
   antiguedad_dias: number;
@@ -136,6 +141,7 @@ interface CompanyVacationSummary {
   tenant_nit?: string;
   tenant_nro_patronal?: string;
   tenant_empleador?: string;
+  tenant_empleador_ci?: string;
   total_empleados: number;
   total_dias_acumulados: number;
   total_dias_a_cuenta: number;
@@ -154,6 +160,53 @@ const MONTH_NAMES = [
 
 const WEEK_DAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
+const NUM_UNIDADES = ["", "un", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidós", "veintitrés", "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve"];
+const NUM_DECENAS = ["", "diez", "veinte", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa"];
+const NUM_CENTENAS = ["", "ciento", "doscientos", "trescientos", "cuatrocientos", "quinientos", "seiscientos", "setecientos", "ochocientos", "novecientos"];
+
+function numeroALetrasEs(n: number): string {
+  const num = Math.floor(Math.abs(n));
+  if (num === 0) return "cero";
+  if (num === 100) return "cien";
+  if (num < 30) return NUM_UNIDADES[num];
+  if (num < 100) {
+    const u = num % 10;
+    const d = Math.floor(num / 10);
+    return u === 0 ? NUM_DECENAS[d] : `${NUM_DECENAS[d]} y ${NUM_UNIDADES[u]}`;
+  }
+  if (num < 1000) {
+    const c = Math.floor(num / 100);
+    const resto = num % 100;
+    return resto === 0 ? (c === 1 ? "cien" : NUM_CENTENAS[c]) : `${NUM_CENTENAS[c]} ${numeroALetrasEs(resto)}`;
+  }
+  if (num < 1000000) {
+    const miles = Math.floor(num / 1000);
+    const resto = num % 1000;
+    const milesStr = miles === 1 ? "mil" : `${numeroALetrasEs(miles)} mil`;
+    return resto === 0 ? milesStr : `${milesStr} ${numeroALetrasEs(resto)}`;
+  }
+  const millones = Math.floor(num / 1000000);
+  const resto = num % 1000000;
+  const millStr = millones === 1 ? "un millón" : `${numeroALetrasEs(millones)} millones`;
+  return resto === 0 ? millStr : `${millStr} ${numeroALetrasEs(resto)}`;
+}
+
+function formatearMontoLiteral(monto: number): string {
+  const entero = Math.floor(Math.abs(monto));
+  const centavos = Math.round((Math.abs(monto) - entero) * 100);
+  const letras = numeroALetrasEs(entero);
+  const capitalizado = letras.charAt(0).toUpperCase() + letras.slice(1);
+  const centavosStr = centavos.toString().padStart(2, "0");
+  return `${capitalizado} ${centavosStr}/100`;
+}
+
+function formatearDiasLiteral(dias: number): string {
+  if (Number.isInteger(dias)) {
+    return `${dias} (${numeroALetrasEs(dias)})`;
+  }
+  return `${dias}`;
+}
+
 function VacacionesContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -167,6 +220,30 @@ function VacacionesContent() {
   const [scaleFilter, setScaleFilter] = useState<string>("todos");
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+
+  // Estados para exportación en lote (Empresa)
+  const [batchDropdownOpen, setBatchDropdownOpen] = useState(false);
+  const [batchSoloConPagos, setBatchSoloConPagos] = useState(true);
+  const [batchSoloConVacaciones, setBatchSoloConVacaciones] = useState(true);
+  const [exportingBatchReciboExcel, setExportingBatchReciboExcel] = useState(false);
+  const [exportingBatchReciboPdf, setExportingBatchReciboPdf] = useState(false);
+  const [exportingBatchFichaExcel, setExportingBatchFichaExcel] = useState(false);
+  const [exportingBatchFichaPdf, setExportingBatchFichaPdf] = useState(false);
+  const batchMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (batchMenuRef.current && !batchMenuRef.current.contains(event.target as Node)) {
+        setBatchDropdownOpen(false);
+      }
+    };
+    if (batchDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [batchDropdownOpen]);
 
   // Rango de fechas para el periodo ("DEL ... AL ...") con guardado inteligente
   const currentYear = new Date().getFullYear();
@@ -234,6 +311,35 @@ function VacacionesContent() {
   const [modalFechaHasta, setModalFechaHasta] = useState<string>("");
   const [exportingEmpExcel, setExportingEmpExcel] = useState(false);
   const [exportingEmpPdf, setExportingEmpPdf] = useState(false);
+
+  // Modal Recibos y Comprobantes de Vacaciones (Pagadas y Solicitadas - Colectivas)
+  const [showReceiptsModal, setShowReceiptsModal] = useState(false);
+  const [receiptEmployee, setReceiptEmployee] = useState<EmployeeVacationSummary | null>(null);
+  const [receiptDocType, setReceiptDocType] = useState<"pago" | "solicitadas">("pago");
+  const [showReceiptSettings, setShowReceiptSettings] = useState(false);
+
+  // Campos Recibo de Pago
+  const [reciboNro, setReciboNro] = useState<string>("001");
+  const [reciboPaidRecordId, setReciboPaidRecordId] = useState<number | "all" | "manual">("all");
+  const [reciboTotalGanado, setReciboTotalGanado] = useState<number>(3300);
+  const [reciboSalarioDiario, setReciboSalarioDiario] = useState<number>(110);
+  const [reciboDiasPagados, setReciboDiasPagados] = useState<number>(10);
+  const [reciboImporteCancelado, setReciboImporteCancelado] = useState<number>(1100);
+  const [reciboLugarFecha, setReciboLugarFecha] = useState<string>("");
+  const [reciboEmpleadorNombre, setReciboEmpleadorNombre] = useState<string>("");
+  const [reciboEmpleadorRol, setReciboEmpleadorRol] = useState<string>("propietario");
+  const [reciboEmpleadorCi, setReciboEmpleadorCi] = useState<string>("");
+  const [reciboFirmasEnBlanco, setReciboFirmasEnBlanco] = useState<boolean>(true);
+
+  // Campos Ficha Solicitadas y Colectivas
+  const [fichaTipoFilter, setFichaTipoFilter] = useState<"todas" | "solicitada" | "colectiva">("todas");
+  const [fichaSelectedRecordIds, setFichaSelectedRecordIds] = useState<number[]>([]);
+  const [fichaObservaciones, setFichaObservaciones] = useState<string>("");
+  const [fichaResponsableNombre, setFichaResponsableNombre] = useState<string>("");
+  const [fichaFecha, setFichaFecha] = useState<string>("");
+
+  const [exportingReceiptExcel, setExportingReceiptExcel] = useState(false);
+  const [exportingReceiptPdf, setExportingReceiptPdf] = useState(false);
 
   const formatYMD = (d: Date) => {
     const year = d.getFullYear();
@@ -821,6 +927,90 @@ function VacacionesContent() {
     }
   };
 
+  const handleExportBatchRecibos = async (format: "excel" | "pdf") => {
+    if (!tenantSchema) return;
+    try {
+      if (format === "excel") setExportingBatchReciboExcel(true);
+      else setExportingBatchReciboPdf(true);
+
+      const qParams = new URLSearchParams();
+      qParams.set("firmas_en_blanco", "true");
+      qParams.set("solo_con_pagos", batchSoloConPagos ? "true" : "false");
+
+      const res = await fetch(
+        `${getApiUrl()}/api/tenants/${tenantSchema}/vacaciones/export/lote/recibos-pago/${format}?${qParams.toString()}`
+      );
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.detail || "Error al exportar lote de recibos de pago");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const ext = format === "excel" ? "xlsx" : "pdf";
+      a.download = `Recibos_Vacaciones_Lote_${tenantSchema}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      setBatchDropdownOpen(false);
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al exportar recibos en lote",
+        text: err.message || "No se pudo generar el lote de recibos.",
+        confirmButtonColor: "#0D9488"
+      });
+    } finally {
+      if (format === "excel") setExportingBatchReciboExcel(false);
+      else setExportingBatchReciboPdf(false);
+    }
+  };
+
+  const handleExportBatchFichas = async (format: "excel" | "pdf") => {
+    if (!tenantSchema) return;
+    try {
+      if (format === "excel") setExportingBatchFichaExcel(true);
+      else setExportingBatchFichaPdf(true);
+
+      const qParams = new URLSearchParams();
+      qParams.set("firmas_en_blanco", "true");
+      qParams.set("solo_con_vacaciones", batchSoloConVacaciones ? "true" : "false");
+
+      const res = await fetch(
+        `${getApiUrl()}/api/tenants/${tenantSchema}/vacaciones/export/lote/fichas-solicitadas/${format}?${qParams.toString()}`
+      );
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.detail || "Error al exportar lote de fichas de vacaciones");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const ext = format === "excel" ? "xlsx" : "pdf";
+      a.download = `Fichas_Vacaciones_Lote_${tenantSchema}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      setBatchDropdownOpen(false);
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al exportar fichas en lote",
+        text: err.message || "No se pudo generar el lote de fichas.",
+        confirmButtonColor: "#0D9488"
+      });
+    } finally {
+      if (format === "excel") setExportingBatchFichaExcel(false);
+      else setExportingBatchFichaPdf(false);
+    }
+  };
+
   const handleExportEmployee = async (empId: number, format: "excel" | "pdf", customDesde?: string, customHasta?: string) => {
     if (!tenantSchema) return;
     try {
@@ -1070,6 +1260,204 @@ function VacacionesContent() {
       setModalFechaHasta(fechaHasta);
       refreshEmployeeData(emp.employee_id, fechaDesde, fechaHasta);
     }
+  };
+
+  // Abrir Modal de Recibos y Comprobantes de Vacaciones
+  const handleOpenReceiptsModal = (emp: EmployeeVacationSummary) => {
+    setReceiptEmployee(emp);
+    setShowReceiptsModal(true);
+    setShowReceiptSettings(false);
+
+    const paidRecs = (emp.records || []).filter(r => r.tipo === "dias_pagados" || r.tipo === "a_cuenta");
+    const solColRecs = (emp.records || []).filter(r => r.tipo === "solicitada" || r.tipo === "colectiva");
+
+    if (paidRecs.length > 0) {
+      setReceiptDocType("pago");
+    } else if (solColRecs.length > 0) {
+      setReceiptDocType("solicitadas");
+    } else {
+      setReceiptDocType("pago");
+    }
+
+    const firstPaid = paidRecs[0];
+    const tg = emp.haber_basico && emp.haber_basico > 0 ? emp.haber_basico : 3300;
+    const sd = Number((tg / 30).toFixed(2));
+    const dp = firstPaid ? Number(firstPaid.dias) : ((emp.dias_pagados && emp.dias_pagados > 0) ? emp.dias_pagados : 10);
+
+    setReciboNro(firstPaid ? `00${firstPaid.id}` : "001");
+    setReciboPaidRecordId(firstPaid ? firstPaid.id : "all");
+    setReciboTotalGanado(tg);
+    setReciboSalarioDiario(sd);
+    setReciboDiasPagados(dp);
+    setReciboImporteCancelado(Number((sd * dp).toFixed(2)));
+
+    const today = new Date();
+    const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+    setReciboLugarFecha(`La Paz, ${today.getDate()} de ${meses[today.getMonth()]} de ${today.getFullYear()}`);
+    setReciboEmpleadorNombre(summary?.tenant_empleador || "Hipólito Manrrique Santi");
+    setReciboEmpleadorRol("propietario");
+    setReciboEmpleadorCi(summary?.tenant_empleador_ci || "6570013");
+
+    // Ficha Solicitadas
+    setFichaTipoFilter("todas");
+    setFichaSelectedRecordIds(solColRecs.map(r => r.id));
+    setFichaObservaciones("");
+    setFichaResponsableNombre(summary?.tenant_empleador || "Hipólito Manrrique Santi");
+    setFichaFecha(formatDMY(formatYMD(today)));
+  };
+
+  const handleSelectPaidRecord = (val: string) => {
+    if (!receiptEmployee) return;
+    const paidRecs = (receiptEmployee.records || []).filter(r => r.tipo === "dias_pagados" || r.tipo === "a_cuenta");
+    
+    if (val === "all") {
+      setReciboPaidRecordId("all");
+      const dp = receiptEmployee.dias_pagados || 0;
+      setReciboDiasPagados(dp);
+      setReciboImporteCancelado(Number((reciboSalarioDiario * dp).toFixed(2)));
+    } else if (val === "manual") {
+      setReciboPaidRecordId("manual");
+    } else {
+      const recId = Number(val);
+      setReciboPaidRecordId(recId);
+      const found = paidRecs.find(r => r.id === recId);
+      if (found) {
+        setReciboNro(`00${found.id}`);
+        const dp = Number(found.dias);
+        setReciboDiasPagados(dp);
+        setReciboImporteCancelado(Number((reciboSalarioDiario * dp).toFixed(2)));
+      }
+    }
+  };
+
+  const handleTotalGanadoChange = (newTg: number) => {
+    setReciboTotalGanado(newTg);
+    const newSd = Number((newTg / 30).toFixed(2));
+    setReciboSalarioDiario(newSd);
+    setReciboImporteCancelado(Number((newSd * reciboDiasPagados).toFixed(2)));
+  };
+
+  const handleDiasPagadosChange = (newDias: number) => {
+    setReciboDiasPagados(newDias);
+    setReciboImporteCancelado(Number((reciboSalarioDiario * newDias).toFixed(2)));
+  };
+
+  const employeeFichaRecords = useMemo(() => {
+    if (!receiptEmployee) return [];
+    return (receiptEmployee.records || []).filter(r => {
+      if (fichaTipoFilter === "solicitada") return r.tipo === "solicitada";
+      if (fichaTipoFilter === "colectiva") return r.tipo === "colectiva";
+      return r.tipo === "solicitada" || r.tipo === "colectiva";
+    });
+  }, [receiptEmployee, fichaTipoFilter]);
+
+  const activeFichaRecords = useMemo(() => {
+    return employeeFichaRecords.filter(r => fichaSelectedRecordIds.includes(r.id));
+  }, [employeeFichaRecords, fichaSelectedRecordIds]);
+
+  const totalDiasFicha = useMemo(() => {
+    return activeFichaRecords.reduce((acc, r) => acc + (Number(r.dias) || 0), 0);
+  }, [activeFichaRecords]);
+
+  const handleToggleFichaRecord = (id: number) => {
+    setFichaSelectedRecordIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleExportReceiptBackend = async (format: "excel" | "pdf") => {
+    if (!receiptEmployee || !tenantSchema) return;
+    try {
+      if (format === "excel") setExportingReceiptExcel(true);
+      else setExportingReceiptPdf(true);
+
+      const qParams = new URLSearchParams();
+      if (typeof reciboPaidRecordId === "number") {
+        qParams.set("record_id", String(reciboPaidRecordId));
+      }
+      qParams.set("dias", String(reciboDiasPagados));
+      qParams.set("total_ganado", String(reciboTotalGanado));
+      qParams.set("recibo_nro", reciboNro);
+      if (reciboLugarFecha) qParams.set("lugar_fecha", reciboLugarFecha);
+      if (reciboEmpleadorNombre) qParams.set("empleador_nombre", reciboEmpleadorNombre);
+      if (reciboEmpleadorRol) qParams.set("empleador_rol", reciboEmpleadorRol);
+      if (reciboEmpleadorCi) qParams.set("empleador_ci", reciboEmpleadorCi);
+      qParams.set("firmas_en_blanco", String(reciboFirmasEnBlanco));
+
+      const qs = qParams.toString() ? `?${qParams.toString()}` : "";
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/vacaciones/recibo-pago/${receiptEmployee.employee_id}/${format}${qs}`);
+      if (!res.ok) throw new Error("Error al exportar recibo de pago");
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const ext = format === "excel" ? "xlsx" : "pdf";
+      const empSlug = receiptEmployee.employee_name.toLowerCase().replace(/\s+/g, "_");
+      a.download = `Recibo_Vacaciones_${empSlug}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error(err);
+      Swal.fire({
+        icon: "error",
+        title: "Error al exportar",
+        text: err.message || "No se pudo generar el recibo."
+      });
+    } finally {
+      setExportingReceiptExcel(false);
+      setExportingReceiptPdf(false);
+    }
+  };
+
+  const handleExportFichaBackend = async (format: "excel" | "pdf") => {
+    if (!receiptEmployee || !tenantSchema) return;
+    try {
+      if (format === "excel") setExportingReceiptExcel(true);
+      else setExportingReceiptPdf(true);
+
+      const qParams = new URLSearchParams();
+      qParams.set("tipo", fichaTipoFilter);
+      if (fichaSelectedRecordIds.length > 0) {
+        qParams.set("record_ids", fichaSelectedRecordIds.join(","));
+      }
+      if (fichaObservaciones) qParams.set("observaciones", fichaObservaciones);
+      if (fichaResponsableNombre) qParams.set("responsable_nombre", fichaResponsableNombre);
+      if (fichaFecha) qParams.set("fecha", fichaFecha);
+      qParams.set("firmas_en_blanco", String(reciboFirmasEnBlanco));
+
+      const qs = qParams.toString() ? `?${qParams.toString()}` : "";
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/vacaciones/ficha-solicitadas/${receiptEmployee.employee_id}/${format}${qs}`);
+      if (!res.ok) throw new Error("Error al exportar ficha de vacaciones");
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const ext = format === "excel" ? "xlsx" : "pdf";
+      const empSlug = receiptEmployee.employee_name.toLowerCase().replace(/\s+/g, "_");
+      a.download = `Ficha_Vacaciones_${empSlug}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error(err);
+      Swal.fire({
+        icon: "error",
+        title: "Error al exportar",
+        text: err.message || "No se pudo generar la ficha de vacaciones."
+      });
+    } finally {
+      setExportingReceiptExcel(false);
+      setExportingReceiptPdf(false);
+    }
+  };
+
+  const handlePrintDocument = () => {
+    window.print();
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -1341,6 +1729,132 @@ function VacacionesContent() {
             {exportingPdf ? <Loader2 className="w-4 h-4 animate-spin text-rose-800" /> : <FileText className="w-4 h-4 text-rose-800" />}
             <span>Exportar PDF</span>
           </button>
+
+          {/* Menú Desplegable de Exportación en Lote (Recibos y Fichas Empresa) */}
+          <div className="relative" ref={batchMenuRef}>
+            <button
+              type="button"
+              onClick={() => setBatchDropdownOpen((prev) => !prev)}
+              className="flex items-center gap-2 px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 text-indigo-900 font-bold rounded-xl text-sm transition shadow-xs"
+              title="Exportar Recibos de Pago y Fichas de Vacación en Lote para toda la empresa (2 por hoja)"
+            >
+              <Receipt className="w-4 h-4 text-indigo-700" />
+              <span>Recibos y Fichas (Lote)</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-indigo-600 transition-transform duration-200 ${batchDropdownOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {batchDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50 text-slate-800 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="px-1 py-1 mb-3 border-b border-slate-100">
+                  <div className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <Receipt className="w-4 h-4 text-indigo-600" />
+                    <span>Emisión de Recibos y Fichas en Lote</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Plantillas continuas tamaño Carta con 2 empleados distintos por hoja (corte al centro) para toda la empresa.
+                  </p>
+                </div>
+
+                {/* Sección 1: Recibos de Pago de Vacación */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90 mb-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <Banknote className="w-4 h-4 text-teal-600" />
+                      Recibos de Pago de Vacaciones
+                    </span>
+                    <span className="text-[10px] bg-teal-100 text-teal-800 font-extrabold px-2 py-0.5 rounded-full border border-teal-200">
+                      2 por hoja
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mb-2.5">
+                    Recibo económico con salario diario, desglose y firmas listas para corte e impresión.
+                  </p>
+                  
+                  <label className="flex items-center gap-2 text-[11px] text-slate-700 font-medium cursor-pointer mb-3 select-none">
+                    <input
+                      type="checkbox"
+                      checked={batchSoloConPagos}
+                      onChange={(e) => setBatchSoloConPagos(e.target.checked)}
+                      className="rounded text-teal-600 focus:ring-teal-500 w-4 h-4"
+                    />
+                    <span>Solo empleados con días pagados &gt; 0</span>
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleExportBatchRecibos("excel")}
+                      disabled={exportingBatchReciboExcel}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-xs"
+                      title="Descargar lote de Recibos de Pago en Excel (2 empleados por hoja con corte al centro)"
+                    >
+                      {exportingBatchReciboExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                      <span>Excel Lote</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportBatchRecibos("pdf")}
+                      disabled={exportingBatchReciboPdf}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-xs"
+                      title="Descargar lote de Recibos de Pago en PDF (2 empleados por hoja con corte al centro)"
+                    >
+                      {exportingBatchReciboPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                      <span>PDF Lote</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Sección 2: Fichas Solicitadas y Colectivas */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/90">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <FileCheck className="w-4 h-4 text-indigo-600" />
+                      Fichas Solicitadas y Colectivas
+                    </span>
+                    <span className="text-[10px] bg-indigo-100 text-indigo-800 font-extrabold px-2 py-0.5 rounded-full border border-indigo-200">
+                      2 por hoja
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mb-2.5">
+                    Ficha de registro de días tomados, detalle y líneas punteadas de conformidad.
+                  </p>
+
+                  <label className="flex items-center gap-2 text-[11px] text-slate-700 font-medium cursor-pointer mb-3 select-none">
+                    <input
+                      type="checkbox"
+                      checked={batchSoloConVacaciones}
+                      onChange={(e) => setBatchSoloConVacaciones(e.target.checked)}
+                      className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                    />
+                    <span>Solo empleados con vacaciones tomadas</span>
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleExportBatchFichas("excel")}
+                      disabled={exportingBatchFichaExcel}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-xs"
+                      title="Descargar lote de Fichas en Excel (2 empleados por hoja con corte al centro)"
+                    >
+                      {exportingBatchFichaExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                      <span>Excel Lote</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportBatchFichas("pdf")}
+                      disabled={exportingBatchFichaPdf}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-xs"
+                      title="Descargar lote de Fichas en PDF (2 empleados por hoja con corte al centro)"
+                    >
+                      {exportingBatchFichaPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                      <span>PDF Lote</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={() => handleOpenRegisterModal()}
@@ -1680,6 +2194,13 @@ function VacacionesContent() {
                           title="Registrar Vacación para este empleado"
                         >
                           <Plus className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenReceiptsModal(emp)}
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition"
+                          title="Recibos y Comprobantes de Vacación (Pagadas, Solicitadas y Colectivas)"
+                        >
+                          <Receipt className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -3123,6 +3644,758 @@ function VacacionesContent() {
                 <button
                   onClick={() => setViewingEmployee(null)}
                   className="px-6 py-2 rounded-xl bg-slate-800 text-white font-bold hover:bg-slate-700 transition text-sm"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================================= */}
+      {/* MODAL 3: RECIBOS Y COMPROBANTES DE VACACIONES             */}
+      {/* ========================================================= */}
+      <AnimatePresence>
+        {showReceiptsModal && receiptEmployee && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+            <style dangerouslySetInnerHTML={{ __html: `
+              @media print {
+                @page {
+                  size: letter portrait;
+                  margin: 8mm 10mm;
+                }
+                body {
+                  background: white !important;
+                  color: black !important;
+                }
+                body * {
+                  visibility: hidden;
+                }
+                #printable-vacation-document, #printable-vacation-document * {
+                  visibility: visible;
+                }
+                #printable-vacation-document {
+                  position: absolute;
+                  left: 0;
+                  top: 0;
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  box-shadow: none !important;
+                  border: none !important;
+                  background: white !important;
+                }
+                .no-print {
+                  display: none !important;
+                }
+              }
+            `}} />
+
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl flex flex-col max-h-[94vh] my-auto"
+            >
+              {/* Modal Header */}
+              <div className="p-4 sm:p-6 border-b border-white/10 bg-slate-900/90 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-xl">
+                    <Receipt className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                      <span>Comprobantes y Recibos de Vacación</span>
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      Trabajador: <span className="text-white font-semibold">{receiptEmployee.employee_name}</span> | C.I.: <span className="font-mono text-slate-300">{receiptEmployee.employee_ci}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Document Type Switcher Tabs */}
+                <div className="flex items-center bg-slate-800/90 p-1 rounded-2xl border border-slate-700/80">
+                  <button
+                    type="button"
+                    onClick={() => setReceiptDocType("pago")}
+                    className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition ${
+                      receiptDocType === "pago"
+                        ? "bg-teal-500 text-slate-950 shadow-md"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <Banknote className="w-4 h-4" />
+                    <span>Recibo de Pago</span>
+                    {(receiptEmployee.dias_pagados ?? 0) > 0 && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                        receiptDocType === "pago" ? "bg-slate-950/20 text-slate-950" : "bg-teal-500/20 text-teal-300"
+                      }`}>
+                        {receiptEmployee.dias_pagados}d
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setReceiptDocType("solicitadas")}
+                    className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition ${
+                      receiptDocType === "solicitadas"
+                        ? "bg-indigo-500 text-white shadow-md"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <CalendarRange className="w-4 h-4" />
+                    <span>Ficha Solicitadas / Colectivas</span>
+                    {((receiptEmployee.dias_solicitadas ?? 0) + (receiptEmployee.dias_colectivas ?? 0)) > 0 && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                        receiptDocType === "solicitadas" ? "bg-white/20 text-white" : "bg-indigo-500/20 text-indigo-300"
+                      }`}>
+                        {(receiptEmployee.dias_solicitadas + receiptEmployee.dias_colectivas).toFixed(1)}d
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Action Buttons Top */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowReceiptSettings(prev => !prev)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition border ${
+                      showReceiptSettings
+                        ? "bg-slate-700 text-teal-300 border-teal-500/50"
+                        : "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white"
+                    }`}
+                    title="Ajustar datos o valores del documento"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>{showReceiptSettings ? "Ocultar Ajustes" : "Editar Datos"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePrintDocument}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-slate-950 font-black text-xs transition shadow-md cursor-pointer"
+                    title="Imprimir documento directamente"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Imprimir</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={exportingReceiptPdf}
+                    onClick={() => {
+                      if (receiptDocType === "pago") handleExportReceiptBackend("pdf");
+                      else handleExportFichaBackend("pdf");
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/90 hover:bg-rose-500 text-white font-bold text-xs transition shadow-md disabled:opacity-50 cursor-pointer"
+                    title="Descargar versión PDF generada en backend"
+                  >
+                    {exportingReceiptPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                    <span>PDF</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={exportingReceiptExcel}
+                    onClick={() => {
+                      if (receiptDocType === "pago") handleExportReceiptBackend("excel");
+                      else handleExportFichaBackend("excel");
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-md disabled:opacity-50 cursor-pointer"
+                    title="Descargar versión Excel generada en backend"
+                  >
+                    {exportingReceiptExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                    <span>Excel</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowReceiptsModal(false)}
+                    className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer"
+                    title="Cerrar ventana"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Main Content Area */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+                {/* Collapsible Settings Panel */}
+                <AnimatePresence>
+                  {showReceiptSettings && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="bg-slate-800/80 border border-slate-700 rounded-2xl p-4 sm:p-5 text-xs overflow-hidden"
+                    >
+                      <div className="flex items-center justify-between mb-3 border-b border-slate-700 pb-2">
+                        <span className="font-bold text-white uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                          <Pencil className="w-3.5 h-3.5 text-teal-400" />
+                          Ajustes de Datos para: {receiptDocType === "pago" ? "Recibo de Pago de Vacaciones" : "Ficha de Vacaciones Solicitadas"}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          Los cambios se reflejan inmediatamente en la plantilla
+                        </span>
+                      </div>
+
+                      {receiptDocType === "pago" ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                          <div>
+                            <label className="block text-slate-400 text-[11px] font-semibold mb-1">Registro de Pago:</label>
+                            <select
+                              value={String(reciboPaidRecordId)}
+                              onChange={(e) => handleSelectPaidRecord(e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs"
+                            >
+                              <option value="all">Todos acumulados ({receiptEmployee.dias_pagados ?? 0} d)</option>
+                              {(receiptEmployee.records || [])
+                                .filter(r => r.tipo === "dias_pagados" || r.tipo === "a_cuenta")
+                                .map(r => (
+                                  <option key={r.id} value={r.id}>
+                                    Reg #{r.id}: {r.dias} d ({formatDMY(r.fecha_inicio)})
+                                  </option>
+                                ))
+                              }
+                              <option value="manual">Personalizado / Manual</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-400 text-[11px] font-semibold mb-1">N.º de Recibo:</label>
+                            <input
+                              type="text"
+                              value={reciboNro}
+                              onChange={(e) => setReciboNro(e.target.value)}
+                              placeholder="001"
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-400 text-[11px] font-semibold mb-1">Total Ganado Mensual (Bs):</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={reciboTotalGanado}
+                              onChange={(e) => handleTotalGanadoChange(parseFloat(e.target.value) || 0)}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-mono font-bold"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-400 text-[11px] font-semibold mb-1">Días de Vacación Pagados:</label>
+                            <input
+                              type="number"
+                              step="0.5"
+                              value={reciboDiasPagados}
+                              onChange={(e) => handleDiasPagadosChange(parseFloat(e.target.value) || 0)}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-mono font-bold"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-400 text-[11px] font-semibold mb-1">Lugar y Fecha:</label>
+                            <input
+                              type="text"
+                              value={reciboLugarFecha}
+                              onChange={(e) => setReciboLugarFecha(e.target.value)}
+                              placeholder="La Paz, 10 de octubre de 2026"
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-400 text-[11px] font-semibold mb-1">Nombre Empleador:</label>
+                            <input
+                              type="text"
+                              value={reciboEmpleadorNombre}
+                              onChange={(e) => setReciboEmpleadorNombre(e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-400 text-[11px] font-semibold mb-1">Cargo / Rol Empleador:</label>
+                            <input
+                              type="text"
+                              value={reciboEmpleadorRol}
+                              onChange={(e) => setReciboEmpleadorRol(e.target.value)}
+                              placeholder="propietario"
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-400 text-[11px] font-semibold mb-1">C.I. Empleador:</label>
+                            <input
+                              type="text"
+                              value={reciboEmpleadorCi}
+                              onChange={(e) => setReciboEmpleadorCi(e.target.value)}
+                              placeholder="6570013"
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-mono"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2 md:col-span-4 pt-2 border-t border-slate-700/60 flex items-center justify-between">
+                            <div>
+                              <span className="text-xs font-bold text-white block">Firmas en blanco con puntos</span>
+                              <span className="text-[11px] text-slate-400">Deja líneas punteadas (Nombre, C.I., Firma) para llenado manual o sello físico</span>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={reciboFirmasEnBlanco}
+                                onChange={(e) => setReciboFirmasEnBlanco(e.target.checked)}
+                                className="sr-only peer"
+                              />
+                              <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-500"></div>
+                            </label>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                              <label className="block text-slate-400 text-[11px] font-semibold mb-1">Filtro de Tipo:</label>
+                              <select
+                                value={fichaTipoFilter}
+                                onChange={(e) => setFichaTipoFilter(e.target.value as any)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs"
+                              >
+                                <option value="todas">Todas (Solicitadas y Colectivas)</option>
+                                <option value="solicitada">Solo Solicitadas</option>
+                                <option value="colectiva">Solo Colectivas</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-400 text-[11px] font-semibold mb-1">Nombre del Responsable:</label>
+                              <input
+                                type="text"
+                                value={fichaResponsableNombre}
+                                onChange={(e) => setFichaResponsableNombre(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-400 text-[11px] font-semibold mb-1">Fecha de la Ficha:</label>
+                              <input
+                                type="text"
+                                value={fichaFecha}
+                                onChange={(e) => setFichaFecha(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-slate-400 text-[11px] font-semibold mb-1">Observaciones:</label>
+                            <input
+                              type="text"
+                              value={fichaObservaciones}
+                              onChange={(e) => setFichaObservaciones(e.target.value)}
+                              placeholder="Dejar vacío para líneas de puntos a mano, o escribir texto..."
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs"
+                            />
+                          </div>
+
+                          {employeeFichaRecords.length > 0 && (
+                            <div>
+                              <label className="block text-slate-400 text-[11px] font-semibold mb-1">Seleccionar Registros a Incluir:</label>
+                              <div className="flex flex-wrap gap-2">
+                                {employeeFichaRecords.map(r => (
+                                  <label
+                                    key={r.id}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs cursor-pointer transition ${
+                                      fichaSelectedRecordIds.includes(r.id)
+                                        ? "bg-indigo-600/30 border-indigo-500 text-indigo-200"
+                                        : "bg-slate-900 border-slate-700 text-slate-400"
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={fichaSelectedRecordIds.includes(r.id)}
+                                      onChange={() => handleToggleFichaRecord(r.id)}
+                                      className="rounded border-slate-700 text-indigo-600"
+                                    />
+                                    <span>
+                                      {r.tipo === "solicitada" ? "Solicitada" : "Colectiva"} ({r.dias}d) - {formatDMY(r.fecha_inicio)}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Printable Document Preview Canvas */}
+                <div className="flex justify-center">
+                  {(() => {
+                    // Helper para renderizar 1 copia del Recibo de Pago (mitad de hoja)
+                    const renderSinglePaymentReceipt = () => (
+                      <div className="p-6 sm:p-8 bg-white text-slate-900 font-sans text-xs leading-relaxed">
+                        {/* Cabecera: Únicamente N° de Recibo a la derecha (sin etiquetas de Original/Copia) */}
+                        <div className="flex justify-end items-center mb-3">
+                          <div className="border border-slate-700 px-3.5 py-1 font-bold text-xs tracking-wide text-slate-900 bg-slate-50 shadow-sm">
+                            RECIBO N.º {reciboNro}
+                          </div>
+                        </div>
+
+                        {/* Título Principal */}
+                        <h1 className="text-sm sm:text-base font-black text-center text-slate-900 tracking-wider mb-4 uppercase">
+                          RECIBO DE PAGO DE VACACIONES
+                        </h1>
+
+                        {/* Declaración con C.I. explícito y sin cortes */}
+                        <p className="text-[12px] sm:text-xs text-slate-800 leading-relaxed mb-3.5 text-justify">
+                          Yo, <span className="font-bold uppercase underline decoration-slate-400">{receiptEmployee.employee_name}</span> con C.I. <span className="font-bold font-mono">{receiptEmployee.employee_ci}</span>, declaro haber recibido de <span className="font-bold">{reciboEmpleadorNombre}</span>, <span className="italic">{reciboEmpleadorRol}</span>, la suma de <span className="font-bold">Bs {reciboImporteCancelado.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({formatearMontoLiteral(reciboImporteCancelado)} Bolivianos)</span> por concepto de pago de <span className="font-bold">{formatearDiasLiteral(reciboDiasPagados)}</span> días de vacaciones devengadas.
+                        </p>
+
+                        {/* Detalle */}
+                        <div className="mb-4 pl-1">
+                          <h3 className="font-bold text-xs text-slate-900 mb-1.5">Detalle:</h3>
+                          <ul className="space-y-1 text-[11px] sm:text-xs text-slate-800">
+                            <li className="flex items-center gap-2">
+                              <span className="font-bold text-slate-400">•</span>
+                              <span className="w-56">Total ganado mensual:</span>
+                              <span className="font-bold font-mono">Bs {reciboTotalGanado.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <span className="font-bold text-slate-400">•</span>
+                              <span className="w-56">Salario diario:</span>
+                              <span className="font-bold font-mono">Bs {reciboTotalGanado.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ÷ 30 = Bs {reciboSalarioDiario.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <span className="font-bold text-slate-400">•</span>
+                              <span className="w-56">Días de vacaciones pagados:</span>
+                              <span className="font-bold font-mono">{reciboDiasPagados} días</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <span className="font-bold text-slate-400">•</span>
+                              <span className="w-56 font-bold">Importe cancelado:</span>
+                              <span className="font-bold font-mono text-xs sm:text-sm text-slate-900">Bs {reciboImporteCancelado.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </li>
+                          </ul>
+                        </div>
+
+                        {/* Conformidad */}
+                        <p className="text-[11px] sm:text-xs text-slate-800 mb-2.5">
+                          En constancia de conformidad con el pago recibido, firmo el presente documento.
+                        </p>
+
+                        {/* Lugar y fecha */}
+                        <div className="text-[11px] sm:text-xs text-slate-800 mb-5">
+                          <span>Lugar y fecha: </span>
+                          <span className="font-medium underline decoration-slate-400">{reciboLugarFecha}</span>
+                        </div>
+
+                        {/* Firmas: con líneas de puntos para llenado manual por defecto */}
+                        {reciboFirmasEnBlanco ? (
+                          <div className="grid grid-cols-2 gap-8 text-center pt-3 border-t border-slate-200">
+                            <div className="space-y-1.5 text-left text-[11px] text-slate-800 px-2">
+                              <div className="font-bold text-xs text-slate-900 uppercase text-center mb-2">TRABAJADOR</div>
+                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">Nombre:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
+                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">C.I.:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
+                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">Firma:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
+                            </div>
+
+                            <div className="space-y-1.5 text-left text-[11px] text-slate-800 px-2">
+                              <div className="font-bold text-xs text-slate-900 uppercase text-center mb-2">EMPLEADOR</div>
+                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">Nombre:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
+                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">C.I.:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
+                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">Firma:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-8 text-center pt-3 border-t border-slate-200">
+                            <div className="flex flex-col items-center">
+                              <div className="w-44 border-b border-slate-500 mb-1.5"></div>
+                              <div className="font-bold text-xs text-slate-900 uppercase">TRABAJADOR</div>
+                              <div className="text-[11px] text-slate-700 font-semibold">{receiptEmployee.employee_name}</div>
+                              <div className="text-[11px] text-slate-600 font-mono">C.I.: {receiptEmployee.employee_ci}</div>
+                              <div className="text-[10px] text-slate-400 mt-1">Firma: ________________________</div>
+                            </div>
+
+                            <div className="flex flex-col items-center">
+                              <div className="w-44 border-b border-slate-500 mb-1.5"></div>
+                              <div className="font-bold text-xs text-slate-900 uppercase">EMPLEADOR</div>
+                              <div className="text-[11px] text-slate-700 font-semibold">{reciboEmpleadorNombre}</div>
+                              <div className="text-[11px] text-slate-600 font-mono capitalize">{reciboEmpleadorRol}: {reciboEmpleadorCi}</div>
+                              <div className="text-[10px] text-slate-400 mt-1">Firma: ________________________</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+
+                    // Helper para renderizar Ficha de Vacaciones Solicitadas
+                    const renderSingleFicha = () => (
+                      <div className="bg-white text-slate-900 font-sans leading-relaxed p-4 sm:p-5 text-xs">
+                        {/* Cabecera sin etiquetas original/copia */}
+                        <div className="flex justify-end items-center mb-1">
+                          <span className="text-[10px] font-mono text-slate-600">
+                            Fecha: {fichaFecha}
+                          </span>
+                        </div>
+
+                        <h1 className="text-xs sm:text-sm font-black text-center text-slate-900 tracking-wider uppercase border-b-2 border-slate-800 pb-1 mb-2.5">
+                          FICHA DE VACACIONES {fichaTipoFilter === "todas" ? "SOLICITADAS - COLECTIVAS" : fichaTipoFilter === "solicitada" ? "SOLICITADAS" : "COLECTIVAS"}
+                        </h1>
+
+                        {/* DATOS DEL TRABAJADOR */}
+                        <div className="mb-2.5 border border-slate-300 rounded overflow-hidden">
+                          <div className="bg-slate-100 px-2.5 py-0.5 font-bold text-[9px] uppercase tracking-wider text-slate-700 border-b border-slate-300">
+                            DATOS DEL TRABAJADOR / INFORMACIÓN
+                          </div>
+                          <div className="p-2 grid grid-cols-2 gap-1.5 text-[10px] sm:text-[10.5px]">
+                            <div>
+                              <span className="font-semibold text-slate-600">Nombre del trabajador: </span>
+                              <span className="font-bold text-slate-900 uppercase">{receiptEmployee.employee_name}</span>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-slate-600">Cargo: </span>
+                              <span className="font-bold text-slate-900 uppercase">{receiptEmployee.employee_cargo}</span>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-slate-600">C.I.: </span>
+                              <span className="font-bold font-mono text-slate-900">{receiptEmployee.employee_ci}</span>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-slate-600">Fecha de Ingreso: </span>
+                              <span className="font-bold font-mono text-slate-900">{formatDMY(receiptEmployee.fecha_ingreso)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* TABLA DE VACACIONES */}
+                        <div className="mb-2">
+                          <div className="font-bold text-[9px] uppercase tracking-wider text-slate-800 mb-0.5">
+                            DETALLE DE VACACIONES
+                          </div>
+                          <div className="border border-slate-300 rounded overflow-hidden">
+                            <table className="w-full text-left text-[9.5px] sm:text-[10px] border-collapse">
+                              <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-300">
+                                <tr>
+                                  <th className="py-0.5 px-1.5 text-center w-7">N°</th>
+                                  <th className="py-0.5 px-1.5 text-center">Fecha Inicio</th>
+                                  <th className="py-0.5 px-1.5 text-center">Fecha Fin</th>
+                                  <th className="py-0.5 px-1.5 text-right">Días</th>
+                                  <th className="py-0.5 px-1.5 text-center">Tipo</th>
+                                  <th className="py-0.5 px-2">Motivo / Detalle</th>
+                                  <th className="py-0.5 px-1.5 text-center">Solicitud</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-200">
+                                {activeFichaRecords.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={7} className="py-2 text-center text-slate-400 italic">
+                                      No se registran vacaciones para este filtro o periodo.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  activeFichaRecords.map((r, idx) => (
+                                    <tr key={r.id} className="hover:bg-slate-50">
+                                      <td className="py-0.5 px-1.5 text-center font-mono font-bold text-slate-600">{idx + 1}</td>
+                                      <td className="py-0.5 px-1.5 text-center font-mono">{formatDMY(r.fecha_inicio)}</td>
+                                      <td className="py-0.5 px-1.5 text-center font-mono">{formatDMY(r.fecha_fin)}</td>
+                                      <td className="py-0.5 px-1.5 text-right font-mono font-bold text-slate-900">{Number(r.dias).toFixed(1)}</td>
+                                      <td className="py-0.5 px-1.5 text-center">
+                                        <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-bold ${
+                                          r.tipo === "solicitada" ? "bg-indigo-50 text-indigo-700 border border-indigo-200" : "bg-purple-50 text-purple-700 border border-purple-200"
+                                        }`}>
+                                          {r.tipo === "solicitada" ? "Solicitada" : "Colectiva"}
+                                        </span>
+                                      </td>
+                                      <td className="py-0.5 px-2 text-slate-700 truncate max-w-[150px]">{r.motivo || "-"}</td>
+                                      <td className="py-0.5 px-1.5 text-center font-mono text-slate-500">{r.fecha_solicitud ? formatDMY(r.fecha_solicitud) : "-"}</td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                              <tfoot className="bg-slate-100 font-bold border-t border-slate-300">
+                                <tr>
+                                  <td colSpan={3} className="py-0.5 px-2 text-right text-slate-700 uppercase text-[9px]">
+                                    Total Días:
+                                  </td>
+                                  <td className="py-0.5 px-1.5 text-right font-mono font-black text-slate-900">
+                                    {totalDiasFicha.toFixed(1)}
+                                  </td>
+                                  <td colSpan={3} className="py-0.5 px-1.5 text-slate-500 font-normal text-[9px]">
+                                    días de vacación computados
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* Observaciones */}
+                        <div className="mb-2 text-[10px] text-slate-800">
+                          {fichaObservaciones ? (
+                            <div>
+                              <span className="font-bold">Observaciones: </span>
+                              <span>{fichaObservaciones}</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="flex items-center">
+                                <span className="font-bold shrink-0 mr-1.5">Observaciones:</span>
+                                <span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">
+                                  ........................................................................................................................................................................................................................................
+                                </span>
+                              </div>
+                              <div className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">
+                                ........................................................................................................................................................................................................................................................
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* CONFORMIDAD */}
+                        <div className="mb-2.5 p-2 bg-slate-50 border border-slate-200 rounded text-[9.5px]">
+                          <div className="font-bold uppercase tracking-wider text-slate-800 mb-0.5 text-[9px]">
+                            CONFORMIDAD
+                          </div>
+                          <p className="text-slate-800 leading-tight text-justify">
+                            Declaro mi conformidad con el registro de <span className="font-bold font-mono underline decoration-slate-400">{totalDiasFicha.toFixed(1)}</span> días de vacación consignados en la presente ficha, firmando al pie para constancia y fines administrativos correspondientes.
+                          </p>
+                        </div>
+
+                        {/* Tablas de Firma */}
+                        {reciboFirmasEnBlanco ? (
+                          <div className="grid grid-cols-2 gap-3 border border-slate-300 rounded overflow-hidden text-[9.5px]">
+                            <div className="border-r border-slate-300 p-2 space-y-1">
+                              <div className="bg-slate-100 -mx-2 -mt-2 mb-1.5 py-0.5 px-2 font-bold text-slate-800 text-center border-b border-slate-300 text-[9px] uppercase tracking-wider">
+                                Firma del trabajador
+                              </div>
+                              <div className="flex items-center"><span className="text-slate-500 font-medium shrink-0 mr-1">Nombre:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">....................................................................................................</span></div>
+                              <div className="flex items-center"><span className="text-slate-500 font-medium shrink-0 mr-1">Fecha:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">....................................................................................................</span></div>
+                              <div className="flex items-center pt-1"><span className="text-slate-500 font-medium shrink-0 mr-1">Firma:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">....................................................................................................</span></div>
+                            </div>
+
+                            <div className="p-2 space-y-1">
+                              <div className="bg-slate-100 -mx-2 -mt-2 mb-1.5 py-0.5 px-2 font-bold text-slate-800 text-center border-b border-slate-300 text-[9px] uppercase tracking-wider">
+                                Firma del responsable
+                              </div>
+                              <div className="flex items-center"><span className="text-slate-500 font-medium shrink-0 mr-1">Nombre:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">....................................................................................................</span></div>
+                              <div className="flex items-center"><span className="text-slate-500 font-medium shrink-0 mr-1">Fecha:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">....................................................................................................</span></div>
+                              <div className="flex items-center pt-1"><span className="text-slate-500 font-medium shrink-0 mr-1">Firma:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">....................................................................................................</span></div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-3 border border-slate-300 rounded overflow-hidden text-[9.5px]">
+                            <div className="border-r border-slate-300 flex flex-col justify-between">
+                              <div className="bg-slate-100 py-0.5 px-2 font-bold text-slate-800 text-center border-b border-slate-300 text-[9px] uppercase tracking-wider">
+                                Firma del trabajador
+                              </div>
+                              <div className="p-2 space-y-1">
+                                <div>
+                                  <span className="text-slate-500">Nombre: </span>
+                                  <span className="font-bold text-slate-900 uppercase">{receiptEmployee.employee_name}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500">Fecha: </span>
+                                  <span className="font-mono">{fichaFecha}</span>
+                                </div>
+                                <div className="pt-4">
+                                  <div className="border-b border-slate-400 mb-0.5"></div>
+                                  <div className="text-[8.5px] text-slate-400 text-center">Firma del trabajador</div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col justify-between">
+                              <div className="bg-slate-100 py-0.5 px-2 font-bold text-slate-800 text-center border-b border-slate-300 text-[9px] uppercase tracking-wider">
+                                Firma del responsable
+                              </div>
+                              <div className="p-2 space-y-1">
+                                <div>
+                                  <span className="text-slate-500">Nombre: </span>
+                                  <span className="font-bold text-slate-900 uppercase">{fichaResponsableNombre}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500">Fecha: </span>
+                                  <span className="font-mono">{fichaFecha}</span>
+                                </div>
+                                <div className="pt-4">
+                                  <div className="border-b border-slate-400 mb-0.5"></div>
+                                  <div className="text-[8.5px] text-slate-400 text-center">Firma del responsable</div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+
+                    if (receiptDocType === "pago") {
+                      return (
+                        <div
+                          id="printable-vacation-document"
+                          className="bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-300 max-w-2xl sm:max-w-3xl w-full font-sans overflow-hidden"
+                        >
+                          {/* Mitad Superior */}
+                          {renderSinglePaymentReceipt()}
+
+                          {/* Línea Central de Corte */}
+                          <div className="relative my-1 py-1.5 flex items-center justify-center bg-white border-y border-dashed border-slate-300">
+                            <span className="text-[10px] sm:text-[11px] font-mono font-bold text-slate-500 tracking-wider">
+                              - - - - - - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - - - - - -
+                            </span>
+                          </div>
+
+                          {/* Mitad Inferior */}
+                          {renderSinglePaymentReceipt()}
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div
+                          id="printable-vacation-document"
+                          className="bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-300 max-w-2xl sm:max-w-3xl w-full font-sans overflow-hidden"
+                        >
+                          {/* Mitad Superior */}
+                          {renderSingleFicha()}
+
+                          {/* Línea Central de Corte */}
+                          <div className="relative my-1 py-1.5 flex items-center justify-center bg-white border-y border-dashed border-slate-300">
+                            <span className="text-[10px] sm:text-[11px] font-mono font-bold text-slate-500 tracking-wider">
+                              - - - - - - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - - - - - -
+                            </span>
+                          </div>
+
+                          {/* Mitad Inferior */}
+                          {renderSingleFicha()}
+                        </div>
+                      );
+                    }
+                  })()}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 sm:p-5 border-t border-white/10 bg-slate-900/90 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs text-slate-400">
+                  {receiptDocType === "pago"
+                    ? "Comprobante de pago económico por vacaciones devengadas / compensadas."
+                    : "Constancia de goce y conformidad de vacaciones solicitadas o colectivas."}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowReceiptsModal(false)}
+                  className="px-6 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer"
                 >
                   Cerrar
                 </button>

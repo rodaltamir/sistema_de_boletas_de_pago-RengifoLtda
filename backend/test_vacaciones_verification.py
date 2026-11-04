@@ -693,6 +693,111 @@ def test_mathematical_reconciliation_kardex():
     print("  [OK] Hoja 2 contiene la tabla de DESGLOSE MENSUAL CONSOLIDADO (JUSTIFICACIÓN LABORAL MES A MES)")
 
 
+def test_recibo_pago_vacaciones():
+    print("\n--- TEST 8: Recibo de Pago de Vacaciones Devengadas (Plantilla Oficial Imagen 1) ---")
+    data_recibo = {
+        "empresa_nombre": "EMPRESA PRUEBA S.R.L.",
+        "trabajador_nombre": "SERGIO YUJRA",
+        "trabajador_ci": "1234567 LP",
+        "empleador_nombre": "HIPÓLITO MANRRIQUE SANTI",
+        "empleador_rol": "propietario",
+        "empleador_ci": "6570013",
+        "recibo_nro": "001",
+        "total_ganado": 3300.0,
+        "salario_diario": 110.0,
+        "dias_pagados": 10.0,
+        "importe_cancelado": 1100.0,
+        "lugar_fecha": "La Paz, 10 de octubre de 2026"
+    }
+
+    excel_path = DocumentService.generate_vacation_payment_receipt_excel(
+        data_recibo,
+        output_format="xlsx",
+        schema_name="prueba_schema"
+    )
+    assert os.path.exists(excel_path), f"Recibo no generado en {excel_path}"
+    wb = openpyxl.load_workbook(excel_path)
+    ws = wb.active
+
+    all_text = " ".join([str(cell.value or "") for row in ws.rows for cell in row])
+    assert "RECIBO DE PAGO DE VACACIONES" in all_text
+    assert "RECIBO N.º 001" in all_text
+    assert "[ORIGINAL - EMPLEADOR]" not in all_text
+    assert "[COPIA - TRABAJADOR]" not in all_text
+    assert "SERGIO YUJRA" in all_text
+    assert "con C.I. 1234567 LP" in all_text
+    assert "HIPÓLITO MANRRIQUE SANTI" in all_text
+    assert "3,300.00" in all_text
+    assert "110.00" in all_text
+    assert "1,100.00" in all_text
+    assert "TRABAJADOR" in all_text
+    assert "EMPLEADOR" in all_text
+    assert "Nombre: ...." in all_text or "Nombre: .." in all_text
+    print("  [OK] Encabezados limpios (sin etiquetas original/copia) y N° de recibo correctos")
+    print("  [OK] Párrafo declaratorio verificado con C.I. y sin corte de texto")
+    print("  [OK] Desglose de Total ganado (Bs 3.300), Salario diario (Bs 110) e Importe (Bs 1.100) verificado")
+    print("  [OK] Firmas estructuradas con líneas de puntos para llenado manual")
+
+
+def test_ficha_vacaciones_solicitadas_colectivas():
+    print("\n--- TEST 9: Ficha de Vacaciones Solicitadas y Colectivas (Plantilla Oficial Imagen 2) ---")
+    data_ficha = {
+        "empresa_nombre": "EMPRESA PRUEBA S.R.L.",
+        "trabajador_nombre": "SERGIO YUJRA",
+        "trabajador_cargo": "CHOFER DE REPARTO",
+        "trabajador_ci": "1234567 LP",
+        "fecha_ingreso": "15/01/2022",
+        "tipo_doc": "SOLICITADAS - COLECTIVAS",
+        "records": [
+            {
+                "id": 1,
+                "tipo": "solicitada",
+                "fecha_inicio": "2026-05-10",
+                "fecha_fin": "2026-05-15",
+                "dias": 5.0,
+                "motivo": "Vacación personal",
+                "fecha_solicitud": "2026-05-02"
+            },
+            {
+                "id": 2,
+                "tipo": "colectiva",
+                "fecha_inicio": "2026-12-24",
+                "fecha_fin": "2026-12-31",
+                "dias": 6.0,
+                "motivo": "Receso de fin de año",
+                "fecha_solicitud": ""
+            }
+        ],
+        "observaciones": "Vacaciones gozadas conforme a cronograma anual.",
+        "responsable_nombre": "HIPÓLITO MANRRIQUE SANTI",
+        "fecha": "10/10/2026"
+    }
+
+    excel_path = DocumentService.generate_vacation_solicitadas_colectivas_excel(
+        data_ficha,
+        output_format="xlsx",
+        schema_name="prueba_schema"
+    )
+    assert os.path.exists(excel_path), f"Ficha no generada en {excel_path}"
+    wb = openpyxl.load_workbook(excel_path)
+    ws = wb.active
+
+    all_text = " ".join([str(cell.value or "") for row in ws.rows for cell in row])
+    assert "FICHA DE VACACIONES SOLICITADAS - COLECTIVAS" in all_text
+    assert "DATOS DEL TRABAJADOR / INFORMACIÓN" in all_text
+    assert "SERGIO YUJRA" in all_text
+    assert "CHOFER DE REPARTO" in all_text
+    assert "DETALLE DE VACACIONES SOLICITADAS - COLECTIVAS" in all_text
+    assert "CONFORMIDAD" in all_text
+    assert "11" in all_text
+    assert "Firma del trabajador" in all_text
+    assert "Firma del responsable" in all_text
+    print("  [OK] Título oficial y datos del trabajador correctos")
+    print("  [OK] Tabla con registros de Solicitadas y Colectivas verificada")
+    print("  [OK] Declaración de conformidad con 11 días de vacación verificada")
+    print("  [OK] Cuadros de firma de trabajador y responsable estructurados fielmente")
+
+
 if __name__ == "__main__":
     test_vacation_tenure_calculation()
     test_anniversary_exact_date_accrual()
@@ -701,6 +806,8 @@ if __name__ == "__main__":
     test_employee_kardex_excel()
     test_kardex_detailed_by_month()
     test_mathematical_reconciliation_kardex()
+    test_recibo_pago_vacaciones()
+    test_ficha_vacaciones_solicitadas_colectivas()
     print("\n=============================================")
     print("  ¡TODAS LAS PRUEBAS PASARON EXITOSAMENTE!  ")
     print("=============================================\n")
