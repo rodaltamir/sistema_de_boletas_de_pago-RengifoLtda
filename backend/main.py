@@ -27,6 +27,11 @@ def on_startup():
         migrate_tenants()
     except Exception as e:
         print(f"Error en migración inicial de tenants: {e}")
+    try:
+        from app.services.document_service import DocumentService
+        DocumentService.cleanup_temp_exports(max_age_hours=72)
+    except Exception as e:
+        print(f"Error en limpieza inicial de temporales: {e}")
 
 # Configuración CORS
 app.add_middleware(

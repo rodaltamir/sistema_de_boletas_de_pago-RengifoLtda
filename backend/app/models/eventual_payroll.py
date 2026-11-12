@@ -42,6 +42,7 @@ class EventualPayslip(Base):
     # INGRESOS
     haber_basico = Column(Numeric(12, 2), nullable=False) # Editable e independiente
     bono_antiguedad = Column(Numeric(12, 2), default=0)
+    otros = Column(Numeric(12, 2), default=0) # Ganancia extra / otros ingresos (editable, suma para vacaciones)
     bono_produccion = Column(Numeric(12, 2), default=0)
     subsidio_frontera = Column(Numeric(12, 2), default=0)
     trabajo_extraordinario = Column(Numeric(12, 2), default=0)

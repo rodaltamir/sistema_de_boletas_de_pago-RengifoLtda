@@ -2,3 +2,7 @@ __pycache__
 *.pyc
 venv
 .venv
+exports/
+.git
+.github
+*.log

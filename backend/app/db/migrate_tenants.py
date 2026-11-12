@@ -38,7 +38,8 @@ def migrate_tenants():
                     ALTER TABLE "{schema}".employees 
                     ADD COLUMN IF NOT EXISTS department_id INTEGER,
                     ADD COLUMN IF NOT EXISTS departamento VARCHAR(100),
-                    ADD COLUMN IF NOT EXISTS tipo_contrato VARCHAR(50) DEFAULT 'permanente'
+                    ADD COLUMN IF NOT EXISTS tipo_contrato VARCHAR(50) DEFAULT 'permanente',
+                    ADD COLUMN IF NOT EXISTS fecha_afiliacion DATE
                 '''))
                 
                 # 3. Crear tabla accounting_records si no existe
@@ -156,7 +157,18 @@ def migrate_tenants():
 
                 conn.execute(text(f'''
                     ALTER TABLE "{schema}".eventual_payslips
-                    ADD COLUMN IF NOT EXISTS faltas NUMERIC(12, 2) DEFAULT 0;
+                    ADD COLUMN IF NOT EXISTS faltas NUMERIC(12, 2) DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS otros NUMERIC(12, 2) DEFAULT 0;
+                '''))
+
+                # Migración de fechas para empresas ya creadas (personal permanente):
+                # La fecha de ingreso original pasa a ser la fecha_afiliacion,
+                # y fecha_ingreso pasa a ser 1 año anterior a dicha fecha.
+                conn.execute(text(f'''
+                    UPDATE "{schema}".employees
+                    SET fecha_afiliacion = fecha_ingreso,
+                        fecha_ingreso = (fecha_ingreso - INTERVAL '1 year')::DATE
+                    WHERE tipo_contrato = 'permanente' AND fecha_afiliacion IS NULL;
                 '''))
 
                 # 7. Crear tabla de control de vacaciones si no existe
@@ -212,6 +224,32 @@ def migrate_tenants():
                         SET department_id = {mo_dept[0]}, departamento = '{mo_dept[1]}'
                         WHERE department_id IS NULL
                     '''))
+
+                # 9. Índices de alto rendimiento para acelerar consultas, reportes y dashboards
+                indexes = [
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_payslips_payroll_id" ON "{schema}".payslips (payroll_id)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_payslips_employee_id" ON "{schema}".payslips (employee_id)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_payrolls_period" ON "{schema}".payrolls (year, month)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_eventual_slips_payroll_id" ON "{schema}".eventual_payslips (eventual_payroll_id)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_eventual_slips_employee_id" ON "{schema}".eventual_payslips (employee_id)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_eventual_payrolls_period" ON "{schema}".eventual_payrolls (year, month)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_vacation_emp_tipo" ON "{schema}".vacation_records (employee_id, tipo)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_vacation_dates" ON "{schema}".vacation_records (fecha_inicio, fecha_fin)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_vacation_gestion" ON "{schema}".vacation_records (gestion)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_patronal_payroll_id" ON "{schema}".patronal_details (payroll_id)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_patronal_employee_id" ON "{schema}".patronal_details (employee_id)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_patronal_period" ON "{schema}".patronal_details (year, month)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_accounting_payroll_id" ON "{schema}".accounting_records (payroll_id)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_accounting_period" ON "{schema}".accounting_records (year, month)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_aguinaldo_slips_pid" ON "{schema}".aguinaldo_slips (aguinaldo_payroll_id)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_aguinaldo_slips_empid" ON "{schema}".aguinaldo_slips (employee_id)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_prefiniquitos_empid" ON "{schema}".prefiniquitos (employee_id)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_employees_tipo" ON "{schema}".employees (tipo_contrato)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_employees_dept" ON "{schema}".employees (department_id)',
+                    f'CREATE INDEX IF NOT EXISTS "idx_{schema}_employees_active" ON "{schema}".employees (is_active)',
+                ]
+                for idx_sql in indexes:
+                    conn.execute(text(idx_sql))
                     
         print("Migracion de tenants completada exitosamente.")
     except Exception as e:

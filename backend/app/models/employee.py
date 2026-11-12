@@ -25,6 +25,7 @@ class Employee(Base):
     department_id = Column(Integer, nullable=True) # ID del departamento
     departamento = Column(String(100), nullable=True) # Nombre del departamento
     fecha_ingreso = Column(Date, nullable=False)
+    fecha_afiliacion = Column(Date, nullable=True) # Fecha de afiliación (solo para permanentes)
     
     haber_basico = Column(Numeric(12, 2), nullable=False) # Sueldo base contratado
     tipo_contrato = Column(String(50), default="permanente") # "permanente" | "eventual"

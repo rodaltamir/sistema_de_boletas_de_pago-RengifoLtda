@@ -44,6 +44,7 @@ interface Employee {
   department_id?: number | null;
   departamento?: string | null;
   fecha_ingreso: string;
+  fecha_afiliacion?: string | null;
   haber_basico: number;
   tipo_contrato?: string;
   is_active: boolean;
@@ -68,6 +69,7 @@ function EmpleadosPageContent() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"todos" | "activos" | "desvinculados" | "permanentes" | "eventuales">("todos");
   const [hasEventuales, setHasEventuales] = useState(false);
+  const [hasVacaciones, setHasVacaciones] = useState(false);
   const [filterDept, setFilterDept] = useState<string>("todos");
   const [reactivatingId, setReactivatingId] = useState<number | null>(null);
   const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
@@ -94,6 +96,7 @@ function EmpleadosPageContent() {
     department_id: null,
     departamento: null,
     fecha_ingreso: "",
+    fecha_afiliacion: "",
     haber_basico: 3300,
     tipo_contrato: "permanente"
   });
@@ -150,6 +153,7 @@ function EmpleadosPageContent() {
         .then(data => {
           if (data && data.tenant) {
             setHasEventuales(Boolean(data.tenant.has_eventuales));
+            setHasVacaciones(Boolean(data.tenant.has_vacaciones));
           }
         })
         .catch(console.error);
@@ -160,7 +164,7 @@ function EmpleadosPageContent() {
     setError("");
     if (emp) {
       setIsEditing(true);
-      setFormData({ ...emp, tipo_contrato: emp.tipo_contrato || 'permanente' });
+      setFormData({ ...emp, fecha_afiliacion: emp.fecha_afiliacion || "", tipo_contrato: emp.tipo_contrato || 'permanente' });
     } else {
       setIsEditing(false);
       setFormData({
@@ -177,6 +181,7 @@ function EmpleadosPageContent() {
         department_id: departments.length > 0 ? departments[0].id : null,
         departamento: departments.length > 0 ? departments[0].name : null,
         fecha_ingreso: "",
+        fecha_afiliacion: "",
         haber_basico: 3300,
         tipo_contrato: 'permanente'
       });
@@ -195,6 +200,12 @@ function EmpleadosPageContent() {
     setSubmitting(true);
     setError("");
 
+    if (formData.tipo_contrato !== 'eventual' && formData.fecha_afiliacion && formData.fecha_ingreso) {
+      if (formData.fecha_afiliacion < formData.fecha_ingreso) {
+        setError("La fecha de afiliación no puede ser anterior a la fecha de ingreso a la empresa.");
+        return;
+      }
+    }
     if (formData.fecha_nacimiento && formData.fecha_ingreso) {
       const birth = new Date(formData.fecha_nacimiento);
       const hire = new Date(formData.fecha_ingreso);
@@ -643,8 +654,15 @@ function EmpleadosPageContent() {
                       )}
                     </td>
 
-                    <td className="p-4 text-xs text-slate-600 font-mono">
-                      {formatDate(emp.fecha_ingreso)}
+                    <td className="p-4 text-xs font-mono">
+                      <div className="text-slate-800 font-semibold" title="Fecha de Ingreso (vacaciones)">
+                        {formatDate(emp.fecha_ingreso)}
+                      </div>
+                      {emp.fecha_afiliacion && (
+                        <div className="text-[10px] text-teal-700 font-semibold mt-0.5" title="Fecha de Afiliación (seguro social)">
+                          Afil: {formatDate(emp.fecha_afiliacion)}
+                        </div>
+                      )}
                     </td>
 
                     <td className="p-4 font-mono font-bold text-slate-900">
@@ -1004,13 +1022,40 @@ function EmpleadosPageContent() {
 
                   {/* Fila 4: Cargo, Departamento y Salario */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-teal-100 mb-1">Fecha Ingreso *</label>
-                      <input 
-                        type="date" required
-                        value={formData.fecha_ingreso} onChange={e => setFormData({...formData, fecha_ingreso: e.target.value})}
-                        className="w-full bg-black/30 border border-white/20 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-400 [color-scheme:dark]"
-                      />
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-teal-100 mb-1">Fecha de Ingreso *</label>
+                        <input 
+                          type="date" required
+                          value={formData.fecha_ingreso} onChange={e => setFormData({...formData, fecha_ingreso: e.target.value})}
+                          className="w-full bg-black/30 border border-white/20 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-400 [color-scheme:dark]"
+                        />
+                        <p className="text-[11px] text-teal-300/70 mt-1">Fecha de entrada (antigüedad computable para vacaciones)</p>
+                      </div>
+
+                      {formData.tipo_contrato !== 'eventual' ? (
+                        <div>
+                          <label className="block text-sm font-medium text-teal-100 mb-1">Fecha de Afiliación *</label>
+                          <input 
+                            type="date"
+                            required={formData.tipo_contrato !== 'eventual'}
+                            value={formData.fecha_afiliacion || ""} 
+                            onChange={e => setFormData({...formData, fecha_afiliacion: e.target.value})}
+                            className="w-full bg-black/30 border border-white/20 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-400 [color-scheme:dark]"
+                          />
+                          <p className="text-[11px] text-teal-300/70 mt-1">Fecha de afiliación formal (Gestora 12.71% y Caja de Salud)</p>
+                        </div>
+                      ) : (
+                        <div className="opacity-60">
+                          <label className="block text-sm font-medium text-slate-400 mb-1">Fecha de Afiliación</label>
+                          <input 
+                            type="text" disabled
+                            value="No aplica (Personal Eventual sin afiliación)"
+                            className="w-full bg-black/20 border border-white/10 text-slate-400 rounded-xl px-4 py-2.5 cursor-not-allowed text-xs"
+                          />
+                          <p className="text-[11px] text-slate-400/70 mt-1">El personal eventual no aporta impuestos ni seguro social</p>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -1206,7 +1251,15 @@ function EmpleadosPageContent() {
                   <div className="p-3.5 bg-white/5 rounded-xl border border-white/5">
                     <p className="text-xs text-slate-400">Fecha de Ingreso</p>
                     <p className="font-bold text-white mt-1">{formatDate(viewingEmployee.fecha_ingreso)}</p>
+                    <p className="text-[10px] text-teal-300/80 mt-0.5">Antigüedad computable de vacaciones</p>
                   </div>
+                  {viewingEmployee.fecha_afiliacion && (
+                    <div className="p-3.5 bg-white/5 rounded-xl border border-white/5">
+                      <p className="text-xs text-slate-400">Fecha de Afiliación</p>
+                      <p className="font-bold text-teal-300 mt-1">{formatDate(viewingEmployee.fecha_afiliacion)}</p>
+                      <p className="text-[10px] text-teal-300/80 mt-0.5">Seguro social y aportes Gestora</p>
+                    </div>
+                  )}
                   <div className="p-3.5 bg-white/5 rounded-xl border border-white/5">
                     <p className="text-xs text-slate-400">Fecha de Nacimiento</p>
                     <p className="font-bold text-white mt-1">{formatDate(viewingEmployee.fecha_nacimiento)}</p>

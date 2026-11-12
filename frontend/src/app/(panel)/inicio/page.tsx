@@ -27,7 +27,8 @@ import {
   Info,
   CheckCircle,
   UserCheck,
-  BookOpen
+  BookOpen,
+  Calendar
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { getApiUrl } from "@/utils/api";
@@ -69,6 +70,8 @@ interface TenantData {
     empleador_nit: string | null;
     icon: string | null;
     logo_base64: string | null;
+    has_eventuales?: boolean;
+    has_vacaciones?: boolean;
   };
   total_employees: number;
   total_desvinculados?: number;
@@ -81,6 +84,7 @@ interface TenantData {
   recent_employees?: RecentEmployeeStat[];
   latest_payroll?: LatestPayrollStat | null;
   total_prefiniquitos?: number;
+  total_vacaciones_registros?: number;
   current_smn: number;
   current_year: number;
 }
@@ -364,6 +368,16 @@ function InicioDashboardContent() {
       accent: "from-blue-600 to-indigo-600",
       borderHover: "hover:border-blue-400"
     },
+    ...(data.tenant.has_vacaciones ? [{
+      title: "Control de Vacaciones",
+      subtitle: "Kárdex, devengadas y recibos de pago",
+      href: `/vacaciones?tenant=${tenantSchema}`,
+      icon: Calendar,
+      badge: Number(data.total_vacaciones_registros || 0) > 0 ? `${data.total_vacaciones_registros} registros` : "Art. 44 LGT",
+      badgeClass: "bg-cyan-50 text-cyan-700 border-cyan-200",
+      accent: "from-cyan-600 to-teal-600",
+      borderHover: "hover:border-cyan-400"
+    }] : []),
     {
       title: "Boletas",
       subtitle: "Papeletas de pago mensual y de aguinaldo",
@@ -503,7 +517,7 @@ function InicioDashboardContent() {
           <span className="text-xs text-slate-500">Módulos principales del entorno</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${quickActions.length >= 6 ? 'lg:grid-cols-3 xl:grid-cols-6' : 'lg:grid-cols-5'} gap-4`}>
           {quickActions.map((action, idx) => {
             const IconComp = action.icon;
             return (
@@ -540,7 +554,7 @@ function InicioDashboardContent() {
       </div>
 
       {/* 3. GRID DE KPIS Y MÉTRICAS ESTRATÉGICAS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${data.tenant.has_vacaciones ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-4'} gap-5`}>
         {/* Tarjeta 1: Personal */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition flex flex-col justify-between">
           <div>
@@ -636,6 +650,32 @@ function InicioDashboardContent() {
             <span className="font-black text-teal-700">{formatBs((data.current_smn || 0) * 3)}</span>
           </div>
         </div>
+
+        {/* Tarjeta 5: Control de Vacaciones (Condicional si la empresa tiene el módulo) */}
+        {data.tenant.has_vacaciones && (
+          <div className="bg-white p-6 rounded-2xl border border-cyan-200/80 shadow-xs hover:shadow-md transition flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-cyan-800">Vacaciones</span>
+                <div className="p-2.5 bg-cyan-50 rounded-xl text-cyan-600">
+                  <Calendar className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-black text-slate-900">{data.total_vacaciones_registros || 0}</span>
+                <span className="text-xs font-bold text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-200">
+                  Registros
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">Cómputo legal Art. 44 LGT</p>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+              <span>Módulo:</span>
+              <span className="font-bold text-cyan-700">Activo / Kárdex</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 4. SEMÁFORO DE CUMPLIMIENTO INSTITUCIONAL (BOLIVIA) */}
@@ -1268,9 +1308,25 @@ function InicioDashboardContent() {
                       <span className="text-slate-500 font-medium">Aporte Gestora Pública:</span>
                       <span className="font-mono font-bold text-slate-800">12.71% Ley de Pensiones</span>
                     </div>
-                    <div className="flex justify-between py-1">
+                    <div className="flex justify-between py-1 border-b border-slate-200/60">
                       <span className="text-slate-500 font-medium">R.C. - I.V.A. Dependientes:</span>
                       <span className="font-mono font-bold text-slate-800">13% Régimen Complementario</span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-200/60">
+                      <span className="text-slate-500 font-medium">Control de Vacaciones:</span>
+                      <span className={`inline-flex items-center gap-1 font-bold ${data.tenant.has_vacaciones ? "text-emerald-700" : "text-slate-500"}`}>
+                        {data.tenant.has_vacaciones ? (
+                          <><CheckCircle className="w-3 h-3 text-emerald-600" /> Habilitado (Art. 44 LGT)</>
+                        ) : "No habilitado"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-slate-500 font-medium">Planilla de Eventuales:</span>
+                      <span className={`inline-flex items-center gap-1 font-bold ${data.tenant.has_eventuales ? "text-emerald-700" : "text-slate-500"}`}>
+                        {data.tenant.has_eventuales ? (
+                          <><CheckCircle className="w-3 h-3 text-emerald-600" /> Habilitado</>
+                        ) : "No habilitado"}
+                      </span>
                     </div>
                   </div>
                 </div>

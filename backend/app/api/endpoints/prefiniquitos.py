@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import text
-from app.db.session import SessionLocal, engine
+from app.db.session import SessionLocal, engine, get_tenant_session
 from app.models.employee import Employee
 from app.models.prefiniquito import Prefiniquito
 from app.schemas.prefiniquito import PrefiniquitoCreate, PrefiniquitoUpdate, PrefiniquitoResponse, PrefiniquitoBase, CuotaPagarRequest, PagoRegistrarRequest
@@ -39,9 +39,7 @@ def ensure_tenant_schema_migrated(schema_name: str):
 
 def get_tenant_db(schema_name: str):
     ensure_tenant_schema_migrated(schema_name)
-    engine_with_schema = engine.execution_options(schema_translate_map={'tenant': schema_name})
-    SessionTenant = sessionmaker(autocommit=False, autoflush=False, bind=engine_with_schema)
-    db = SessionTenant()
+    db = get_tenant_session(schema_name)
     try:
         yield db
     finally:

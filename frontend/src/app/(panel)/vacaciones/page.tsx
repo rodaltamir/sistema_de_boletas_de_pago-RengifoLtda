@@ -120,7 +120,10 @@ interface EmployeeVacationSummary {
   employee_ci: string;
   employee_cargo: string;
   fecha_ingreso: string;
+  fecha_afiliacion?: string;
   haber_basico?: number;
+  otros?: number;
+  total_ganado_mensual?: number;
   antiguedad_anios: number;
   antiguedad_meses: number;
   antiguedad_dias: number;
@@ -1262,8 +1265,8 @@ function VacacionesContent() {
     }
   };
 
-  // Abrir Modal de Recibos y Comprobantes de Vacaciones
-  const handleOpenReceiptsModal = (emp: EmployeeVacationSummary) => {
+  // Abrir Modal de Recibos y Comprobantes de Vacaciones (opcionalmente centrado en un registro específico)
+  const handleOpenReceiptsModal = (emp: EmployeeVacationSummary, targetRecordId?: number | null) => {
     setReceiptEmployee(emp);
     setShowReceiptsModal(true);
     setShowReceiptSettings(false);
@@ -1271,7 +1274,19 @@ function VacacionesContent() {
     const paidRecs = (emp.records || []).filter(r => r.tipo === "dias_pagados" || r.tipo === "a_cuenta");
     const solColRecs = (emp.records || []).filter(r => r.tipo === "solicitada" || r.tipo === "colectiva");
 
-    if (paidRecs.length > 0) {
+    let targetRec: VacationRecord | undefined = undefined;
+    if (targetRecordId) {
+      targetRec = (emp.records || []).find(r => r.id === targetRecordId);
+    }
+
+    const isTargetPaid = targetRec && (targetRec.tipo === "dias_pagados" || targetRec.tipo === "a_cuenta");
+    const isTargetSol = targetRec && (targetRec.tipo === "solicitada" || targetRec.tipo === "colectiva");
+
+    if (isTargetPaid) {
+      setReceiptDocType("pago");
+    } else if (isTargetSol) {
+      setReceiptDocType("solicitadas");
+    } else if (paidRecs.length > 0) {
       setReceiptDocType("pago");
     } else if (solColRecs.length > 0) {
       setReceiptDocType("solicitadas");
@@ -1279,13 +1294,19 @@ function VacacionesContent() {
       setReceiptDocType("pago");
     }
 
-    const firstPaid = paidRecs[0];
-    const tg = emp.haber_basico && emp.haber_basico > 0 ? emp.haber_basico : 3300;
+    const tg = (emp.total_ganado_mensual && emp.total_ganado_mensual > 0) ? emp.total_ganado_mensual : (((emp.haber_basico || 0) + (emp.otros || 0) > 0) ? ((emp.haber_basico || 0) + (emp.otros || 0)) : 3300);
     const sd = Number((tg / 30).toFixed(2));
-    const dp = firstPaid ? Number(firstPaid.dias) : ((emp.dias_pagados && emp.dias_pagados > 0) ? emp.dias_pagados : 10);
 
-    setReciboNro(firstPaid ? `00${firstPaid.id}` : "001");
-    setReciboPaidRecordId(firstPaid ? firstPaid.id : "all");
+    const selectedPaid = isTargetPaid
+      ? targetRec!
+      : (paidRecs.length > 0 ? paidRecs[0] : null);
+
+    const dp = selectedPaid
+      ? Number(selectedPaid.dias)
+      : ((emp.dias_pagados && emp.dias_pagados > 0) ? emp.dias_pagados : 10);
+
+    setReciboNro(selectedPaid ? `00${selectedPaid.id}` : "001");
+    setReciboPaidRecordId(selectedPaid ? selectedPaid.id : (paidRecs.length > 0 ? paidRecs[0].id : "all"));
     setReciboTotalGanado(tg);
     setReciboSalarioDiario(sd);
     setReciboDiasPagados(dp);
@@ -1293,17 +1314,31 @@ function VacacionesContent() {
 
     const today = new Date();
     const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-    setReciboLugarFecha(`La Paz, ${today.getDate()} de ${meses[today.getMonth()]} de ${today.getFullYear()}`);
+    
+    // Lugar y fecha: si se seleccionó un registro de vacación pagada, tomar su fecha
+    let recDate = today;
+    if (selectedPaid) {
+      const recDateStr = selectedPaid.fecha_solicitud || selectedPaid.fecha_inicio;
+      if (recDateStr) {
+        const cleanStr = recDateStr.includes("T") ? recDateStr.split("T")[0] : recDateStr;
+        const parts = cleanStr.split("-").map(Number);
+        if (parts.length === 3 && parts[0] > 1900 && parts[1] >= 1 && parts[1] <= 12) {
+          recDate = new Date(parts[0], parts[1] - 1, parts[2]);
+        }
+      }
+    }
+    setReciboLugarFecha(`La Paz, ${recDate.getDate()} de ${meses[recDate.getMonth()]} de ${recDate.getFullYear()}`);
     setReciboEmpleadorNombre(summary?.tenant_empleador || "Hipólito Manrrique Santi");
     setReciboEmpleadorRol("propietario");
     setReciboEmpleadorCi(summary?.tenant_empleador_ci || "6570013");
 
     // Ficha Solicitadas
-    setFichaTipoFilter("todas");
-    setFichaSelectedRecordIds(solColRecs.map(r => r.id));
+    setFichaTipoFilter(isTargetSol ? (targetRec!.tipo as any) : "todas");
+    setFichaSelectedRecordIds(isTargetSol ? [targetRec!.id] : solColRecs.map(r => r.id));
     setFichaObservaciones("");
     setFichaResponsableNombre(summary?.tenant_empleador || "Hipólito Manrrique Santi");
-    setFichaFecha(formatDMY(formatYMD(today)));
+    const fichaDateStr = isTargetSol ? (targetRec!.fecha_solicitud || targetRec!.fecha_inicio) : null;
+    setFichaFecha(fichaDateStr ? formatDMY(fichaDateStr) : formatDMY(formatYMD(today)));
   };
 
   const handleSelectPaidRecord = (val: string) => {
@@ -1326,6 +1361,16 @@ function VacacionesContent() {
         const dp = Number(found.dias);
         setReciboDiasPagados(dp);
         setReciboImporteCancelado(Number((reciboSalarioDiario * dp).toFixed(2)));
+        const recDateStr = found.fecha_solicitud || found.fecha_inicio;
+        if (recDateStr) {
+          const cleanStr = recDateStr.includes("T") ? recDateStr.split("T")[0] : recDateStr;
+          const parts = cleanStr.split("-").map(Number);
+          if (parts.length === 3 && parts[0] > 1900 && parts[1] >= 1 && parts[1] <= 12) {
+            const d = new Date(parts[0], parts[1] - 1, parts[2]);
+            const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+            setReciboLugarFecha(`La Paz, ${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`);
+          }
+        }
       }
     }
   };
@@ -2903,6 +2948,12 @@ function VacacionesContent() {
                       <span>Cargo: <strong>{viewingEmployee.employee_cargo}</strong></span>
                       <span>•</span>
                       <span>Ingreso: <strong>{formatDMY(viewingEmployee.fecha_ingreso)}</strong></span>
+                      {viewingEmployee.fecha_afiliacion && (
+                        <>
+                          <span>•</span>
+                          <span>Afiliación: <strong>{formatDMY(viewingEmployee.fecha_afiliacion)}</strong></span>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -3375,7 +3426,16 @@ function VacacionesContent() {
                                 </td>
                                 <td className="p-3 pr-4 text-center">
                                   {r.isRecord && r.recordId ? (
-                                    <div className="flex items-center justify-center gap-1">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      {(r.tipo === "dias_pagados" || r.tipo === "a_cuenta") && (
+                                        <button
+                                          onClick={() => handleOpenReceiptsModal(viewingEmployee, r.recordId)}
+                                          className="p-1.5 text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition cursor-pointer shadow-sm"
+                                          title={`Ver y Exportar Recibo de Pago (Reg #${r.recordId})`}
+                                        >
+                                          <Receipt className="w-4 h-4" />
+                                        </button>
+                                      )}
                                       <button
                                         onClick={() => {
                                           const origRec = (viewingEmployee.records || []).find(rec => rec.id === r.recordId);
@@ -3584,7 +3644,16 @@ function VacacionesContent() {
                                   </td>
                                   <td className="p-3 pr-4 text-center">
                                     {r.isRecord && r.recordId ? (
-                                      <div className="flex items-center justify-center gap-1">
+                                      <div className="flex items-center justify-center gap-1.5">
+                                        {(r.tipo === "dias_pagados" || r.tipo === "a_cuenta") && (
+                                          <button
+                                            onClick={() => handleOpenReceiptsModal(viewingEmployee, r.recordId)}
+                                            className="p-1.5 text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition cursor-pointer shadow-sm"
+                                            title={`Ver y Exportar Recibo de Pago (Reg #${r.recordId})`}
+                                          >
+                                            <Receipt className="w-4 h-4" />
+                                          </button>
+                                        )}
                                         <button
                                           onClick={() => {
                                             const origRec = (viewingEmployee.records || []).find(rec => rec.id === r.recordId);
@@ -3664,7 +3733,7 @@ function VacacionesContent() {
               @media print {
                 @page {
                   size: letter portrait;
-                  margin: 8mm 10mm;
+                  margin: 6mm 10mm;
                 }
                 body {
                   background: white !important;
@@ -3682,11 +3751,15 @@ function VacacionesContent() {
                   top: 0;
                   width: 100% !important;
                   max-width: 100% !important;
+                  height: 100% !important;
                   margin: 0 !important;
                   padding: 0 !important;
                   box-shadow: none !important;
                   border: none !important;
                   background: white !important;
+                  display: flex !important;
+                  flex-direction: column !important;
+                  justify-content: space-between !important;
                 }
                 .no-print {
                   display: none !important;
@@ -3701,9 +3774,20 @@ function VacacionesContent() {
               className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl flex flex-col max-h-[94vh] my-auto"
             >
               {/* Modal Header */}
-              <div className="p-4 sm:p-6 border-b border-white/10 bg-slate-900/90 flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-xl">
+              <div className="p-4 sm:p-6 border-b border-white/10 bg-slate-900/90 relative">
+                {/* Botón X de Cierre SIEMPRE en la esquina superior derecha del modal */}
+                <button
+                  type="button"
+                  onClick={() => setShowReceiptsModal(false)}
+                  className="absolute top-4 right-4 sm:top-5 sm:right-6 p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer z-10"
+                  title="Cerrar ventana"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+
+                {/* Fila 1: Título e Información del Trabajador */}
+                <div className="flex items-center gap-3 pr-14 mb-4">
+                  <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-xl shrink-0">
                     <Receipt className="w-6 h-6" />
                   </div>
                   <div>
@@ -3716,111 +3800,105 @@ function VacacionesContent() {
                   </div>
                 </div>
 
-                {/* Document Type Switcher Tabs */}
-                <div className="flex items-center bg-slate-800/90 p-1 rounded-2xl border border-slate-700/80">
-                  <button
-                    type="button"
-                    onClick={() => setReceiptDocType("pago")}
-                    className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition ${
-                      receiptDocType === "pago"
-                        ? "bg-teal-500 text-slate-950 shadow-md"
-                        : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    <Banknote className="w-4 h-4" />
-                    <span>Recibo de Pago</span>
-                    {(receiptEmployee.dias_pagados ?? 0) > 0 && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-                        receiptDocType === "pago" ? "bg-slate-950/20 text-slate-950" : "bg-teal-500/20 text-teal-300"
-                      }`}>
-                        {receiptEmployee.dias_pagados}d
-                      </span>
-                    )}
-                  </button>
+                {/* Fila 2: Pestañas de Tipo de Documento y Botones de Acción */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/5">
+                  {/* Document Type Switcher Tabs */}
+                  <div className="flex items-center bg-slate-800/90 p-1 rounded-2xl border border-slate-700/80">
+                    <button
+                      type="button"
+                      onClick={() => setReceiptDocType("pago")}
+                      className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition ${
+                        receiptDocType === "pago"
+                          ? "bg-teal-500 text-slate-950 shadow-md"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <Banknote className="w-4 h-4" />
+                      <span>Recibo de Pago</span>
+                      {(receiptEmployee.dias_pagados ?? 0) > 0 && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                          receiptDocType === "pago" ? "bg-slate-950/20 text-slate-950" : "bg-teal-500/20 text-teal-300"
+                        }`}>
+                          {receiptEmployee.dias_pagados}d
+                        </span>
+                      )}
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setReceiptDocType("solicitadas")}
-                    className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition ${
-                      receiptDocType === "solicitadas"
-                        ? "bg-indigo-500 text-white shadow-md"
-                        : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    <CalendarRange className="w-4 h-4" />
-                    <span>Ficha Solicitadas / Colectivas</span>
-                    {((receiptEmployee.dias_solicitadas ?? 0) + (receiptEmployee.dias_colectivas ?? 0)) > 0 && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-                        receiptDocType === "solicitadas" ? "bg-white/20 text-white" : "bg-indigo-500/20 text-indigo-300"
-                      }`}>
-                        {(receiptEmployee.dias_solicitadas + receiptEmployee.dias_colectivas).toFixed(1)}d
-                      </span>
-                    )}
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => setReceiptDocType("solicitadas")}
+                      className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition ${
+                        receiptDocType === "solicitadas"
+                          ? "bg-indigo-500 text-white shadow-md"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <CalendarRange className="w-4 h-4" />
+                      <span>Ficha Solicitadas / Colectivas</span>
+                      {((receiptEmployee.dias_solicitadas ?? 0) + (receiptEmployee.dias_colectivas ?? 0)) > 0 && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                          receiptDocType === "solicitadas" ? "bg-white/20 text-white" : "bg-indigo-500/20 text-indigo-300"
+                        }`}>
+                          {(receiptEmployee.dias_solicitadas + receiptEmployee.dias_colectivas).toFixed(1)}d
+                        </span>
+                      )}
+                    </button>
+                  </div>
 
-                {/* Action Buttons Top */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowReceiptSettings(prev => !prev)}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition border ${
-                      showReceiptSettings
-                        ? "bg-slate-700 text-teal-300 border-teal-500/50"
-                        : "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white"
-                    }`}
-                    title="Ajustar datos o valores del documento"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                    <span>{showReceiptSettings ? "Ocultar Ajustes" : "Editar Datos"}</span>
-                  </button>
+                  {/* Action Buttons Top */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowReceiptSettings(prev => !prev)}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition border ${
+                        showReceiptSettings
+                          ? "bg-slate-700 text-teal-300 border-teal-500/50"
+                          : "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white"
+                      }`}
+                      title="Ajustar datos o valores del documento"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>{showReceiptSettings ? "Ocultar Ajustes" : "Editar Datos"}</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={handlePrintDocument}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-slate-950 font-black text-xs transition shadow-md cursor-pointer"
-                    title="Imprimir documento directamente"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span>Imprimir</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={handlePrintDocument}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-slate-950 font-black text-xs transition shadow-md cursor-pointer"
+                      title="Imprimir documento directamente"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>Imprimir</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    disabled={exportingReceiptPdf}
-                    onClick={() => {
-                      if (receiptDocType === "pago") handleExportReceiptBackend("pdf");
-                      else handleExportFichaBackend("pdf");
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/90 hover:bg-rose-500 text-white font-bold text-xs transition shadow-md disabled:opacity-50 cursor-pointer"
-                    title="Descargar versión PDF generada en backend"
-                  >
-                    {exportingReceiptPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                    <span>PDF</span>
-                  </button>
+                    <button
+                      type="button"
+                      disabled={exportingReceiptPdf}
+                      onClick={() => {
+                        if (receiptDocType === "pago") handleExportReceiptBackend("pdf");
+                        else handleExportFichaBackend("pdf");
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/90 hover:bg-rose-500 text-white font-bold text-xs transition shadow-md disabled:opacity-50 cursor-pointer"
+                      title="Descargar versión PDF generada en backend"
+                    >
+                      {exportingReceiptPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                      <span>PDF</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    disabled={exportingReceiptExcel}
-                    onClick={() => {
-                      if (receiptDocType === "pago") handleExportReceiptBackend("excel");
-                      else handleExportFichaBackend("excel");
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-md disabled:opacity-50 cursor-pointer"
-                    title="Descargar versión Excel generada en backend"
-                  >
-                    {exportingReceiptExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
-                    <span>Excel</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowReceiptsModal(false)}
-                    className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer"
-                    title="Cerrar ventana"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                    <button
+                      type="button"
+                      disabled={exportingReceiptExcel}
+                      onClick={() => {
+                        if (receiptDocType === "pago") handleExportReceiptBackend("excel");
+                        else handleExportFichaBackend("excel");
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-md disabled:opacity-50 cursor-pointer"
+                      title="Descargar versión Excel generada en backend"
+                    >
+                      {exportingReceiptExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                      <span>Excel</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -3859,7 +3937,7 @@ function VacacionesContent() {
                                 .filter(r => r.tipo === "dias_pagados" || r.tipo === "a_cuenta")
                                 .map(r => (
                                   <option key={r.id} value={r.id}>
-                                    Reg #{r.id}: {r.dias} d ({formatDMY(r.fecha_inicio)})
+                                    Reg #{r.id}: {r.dias} d ({formatDMY(r.fecha_solicitud || r.fecha_inicio)})
                                   </option>
                                 ))
                               }
@@ -4045,7 +4123,7 @@ function VacacionesContent() {
                   {(() => {
                     // Helper para renderizar 1 copia del Recibo de Pago (mitad de hoja)
                     const renderSinglePaymentReceipt = () => (
-                      <div className="p-6 sm:p-8 bg-white text-slate-900 font-sans text-xs leading-relaxed">
+                      <div className="p-6 sm:p-8 bg-white text-slate-900 font-sans text-xs leading-relaxed h-full flex flex-col justify-between">
                         {/* Cabecera: Únicamente N° de Recibo a la derecha (sin etiquetas de Original/Copia) */}
                         <div className="flex justify-end items-center mb-3">
                           <div className="border border-slate-700 px-3.5 py-1 font-bold text-xs tracking-wide text-slate-900 bg-slate-50 shadow-sm">
@@ -4101,39 +4179,45 @@ function VacacionesContent() {
                           <span className="font-medium underline decoration-slate-400">{reciboLugarFecha}</span>
                         </div>
 
-                        {/* Firmas: con líneas de puntos para llenado manual por defecto */}
+                        {/* Firmas: RECIBÍ CONFORME y ENTREGUÉ CONFORME (Firma arriba, Nombre y C.I. abajo completados) */}
                         {reciboFirmasEnBlanco ? (
                           <div className="grid grid-cols-2 gap-8 text-center pt-3 border-t border-slate-200">
                             <div className="space-y-1.5 text-left text-[11px] text-slate-800 px-2">
-                              <div className="font-bold text-xs text-slate-900 uppercase text-center mb-2">TRABAJADOR</div>
+                              <div className="font-bold text-xs text-slate-900 uppercase text-center mb-1">RECIBÍ CONFORME</div>
+                              {/* Espacio vertical libre amplio para la firma física y sello */}
+                              <div className="h-20 sm:h-24"></div>
+                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">Firma:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
                               <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">Nombre:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
                               <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">C.I.:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
-                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">Firma:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
                             </div>
 
                             <div className="space-y-1.5 text-left text-[11px] text-slate-800 px-2">
-                              <div className="font-bold text-xs text-slate-900 uppercase text-center mb-2">EMPLEADOR</div>
-                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">Nombre:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
-                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">C.I.:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
+                              <div className="font-bold text-xs text-slate-900 uppercase text-center mb-1">ENTREGUÉ CONFORME</div>
+                              {/* Espacio vertical libre amplio para la firma física y sello */}
+                              <div className="h-20 sm:h-24"></div>
                               <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">Firma:</span><span className="text-slate-400 font-mono tracking-wider select-none overflow-hidden whitespace-nowrap w-full">................................................................................................................................</span></div>
+                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">Nombre:</span><span className="text-slate-800 font-semibold truncate">{reciboEmpleadorNombre || "................................................................................................................................"}</span></div>
+                              <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1.5">C.I.:</span><span className="text-slate-800 font-semibold font-mono truncate">{reciboEmpleadorCi || "................................................................................................................................"}</span></div>
                             </div>
                           </div>
                         ) : (
                           <div className="grid grid-cols-2 gap-8 text-center pt-3 border-t border-slate-200">
                             <div className="flex flex-col items-center">
+                              <div className="font-bold text-xs text-slate-900 uppercase mb-1">RECIBÍ CONFORME</div>
+                              {/* Espacio vertical libre amplio para la firma física y sello */}
+                              <div className="h-20 sm:h-24"></div>
                               <div className="w-44 border-b border-slate-500 mb-1.5"></div>
-                              <div className="font-bold text-xs text-slate-900 uppercase">TRABAJADOR</div>
-                              <div className="text-[11px] text-slate-700 font-semibold">{receiptEmployee.employee_name}</div>
+                              <div className="text-[11px] text-slate-700 font-semibold">Nombre: {receiptEmployee.employee_name}</div>
                               <div className="text-[11px] text-slate-600 font-mono">C.I.: {receiptEmployee.employee_ci}</div>
-                              <div className="text-[10px] text-slate-400 mt-1">Firma: ________________________</div>
                             </div>
 
                             <div className="flex flex-col items-center">
+                              <div className="font-bold text-xs text-slate-900 uppercase mb-1">ENTREGUÉ CONFORME</div>
+                              {/* Espacio vertical libre amplio para la firma física y sello */}
+                              <div className="h-20 sm:h-24"></div>
                               <div className="w-44 border-b border-slate-500 mb-1.5"></div>
-                              <div className="font-bold text-xs text-slate-900 uppercase">EMPLEADOR</div>
-                              <div className="text-[11px] text-slate-700 font-semibold">{reciboEmpleadorNombre}</div>
-                              <div className="text-[11px] text-slate-600 font-mono capitalize">{reciboEmpleadorRol}: {reciboEmpleadorCi}</div>
-                              <div className="text-[10px] text-slate-400 mt-1">Firma: ________________________</div>
+                              <div className="text-[11px] text-slate-700 font-semibold">Nombre: {reciboEmpleadorNombre}</div>
+                              <div className="text-[11px] text-slate-600 font-mono">C.I.: {reciboEmpleadorCi}</div>
                             </div>
                           </div>
                         )}
@@ -4344,20 +4428,24 @@ function VacacionesContent() {
                       return (
                         <div
                           id="printable-vacation-document"
-                          className="bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-300 max-w-2xl sm:max-w-3xl w-full font-sans overflow-hidden"
+                          className="bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-300 max-w-2xl sm:max-w-3xl w-full font-sans overflow-hidden flex flex-col justify-between"
                         >
                           {/* Mitad Superior */}
-                          {renderSinglePaymentReceipt()}
+                          <div className="flex-1 flex flex-col justify-between">
+                            {renderSinglePaymentReceipt()}
+                          </div>
 
-                          {/* Línea Central de Corte */}
-                          <div className="relative my-1 py-1.5 flex items-center justify-center bg-white border-y border-dashed border-slate-300">
+                          {/* Línea Central de Corte (exactamente al medio de la hoja) */}
+                          <div className="relative py-2 flex items-center justify-center bg-white border-y border-dashed border-slate-300 select-none">
                             <span className="text-[10px] sm:text-[11px] font-mono font-bold text-slate-500 tracking-wider">
                               - - - - - - - - - - - - - - - - - - - - - - - - ✂ CORTAR AQUÍ ✂ - - - - - - - - - - - - - - - - - - - - - - - -
                             </span>
                           </div>
 
                           {/* Mitad Inferior */}
-                          {renderSinglePaymentReceipt()}
+                          <div className="flex-1 flex flex-col justify-between">
+                            {renderSinglePaymentReceipt()}
+                          </div>
                         </div>
                       );
                     } else {

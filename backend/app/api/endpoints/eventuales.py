@@ -7,7 +7,7 @@ from datetime import date
 import calendar
 import re
 
-from app.db.session import engine
+from app.db.session import engine, get_tenant_db
 from app.models.eventual_payroll import EventualPayroll, EventualPayslip
 from app.models.payroll import Payroll, Payslip
 from app.models.employee import Employee
@@ -27,14 +27,6 @@ from app.services.document_service import DocumentService
 
 router = APIRouter()
 
-def get_tenant_db(schema_name: str):
-    engine_with_schema = engine.execution_options(schema_translate_map={"tenant": schema_name})
-    SessionTenant = sessionmaker(autocommit=False, autoflush=False, bind=engine_with_schema)
-    db = SessionTenant()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def get_smn(db: Session, year: int) -> Decimal:
     smn = db.query(SalarioMinimoNacional).filter(SalarioMinimoNacional.year == year).first()
@@ -246,6 +238,7 @@ def get_or_generate_eventual_payroll(schema_name: str, month: int, year: int, db
                 horas_pagadas=horas_pag,
                 haber_basico=h_basico,
                 bono_antiguedad=bono_ant,
+                otros=Decimal("0.00"),
                 bono_produccion=bono_prod,
                 subsidio_frontera=sub_fron,
                 trabajo_extraordinario=trab_ext,
@@ -289,6 +282,7 @@ def get_or_generate_eventual_payroll(schema_name: str, month: int, year: int, db
             slip.employee_ci = f"{emp.documento_identidad.strip()}{ext}".strip()
             slip.employee_cargo = emp.ocupacion
             slip.employee_fecha_ingreso = str(emp.fecha_ingreso)
+            slip.employee_fecha_afiliacion = str(emp.fecha_afiliacion) if getattr(emp, 'fecha_afiliacion', None) else None
             slip.employee_nacionalidad = emp.nacionalidad or 'BOLIVIANO'
             slip.employee_fecha_nacimiento = str(emp.fecha_nacimiento)
             slip.employee_sexo = getattr(emp, 'sexo', None) or 'M'
@@ -318,6 +312,10 @@ def update_eventual_payslip(schema_name: str, payslip_id: int, updates: Eventual
         slip.haber_basico = updates.haber_basico
         slip.is_customized = True
         
+    if updates.otros is not None:
+        slip.otros = updates.otros
+        slip.is_customized = True
+
     if updates.dias_pagados is not None:
         slip.dias_pagados = updates.dias_pagados
     if updates.horas_pagadas is not None:
@@ -415,6 +413,7 @@ def update_eventual_payslip(schema_name: str, payslip_id: int, updates: Eventual
         res.employee_ci = f"{emp.documento_identidad.strip()}{ext}".strip()
         res.employee_cargo = emp.ocupacion
         res.employee_fecha_ingreso = str(emp.fecha_ingreso)
+        res.employee_fecha_afiliacion = str(emp.fecha_afiliacion) if getattr(emp, 'fecha_afiliacion', None) else None
         res.employee_nacionalidad = emp.nacionalidad or 'BOLIVIANO'
         res.employee_fecha_nacimiento = str(emp.fecha_nacimiento)
         res.employee_sexo = getattr(emp, 'sexo', None) or 'M'
@@ -470,6 +469,7 @@ def export_eventual_payroll_excel(schema_name: str, month: int, year: int, db: S
             "horas_pagadas": float(s.horas_pagadas),
             "haber_basico": float(s.haber_basico),
             "bono_antiguedad": float(s.bono_antiguedad),
+            "otros": float(s.otros or 0.0),
             "bono_produccion": float(s.bono_produccion),
             "subsidio_frontera": float(s.subsidio_frontera),
             "trabajo_extraordinario": float(s.trabajo_extraordinario),
@@ -518,6 +518,7 @@ def export_eventual_payroll_pdf(schema_name: str, month: int, year: int, db: Ses
             "horas_pagadas": float(s.horas_pagadas),
             "haber_basico": float(s.haber_basico),
             "bono_antiguedad": float(s.bono_antiguedad),
+            "otros": float(s.otros or 0.0),
             "bono_produccion": float(s.bono_produccion),
             "subsidio_frontera": float(s.subsidio_frontera),
             "trabajo_extraordinario": float(s.trabajo_extraordinario),

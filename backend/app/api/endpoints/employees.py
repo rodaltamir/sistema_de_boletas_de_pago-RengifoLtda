@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import text
-from app.db.session import engine
+from app.db.session import engine, get_tenant_db
 from app.models.employee import Employee
 from app.models.department import Department
 from app.models.payroll import Payslip, Payroll
@@ -17,14 +17,6 @@ from app.models.global_params import SalarioMinimoNacional
 
 router = APIRouter()
 
-def get_tenant_db(schema_name: str):
-    engine_with_schema = engine.execution_options(schema_translate_map={'tenant': schema_name})
-    SessionTenant = sessionmaker(autocommit=False, autoflush=False, bind=engine_with_schema)
-    db = SessionTenant()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def get_smn(db: Session, year: int) -> Decimal:
     smn = db.query(SalarioMinimoNacional).filter(SalarioMinimoNacional.year == year).first()
@@ -216,6 +208,13 @@ def create_employee(schema_name: str, employee: EmployeeCreate, db: Session = De
                 detail=f"Fecha de ingreso inválida: el empleado tendría {edad_ingreso} años al ingresar (edad mínima legal de trabajo en Bolivia: 14 años)."
             )
 
+    if employee.fecha_afiliacion and employee.fecha_ingreso:
+        if employee.fecha_afiliacion < employee.fecha_ingreso:
+            raise HTTPException(
+                status_code=400,
+                detail="La fecha de afiliación no puede ser anterior a la fecha de ingreso a la empresa."
+            )
+
     db_employee = db.query(Employee).filter(Employee.documento_identidad == employee.documento_identidad).first()
     if db_employee:
         if not db_employee.is_active:
@@ -263,6 +262,13 @@ def update_employee(schema_name: str, emp_id: int, employee: EmployeeUpdate, db:
                 status_code=400,
                 detail=f"Fecha de ingreso inválida: el empleado tendría {edad_ingreso} años al ingresar (edad mínima legal de trabajo en Bolivia: 14 años)."
             )
+
+    f_afil = update_data.get("fecha_afiliacion") if "fecha_afiliacion" in update_data else db_emp.fecha_afiliacion
+    if f_afil and f_ing and f_afil < f_ing:
+        raise HTTPException(
+            status_code=400,
+            detail="La fecha de afiliación no puede ser anterior a la fecha de ingreso a la empresa."
+        )
 
     if "department_id" in update_data:
         if update_data["department_id"]:

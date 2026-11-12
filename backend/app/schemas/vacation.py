@@ -40,7 +40,10 @@ class EmployeeVacationSummary(BaseModel):
     employee_ci: str
     employee_cargo: str
     fecha_ingreso: str
+    fecha_afiliacion: Optional[str] = None
     haber_basico: Optional[float] = 0.0
+    otros: Optional[float] = 0.0
+    total_ganado_mensual: Optional[float] = 0.0
     fecha_desde: Optional[str] = None
     fecha_hasta: Optional[str] = None
     antiguedad_anios: int

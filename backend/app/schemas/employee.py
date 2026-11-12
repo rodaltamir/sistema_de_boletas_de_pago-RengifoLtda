@@ -17,6 +17,7 @@ class EmployeeBase(BaseModel):
     department_id: Optional[int] = None
     departamento: Optional[str] = None
     fecha_ingreso: date
+    fecha_afiliacion: Optional[date] = None
     haber_basico: Decimal
     tipo_contrato: Optional[str] = "permanente" # "permanente" | "eventual"
     is_active: bool = True
@@ -38,6 +39,7 @@ class EmployeeUpdate(BaseModel):
     department_id: Optional[int] = None
     departamento: Optional[str] = None
     fecha_ingreso: Optional[date] = None
+    fecha_afiliacion: Optional[date] = None
     haber_basico: Optional[Decimal] = None
     tipo_contrato: Optional[str] = None
     is_active: Optional[bool] = None

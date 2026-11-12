@@ -7,9 +7,10 @@ from typing import Optional
 import json
 import re
 
-from app.db.session import engine
+from app.db.session import engine, get_tenant_db
 from app.models.vacation import VacationRecord
 from app.models.employee import Employee
+from app.models.eventual_payroll import EventualPayroll, EventualPayslip
 from app.schemas.vacation import (
     VacationRecordCreate,
     VacationRecordResponse,
@@ -21,14 +22,28 @@ from app.services.document_service import DocumentService
 
 router = APIRouter()
 
-def get_tenant_db(schema_name: str):
-    engine_with_schema = engine.execution_options(schema_translate_map={"tenant": schema_name})
-    SessionTenant = sessionmaker(autocommit=False, autoflush=False, bind=engine_with_schema)
-    db = SessionTenant()
+
+def get_employee_eventual_wage(db: Session, employee_id: int, fallback_hb: float = 0.0):
+    """
+    Obtiene el haber básico y otros ingresos de la planilla de eventuales más reciente.
+    Retorna (haber_basico, otros, total_ganado_mensual = haber_basico + otros).
+    """
     try:
-        yield db
-    finally:
-        db.close()
+        slip = (
+            db.query(EventualPayslip)
+            .join(EventualPayroll, EventualPayslip.eventual_payroll_id == EventualPayroll.id)
+            .filter(EventualPayslip.employee_id == employee_id)
+            .order_by(EventualPayroll.year.desc(), EventualPayroll.month.desc())
+            .first()
+        )
+        if slip:
+            hb = float(slip.haber_basico if slip.haber_basico is not None else (fallback_hb or 0.0))
+            otros = float(getattr(slip, 'otros', 0.0) or 0.0)
+            return hb, otros, hb + otros
+    except Exception:
+        pass
+    hb = float(fallback_hb or 0.0)
+    return hb, 0.0, hb
 
 def sort_code_key(code_val, fallback_id=0):
     if not code_val:
@@ -124,6 +139,7 @@ def get_company_vacation_summary(
                 created_at=str(r.created_at) if r.created_at else None
             ))
 
+        hb, otros_val, tg_mensual = get_employee_eventual_wage(db, emp.id, float(emp.haber_basico or 0.0))
         ext = f" {emp.ext_ci.strip()}" if emp.ext_ci else ""
         emp_summaries.append(EmployeeVacationSummary(
             employee_id=emp.id,
@@ -132,7 +148,10 @@ def get_company_vacation_summary(
             employee_ci=f"{emp.documento_identidad.strip()}{ext}".strip(),
             employee_cargo=emp.ocupacion,
             fecha_ingreso=str(emp.fecha_ingreso),
-            haber_basico=float(emp.haber_basico or 0.0),
+            fecha_afiliacion=str(emp.fecha_afiliacion) if getattr(emp, 'fecha_afiliacion', None) else None,
+            haber_basico=hb,
+            otros=otros_val,
+            total_ganado_mensual=tg_mensual,
             antiguedad_anios=calc["anios"],
             antiguedad_meses=calc["meses"],
             antiguedad_dias=calc["dias"],
@@ -222,6 +241,7 @@ def get_employee_vacation_summary(
             created_at=str(r.created_at) if r.created_at else None
         ))
 
+    hb, otros_val, tg_mensual = get_employee_eventual_wage(db, emp.id, float(emp.haber_basico or 0.0))
     ext = f" {emp.ext_ci.strip()}" if emp.ext_ci else ""
     return EmployeeVacationSummary(
         employee_id=emp.id,
@@ -230,7 +250,10 @@ def get_employee_vacation_summary(
         employee_ci=f"{emp.documento_identidad.strip()}{ext}".strip(),
         employee_cargo=emp.ocupacion,
         fecha_ingreso=str(emp.fecha_ingreso),
-        haber_basico=float(emp.haber_basico or 0.0),
+        fecha_afiliacion=str(emp.fecha_afiliacion) if getattr(emp, 'fecha_afiliacion', None) else None,
+        haber_basico=hb,
+        otros=otros_val,
+        total_ganado_mensual=tg_mensual,
         antiguedad_anios=calc["anios"],
         antiguedad_meses=calc["meses"],
         antiguedad_dias=calc["dias"],
@@ -560,6 +583,13 @@ def export_recibo_pago_vacaciones(
     rec = None
     if record_id:
         rec = db.query(VacationRecord).filter(VacationRecord.id == record_id).first()
+        if not recibo_nro or recibo_nro == "001":
+            recibo_nro = f"00{rec.id}"
+        if not lugar_fecha and rec:
+            rec_date = rec.fecha_solicitud or rec.fecha_inicio
+            if rec_date:
+                meses_es = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+                lugar_fecha = f"La Paz, {rec_date.day} de {meses_es[rec_date.month - 1]} de {rec_date.year}"
 
     if dias is not None:
         effective_dias = dias
@@ -572,7 +602,8 @@ def export_recibo_pago_vacaciones(
         ).all()
         effective_dias = sum(float(r.dias) for r in recs_pagados) if recs_pagados else 0.0
 
-    tg = total_ganado if (total_ganado is not None and total_ganado > 0) else float(emp.haber_basico or 0.0)
+    hb, otros_val, tg_mensual = get_employee_eventual_wage(db, employee_id, float(emp.haber_basico or 0.0))
+    tg = total_ganado if (total_ganado is not None and total_ganado > 0) else tg_mensual
     sd = tg / 30.0 if tg > 0 else 0.0
     importe = sd * effective_dias
 
@@ -581,7 +612,7 @@ def export_recibo_pago_vacaciones(
     trabajador_nombre = f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().upper()
 
     final_empleador_nombre = empleador_nombre or rep_legal
-    final_empleador_ci = empleador_ci or t_emp_ci
+    final_empleador_ci = empleador_ci or t_emp_ci or t_nit
     final_empleador_rol = empleador_rol or "propietario"
 
     payload = {
@@ -746,7 +777,7 @@ def export_lote_recibos_pago_vacaciones(
         rep_legal = f"{t_emp_paterno} {t_emp_materno} {t_emp_nombres}".strip() or t_name
 
     final_empleador_nombre = empleador_nombre or rep_legal
-    final_empleador_ci = empleador_ci or t_emp_ci
+    final_empleador_ci = empleador_ci or t_emp_ci or t_nit
     final_empleador_rol = empleador_rol or "propietario"
 
     employees = db.query(Employee).filter(Employee.is_active == True).all()
@@ -769,7 +800,8 @@ def export_lote_recibos_pago_vacaciones(
         if solo_con_pagos and effective_dias <= 0:
             continue
 
-        tg = float(emp.haber_basico or 0.0)
+        hb, otros_val, tg_mensual = get_employee_eventual_wage(db, emp.id, float(emp.haber_basico or 0.0))
+        tg = tg_mensual
         sd = tg / 30.0 if tg > 0 else 0.0
         importe = sd * effective_dias
 

@@ -166,6 +166,15 @@ def get_tenant_dashboard(schema_name: str, db: Session = Depends(get_db)):
             except Exception:
                 total_prefiniquitos = 0
 
+            # Control de Vacaciones
+            total_vacaciones_registros = 0
+            if getattr(tenant, "has_vacaciones", False):
+                try:
+                    res_vac = conn.execute(text(f'SELECT COUNT(*) FROM "{schema_name}".vacation_records'))
+                    total_vacaciones_registros = res_vac.scalar() or 0
+                except Exception:
+                    total_vacaciones_registros = 0
+
     except Exception as e:
         print(f"Error contando estadisticas: {e}")
 
@@ -182,6 +191,7 @@ def get_tenant_dashboard(schema_name: str, db: Session = Depends(get_db)):
         "recent_employees": recent_employees,
         "latest_payroll": latest_payroll,
         "total_prefiniquitos": total_prefiniquitos,
+        "total_vacaciones_registros": total_vacaciones_registros,
         "current_smn": current_smn,
         "current_year": current_year
     }
@@ -265,3 +275,14 @@ def update_tenant(schema_name: str, data: TenantCreate, db: Session = Depends(ge
     db.commit()
     db.refresh(tenant)
     return tenant
+
+@router.post("/maintenance/cleanup-temp-files")
+@router.post("/maintenance/cleanup-temp-files/", include_in_schema=False)
+def cleanup_temp_files(max_age_hours: int = 48):
+    """
+    Limpia archivos temporales de exportación (Excel, PDF) que tengan más de X horas de antigüedad.
+    No borra datos de la base de datos ni configuraciones de las empresas.
+    """
+    from app.services.document_service import DocumentService
+    result = DocumentService.cleanup_temp_exports(max_age_hours=max_age_hours)
+    return {"status": "ok", "message": "Limpieza de archivos temporales completada", "details": result}

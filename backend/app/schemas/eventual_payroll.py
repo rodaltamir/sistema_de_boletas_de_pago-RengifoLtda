@@ -7,6 +7,7 @@ class EventualPayslipBase(BaseModel):
     horas_pagadas: Decimal = Decimal("8.00")
     haber_basico: Decimal
     bono_antiguedad: Decimal = Decimal("0.00")
+    otros: Decimal = Decimal("0.00")
     bono_produccion: Decimal = Decimal("0.00")
     subsidio_frontera: Decimal = Decimal("0.00")
     trabajo_extraordinario: Decimal = Decimal("0.00")
@@ -24,6 +25,7 @@ class EventualPayslipBase(BaseModel):
 
 class EventualPayslipUpdate(BaseModel):
     haber_basico: Optional[Decimal] = None
+    otros: Optional[Decimal] = None
     dias_pagados: Optional[int] = None
     horas_pagadas: Optional[Decimal] = None
     bono_produccion: Optional[Decimal] = None
@@ -48,6 +50,7 @@ class EventualPayslipResponse(EventualPayslipBase):
     employee_ci: Optional[str] = None
     employee_cargo: Optional[str] = None
     employee_fecha_ingreso: Optional[str] = None
+    employee_fecha_afiliacion: Optional[str] = None
     employee_nacionalidad: Optional[str] = None
     employee_fecha_nacimiento: Optional[str] = None
     employee_sexo: Optional[str] = None

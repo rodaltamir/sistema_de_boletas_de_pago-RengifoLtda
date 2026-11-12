@@ -7,8 +7,7 @@ from datetime import date
 import re
 import calendar
 
-from app.db.session import engine
-from sqlalchemy.orm import sessionmaker
+from app.db.session import engine, get_tenant_db
 from app.models.payroll import Payroll, Payslip
 from app.models.employee import Employee
 from app.models.patronal import PatronalDetail
@@ -22,14 +21,6 @@ from app.services.document_service import DocumentService
 
 router = APIRouter()
 
-def get_tenant_db(schema_name: str):
-    engine_with_schema = engine.execution_options(schema_translate_map={"tenant": schema_name})
-    SessionTenant = sessionmaker(autocommit=False, autoflush=False, bind=engine_with_schema)
-    db = SessionTenant()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def sort_code_key(code_val, fallback_id=0):
     if not code_val:

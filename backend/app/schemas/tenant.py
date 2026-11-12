@@ -70,6 +70,7 @@ class TenantDashboardResponse(BaseModel):
     recent_employees: Optional[list[RecentEmployeeStat]] = []
     latest_payroll: Optional[LatestPayrollStat] = None
     total_prefiniquitos: Optional[int] = 0
+    total_vacaciones_registros: Optional[int] = 0
     current_smn: float
     current_year: int
 

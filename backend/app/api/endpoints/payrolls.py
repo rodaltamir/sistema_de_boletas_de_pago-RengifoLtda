@@ -8,8 +8,7 @@ import calendar
 import os
 import re
 
-from app.db.session import engine
-from sqlalchemy.orm import sessionmaker
+from app.db.session import engine, get_tenant_db
 from app.models.payroll import Payroll, Payslip
 from app.models.employee import Employee
 from app.models.prefiniquito import Prefiniquito
@@ -24,14 +23,6 @@ from app.services.document_service import DocumentService
 
 router = APIRouter()
 
-def get_tenant_db(schema_name: str):
-    engine_with_schema = engine.execution_options(schema_translate_map={"tenant": schema_name})
-    SessionTenant = sessionmaker(autocommit=False, autoflush=False, bind=engine_with_schema)
-    db = SessionTenant()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def get_smn(db: Session, year: int) -> Decimal:
     smn = db.query(SalarioMinimoNacional).filter(SalarioMinimoNacional.year == year).first()
@@ -94,8 +85,9 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
             if t_has_eventuales and getattr(emp, 'tipo_contrato', 'permanente') == 'eventual':
                 slips_to_remove.append(p)
                 continue
-            # Si su fecha de ingreso es posterior al fin de este mes, no debe figurar en esta planilla
-            if emp.fecha_ingreso > period_end:
+            f_afil_or_ing = emp.fecha_afiliacion or emp.fecha_ingreso
+            # Si su fecha de afiliación/ingreso es posterior al fin de este mes, no debe figurar en esta planilla
+            if f_afil_or_ing > period_end:
                 slips_to_remove.append(p)
                 continue
             # Si el empleado no está activo, verificar si su retiro fue antes de este mes
@@ -120,8 +112,9 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
                 continue
             if t_has_eventuales and getattr(emp, 'tipo_contrato', 'permanente') == 'eventual':
                 continue
-            # El empleado debe haber ingresado a más tardar en este mes
-            if emp.fecha_ingreso > period_end:
+            f_afil_or_ing = emp.fecha_afiliacion or emp.fecha_ingreso
+            # El empleado debe estar afiliado/ingresado a más tardar en este mes
+            if f_afil_or_ing > period_end:
                 continue
             # Si no está activo, solo incluir si su retiro ocurrió durante o después de este mes
             if not emp.is_active:
@@ -132,18 +125,19 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
         
         if missing_employees:
             for emp in missing_employees:
-                anios_ant = calculate_seniority_years(emp.fecha_ingreso, year, month)
+                f_afil_or_ing = emp.fecha_afiliacion or emp.fecha_ingreso
+                anios_ant = calculate_seniority_years(f_afil_or_ing, year, month)
                 calc = calcular_boleta_empleado(
                     haber_basico=Decimal(str(emp.haber_basico)),
                     anios_antiguedad=max(0, anios_ant),
                     smn=smn_actual
                 )
                 
-                # Calcular días pagados si ingresó en el transcurso del mes
+                # Calcular días pagados si ingresó/se afilió en el transcurso del mes
                 dias_pagados = 30
-                if emp.fecha_ingreso.year == year and emp.fecha_ingreso.month == month:
-                    if emp.fecha_ingreso.day > 1:
-                        dias_pagados = max(1, 30 - emp.fecha_ingreso.day + 1)
+                if f_afil_or_ing.year == year and f_afil_or_ing.month == month:
+                    if f_afil_or_ing.day > 1:
+                        dias_pagados = max(1, 30 - f_afil_or_ing.day + 1)
 
                 payslip = Payslip(
                     payroll_id=payroll.id,
@@ -162,7 +156,8 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
             emp = db.query(Employee).filter(Employee.id == p.employee_id).first()
             if not emp:
                 continue
-            anios_ant = calculate_seniority_years(emp.fecha_ingreso, year, month)
+            f_afil_or_ing = emp.fecha_afiliacion or emp.fecha_ingreso
+            anios_ant = calculate_seniority_years(f_afil_or_ing, year, month)
             expected_bono = calcular_bono_antiguedad(anios_ant, smn_actual)
             if Decimal(str(p.bono_antiguedad or 0)) != expected_bono:
                 h_basico = Decimal(str(p.haber_basico or emp.haber_basico))
@@ -203,7 +198,8 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
     for slip in response_data.payslips:
         emp = db.query(Employee).filter(Employee.id == slip.employee_id).first()
         if emp:
-            if emp.fecha_ingreso > period_end:
+            f_afil_or_ing = emp.fecha_afiliacion or emp.fecha_ingreso
+            if f_afil_or_ing > period_end:
                 continue
             slip.employee_code = emp.internal_code or str(emp.id)
             slip.employee_name = f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().replace("  ", " ").upper()
@@ -211,6 +207,7 @@ def get_or_generate_payroll(schema_name: str, month: int, year: int, db: Session
             slip.employee_ci = f"{emp.documento_identidad.strip()}{ext}".strip()
             slip.employee_cargo = emp.ocupacion
             slip.employee_fecha_ingreso = str(emp.fecha_ingreso)
+            slip.employee_fecha_afiliacion = str(emp.fecha_afiliacion) if getattr(emp, 'fecha_afiliacion', None) else None
             slip.employee_nacionalidad = emp.nacionalidad or 'BOLIVIANO'
             slip.employee_fecha_nacimiento = str(emp.fecha_nacimiento)
             slip.employee_sexo = getattr(emp, 'sexo', None) or getattr(emp, 'genero', None) or 'M'
@@ -375,7 +372,7 @@ def update_payslip(schema_name: str, month: int, year: int, payslip_id: int, upd
     # Recalcular todo
     emp = db.query(Employee).filter(Employee.id == payslip.employee_id).first()
     smn_actual = get_smn(db, year)
-    anios_ant = calculate_seniority_years(emp.fecha_ingreso, year, month)
+    anios_ant = calculate_seniority_years(emp.fecha_afiliacion or emp.fecha_ingreso, year, month)
     
     calc = calcular_boleta_empleado(
         haber_basico=Decimal(str(payslip.haber_basico)),
@@ -408,6 +405,7 @@ def update_payslip(schema_name: str, month: int, year: int, payslip_id: int, upd
     response_slip.employee_ci = f"{emp.documento_identidad}{ext}"
     response_slip.employee_cargo = emp.ocupacion
     response_slip.employee_fecha_ingreso = str(emp.fecha_ingreso)
+    response_slip.employee_fecha_afiliacion = str(emp.fecha_afiliacion) if getattr(emp, 'fecha_afiliacion', None) else None
     response_slip.employee_nacionalidad = emp.nacionalidad or 'BOLIVIANO'
     response_slip.employee_fecha_nacimiento = str(emp.fecha_nacimiento)
     response_slip.employee_sexo = getattr(emp, 'sexo', None) or getattr(emp, 'genero', None) or 'M'

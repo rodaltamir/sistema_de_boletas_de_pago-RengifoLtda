@@ -52,6 +52,7 @@ interface Payslip {
   
   haber_basico: number;
   bono_antiguedad: number;
+  otros?: number;
   bono_produccion: number;
   subsidio_frontera: number;
   trabajo_extraordinario: number;
@@ -135,6 +136,7 @@ interface AguinaldoSlip {
   employee_fecha_ingreso?: string;
   haber_basico: number;
   bono_antiguedad: number;
+  otros?: number;
   bono_produccion: number;
   subsidio_frontera: number;
   trabajo_extraordinario: number;
@@ -183,6 +185,7 @@ interface EventualPayslip {
   employee_ci?: string;
   employee_cargo?: string;
   employee_fecha_ingreso?: string;
+  employee_fecha_afiliacion?: string;
   employee_nacionalidad?: string;
   employee_fecha_nacimiento?: string;
   employee_sexo?: string;
@@ -193,6 +196,7 @@ interface EventualPayslip {
   horas_pagadas: number;
   haber_basico: number;
   bono_antiguedad: number;
+  otros?: number;
   bono_produccion: number;
   subsidio_frontera: number;
   trabajo_extraordinario: number;
@@ -490,6 +494,12 @@ function PlanillasPageContent() {
   const [savingSlipId, setSavingSlipId] = useState<number | null>(null);
   const [saveSuccessSlipId, setSaveSuccessSlipId] = useState<number | null>(null);
 
+  // Edición directa de la columna Otros (computable para vacaciones)
+  const [editingOtrosSlipId, setEditingOtrosSlipId] = useState<number | null>(null);
+  const [editingOtrosValue, setEditingOtrosValue] = useState<string>("");
+  const [savingOtrosSlipId, setSavingOtrosSlipId] = useState<number | null>(null);
+  const [saveOtrosSuccessSlipId, setSaveOtrosSuccessSlipId] = useState<number | null>(null);
+
   // Gestión de Descuentos Individuales (Anticipos, Faltas, Otros Descuentos)
   const [discountsDrafts, setDiscountsDrafts] = useState<Record<number, { anticipos: string; faltas: string; otros_descuentos: string }>>({});
   const [savingDiscountsSlipId, setSavingDiscountsSlipId] = useState<number | null>(null);
@@ -572,6 +582,58 @@ function PlanillasPageContent() {
       alert("Error de conexión al guardar el Haber Básico");
     } finally {
       setSavingSlipId(null);
+    }
+  };
+
+  const handleStartEditOtros = (slip: EventualPayslip) => {
+    setEditingOtrosSlipId(slip.id);
+    const val = Number(slip.otros || 0);
+    setEditingOtrosValue(val === 0 ? "" : String(val));
+  };
+
+  const handleCancelEditOtros = () => {
+    setEditingOtrosSlipId(null);
+    setEditingOtrosValue("");
+  };
+
+  const handleSaveOtros = async (slipId: number, valOverride?: number) => {
+    if (!tenantSchema || !eventualPayroll) return;
+    const rawStr = editingOtrosValue.trim();
+    const numVal = valOverride !== undefined 
+      ? valOverride 
+      : (rawStr === "" ? 0 : parseFloat(rawStr));
+    if (isNaN(numVal) || numVal < 0) {
+      alert("Por favor introduzca un monto válido para Otros (0 o mayor).");
+      return;
+    }
+    setSavingOtrosSlipId(slipId);
+    try {
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/eventuales/slip/${slipId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otros: numVal })
+      });
+      if (res.ok) {
+        const updatedSlip: EventualPayslip = await res.json();
+        setEventualPayroll(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            payslips: prev.payslips.map(s => s.id === updatedSlip.id ? updatedSlip : s)
+          };
+        });
+        setEditingOtrosSlipId(null);
+        setSaveOtrosSuccessSlipId(slipId);
+        setTimeout(() => setSaveOtrosSuccessSlipId(null), 2500);
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Error al actualizar Otros");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error de conexión al guardar Otros");
+    } finally {
+      setSavingOtrosSlipId(null);
     }
   };
 
@@ -1732,6 +1794,9 @@ function PlanillasPageContent() {
                         Haber Básico (Editable)
                       </th>
                       <th className="p-3.5 font-semibold text-right text-slate-200 whitespace-nowrap">Bono Antigüedad</th>
+                      <th className="p-3.5 font-semibold text-right text-amber-300 whitespace-nowrap bg-slate-800" title="Monto adicional computable para el cálculo de vacaciones">
+                        Otros (Editable)
+                      </th>
                       <th className="p-3.5 font-semibold text-right text-teal-400 whitespace-nowrap">Total Ganado</th>
                       <th className="p-3.5 font-semibold text-right text-rose-300 whitespace-nowrap">Gestora (12.71%)</th>
                       <th className="p-3.5 font-semibold text-right text-rose-400 whitespace-nowrap">Total Descuentos</th>
@@ -1839,6 +1904,65 @@ function PlanillasPageContent() {
                             </td>
 
                             <td className="p-3.5 text-right font-semibold text-slate-800 whitespace-nowrap">{formatBs(slip.bono_antiguedad)}</td>
+
+                            {/* Celda Otros Editable */}
+                            <td className="p-3.5 text-right font-bold whitespace-nowrap bg-amber-50/20" onClick={(e) => e.stopPropagation()}>
+                              {editingOtrosSlipId === slip.id ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="0.00"
+                                    value={editingOtrosValue}
+                                    onChange={(e) => setEditingOtrosValue(e.target.value)}
+                                    onFocus={(e) => e.target.select()}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") handleSaveOtros(slip.id);
+                                      if (e.key === "Escape") handleCancelEditOtros();
+                                    }}
+                                    autoFocus
+                                    className="w-24 text-right font-black text-sm px-2 py-1 bg-white border-2 border-amber-500 rounded-lg text-slate-900 shadow-md focus:outline-none placeholder:text-slate-300"
+                                  />
+                                  <button
+                                    onClick={() => handleSaveOtros(slip.id)}
+                                    disabled={savingOtrosSlipId === slip.id}
+                                    className="p-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition shadow-sm"
+                                    title="Guardar Otros"
+                                  >
+                                    {savingOtrosSlipId === slip.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                                  </button>
+                                  <button
+                                    onClick={handleCancelEditOtros}
+                                    className="p-1.5 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition"
+                                    title="Cancelar"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1.5 group">
+                                  {saveOtrosSuccessSlipId === slip.id && (
+                                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 animate-pulse">
+                                      <Check className="w-3 h-3 text-emerald-700" /> Guardado
+                                    </span>
+                                  )}
+                                  <span className="text-slate-900 font-black text-sm">{formatBs(slip.otros || 0)}</span>
+                                  {!eventualPayroll.is_closed ? (
+                                    <button
+                                      onClick={() => handleStartEditOtros(slip)}
+                                      className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-100 rounded transition opacity-80 group-hover:opacity-100"
+                                      title="Editar Otros (monto computable para cálculo de vacaciones)"
+                                    >
+                                      <Edit className="w-3.5 h-3.5" />
+                                    </button>
+                                  ) : (
+                                    <Lock className="w-3.5 h-3.5 text-slate-400 ml-1" />
+                                  )}
+                                </div>
+                              )}
+                            </td>
+
                             <td className="p-3.5 text-right font-bold text-amber-700 whitespace-nowrap">{formatBs(slip.total_ganado)}</td>
                             
                             {/* Celda Aporte Gestora limpia sin recuadro */}

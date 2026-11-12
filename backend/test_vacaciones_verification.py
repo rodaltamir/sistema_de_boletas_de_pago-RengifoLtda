@@ -687,10 +687,12 @@ def test_mathematical_reconciliation_kardex():
     assert found_tot_h2, "No se encontró fila de TOTALES Y SALDO FINAL en Hoja 2"
     print("  [OK] Hoja 2 Fila de Totales: Col F = +29.0, Col G = -14.0, Col H = 15.0 (Cuadra 100%)")
 
-    # Verificar que existe la tabla de DESGLOSE MENSUAL CONSOLIDADO en Hoja 2
+    # Verificar que NO existe la tabla de DESGLOSE MENSUAL CONSOLIDADO en Hoja 2 (removida por redundante)
+    # y que la orientación es vertical (portrait)
     all_h2_text = " ".join([str(cell.value or "") for row in ws_2.rows for cell in row])
-    assert "DESGLOSE MENSUAL CONSOLIDADO (JUSTIFICACIÓN LABORAL MES A MES)" in all_h2_text
-    print("  [OK] Hoja 2 contiene la tabla de DESGLOSE MENSUAL CONSOLIDADO (JUSTIFICACIÓN LABORAL MES A MES)")
+    assert "DESGLOSE MENSUAL CONSOLIDADO (JUSTIFICACIÓN LABORAL MES A MES)" not in all_h2_text
+    assert ws_2.page_setup.orientation == ws_2.ORIENTATION_PORTRAIT
+    print("  [OK] Hoja 2 configurada en orientación VERTICAL (PORTRAIT) y sin tabla redundante de DESGLOSE MENSUAL CONSOLIDADO")
 
 
 def test_recibo_pago_vacaciones():
@@ -730,13 +732,15 @@ def test_recibo_pago_vacaciones():
     assert "3,300.00" in all_text
     assert "110.00" in all_text
     assert "1,100.00" in all_text
-    assert "TRABAJADOR" in all_text
-    assert "EMPLEADOR" in all_text
-    assert "Nombre: ...." in all_text or "Nombre: .." in all_text
-    print("  [OK] Encabezados limpios (sin etiquetas original/copia) y N° de recibo correctos")
+    assert "RECIBÍ CONFORME" in all_text or "RECIBI CONFORME" in all_text
+    assert "ENTREGUÉ CONFORME" in all_text or "ENTREGUE CONFORME" in all_text
+    # En ENTREGUÉ CONFORME debe completarse el nombre y C.I. del empleador
+    assert "HIPÓLITO MANRRIQUE SANTI" in all_text
+    assert "6570013" in all_text
+    print("  [OK] Encabezados de firma actualizados a 'RECIBÍ CONFORME' y 'ENTREGUÉ CONFORME'")
+    print("  [OK] En 'ENTREGUÉ CONFORME' se completaron el Nombre y C.I. del empleador")
     print("  [OK] Párrafo declaratorio verificado con C.I. y sin corte de texto")
     print("  [OK] Desglose de Total ganado (Bs 3.300), Salario diario (Bs 110) e Importe (Bs 1.100) verificado")
-    print("  [OK] Firmas estructuradas con líneas de puntos para llenado manual")
 
 
 def test_ficha_vacaciones_solicitadas_colectivas():

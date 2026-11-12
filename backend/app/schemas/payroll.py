@@ -45,6 +45,7 @@ class PayslipResponse(PayslipBase):
     employee_ci: Optional[str] = None
     employee_cargo: Optional[str] = None
     employee_fecha_ingreso: Optional[str] = None
+    employee_fecha_afiliacion: Optional[str] = None
     employee_nacionalidad: Optional[str] = None
     employee_fecha_nacimiento: Optional[str] = None
     employee_sexo: Optional[str] = None
