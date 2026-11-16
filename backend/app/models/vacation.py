@@ -1,10 +1,10 @@
-from sqlalchemy import Column, Integer, String, Date, Numeric, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Date, Numeric, Text, ForeignKey, DateTime, Boolean
 from sqlalchemy.sql import func
 from app.db.base_class import Base
 
 class VacationRecord(Base):
     """
-    Registro individual de vacaciones tomadas por un empleado (A cuenta, Solicitadas, Colectivas).
+    Registro individual de vacaciones tomadas por un empleado (A cuenta, Solicitadas, Colectivas, Cierre Conciliado).
     """
     __tablename__ = "vacation_records"
     __table_args__ = {"schema": "tenant"}
@@ -16,11 +16,13 @@ class VacationRecord(Base):
     fecha_inicio = Column(Date, nullable=False, index=True)
     fecha_fin = Column(Date, nullable=False)
     fecha_solicitud = Column(Date, nullable=True) # Fecha en que se realizó / solicitó la vacación (opcional)
-    dias = Column(Numeric(5, 1), nullable=False) # Cantidad de días hábiles computados
+    dias = Column(Numeric(8, 2), nullable=False) # Cantidad de días hábiles o decimales computados
     fechas_detalle = Column(Text, nullable=True) # Lista serializada JSON con fechas exactas: '["2026-10-15", ...]'
     
     motivo = Column(String(255), nullable=True) # Motivo o justificación de las vacaciones
     gestion = Column(Integer, nullable=False) # Año de gestión (ej. 2026)
     aprobado_por = Column(String(100), nullable=True) # Responsable o Representante Legal
+    es_cierre_conciliado = Column(Boolean, default=False) # Indica si este pago concilia todas las deudas previas y reinicia a 0
+    modo_calculo = Column(String(30), default="estandar") # 'estandar' | 'fraccionado'
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())

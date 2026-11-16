@@ -421,12 +421,12 @@ class DocumentService:
         fill_total = PatternFill(start_color="EBEFF4", end_color="EBEFF4", fill_type="solid")
         fill_liquido = PatternFill(start_color="DEE5ED", end_color="DEE5ED", fill_type="solid")
 
-        font_company = Font(name="Arial", size=11, bold=True)
-        font_title = Font(name="Arial", size=13, bold=True, color="002060")
-        font_bol_num = Font(name="Arial", size=11, bold=True, color="002060")
-        font_bold = Font(name="Arial", size=9, bold=True)
-        font_bold_lg = Font(name="Arial", size=10, bold=True)
-        font_regular = Font(name="Arial", size=8.5)
+        font_company = Font(name="Arial", size=11.5, bold=True)
+        font_title = Font(name="Arial", size=13.5, bold=True, color="002060")
+        font_bol_num = Font(name="Arial", size=11.5, bold=True, color="002060")
+        font_bold = Font(name="Arial", size=9.5, bold=True)
+        font_bold_lg = Font(name="Arial", size=10.5, bold=True)
+        font_regular = Font(name="Arial", size=9.5)
 
         num_filas = len(items_detalle)
         r_tot = start_r + 8 + num_filas
@@ -583,17 +583,17 @@ class DocumentService:
         # Fila LÍQUIDO PAGABLE
         ws.row_dimensions[r_liq].height = 30
         c_lpt = ws.cell(row=r_liq, column=2, value="  LÍQUIDO PAGABLE:")
-        c_lpt.font = Font(name="Arial", size=10.5, bold=True)
+        c_lpt.font = Font(name="Arial", size=11, bold=True)
         c_lpt.alignment = Alignment(horizontal='left', vertical='center')
 
         c_lp = ws.cell(row=r_liq, column=3, value=liquido)
-        c_lp.font = Font(name="Arial", size=12, bold=True)
+        c_lp.font = Font(name="Arial", size=12.5, bold=True)
         c_lp.number_format = '#,##0.00'
         c_lp.alignment = Alignment(horizontal='right', vertical='center')
 
         ws.merge_cells(start_row=r_liq, start_column=4, end_row=r_liq, end_column=5)
         c_lit = ws.cell(row=r_liq, column=4, value=f"  (Son: {literal} con {decimal}/100 Bolivianos)")
-        c_lit.font = Font(name="Arial", size=8.5, italic=True)
+        c_lit.font = Font(name="Arial", size=9.0, italic=True)
         c_lit.alignment = Alignment(horizontal='left', vertical='center', shrink_to_fit=True)
 
         for c in range(2, 6):
@@ -601,18 +601,18 @@ class DocumentService:
             ws.cell(row=r_liq, column=c).border = border_all_thin
 
         # Espacio antes de firmas
-        ws.row_dimensions[r_space].height = 50
+        ws.row_dimensions[r_space].height = 46
 
         # Líneas de puntos de firmas
         ws.row_dimensions[r_sig1].height = 18
         ws.merge_cells(start_row=r_sig1, start_column=2, end_row=r_sig1, end_column=3)
-        c_s1 = ws.cell(row=r_sig1, column=2, value="........................................................................")
-        c_s1.font = Font(name="Arial", size=9)
+        c_s1 = ws.cell(row=r_sig1, column=2, value="....................................................................")
+        c_s1.font = Font(name="Arial", size=9.5)
         c_s1.alignment = Alignment(horizontal='center', vertical='bottom')
 
         ws.merge_cells(start_row=r_sig1, start_column=4, end_row=r_sig1, end_column=5)
-        c_s2 = ws.cell(row=r_sig1, column=4, value="........................................................................")
-        c_s2.font = Font(name="Arial", size=9)
+        c_s2 = ws.cell(row=r_sig1, column=4, value="....................................................................")
+        c_s2.font = Font(name="Arial", size=9.5)
         c_s2.alignment = Alignment(horizontal='center', vertical='bottom')
 
         # Nombres y Cargos de Firmas
@@ -691,13 +691,13 @@ class DocumentService:
             left=0.35, right=0.35, top=0.28, bottom=0.28, header=0.0, footer=0.0
         )
         
-        # Anchos de columna amplios para llenar armónicamente el ancho de la hoja
-        ws.column_dimensions['A'].width = 1.5
-        ws.column_dimensions['B'].width = 33.0
-        ws.column_dimensions['C'].width = 18.0
-        ws.column_dimensions['D'].width = 33.0
-        ws.column_dimensions['E'].width = 18.0
-        ws.column_dimensions['F'].width = 1.5
+        # Anchos de columna proporcionados para Portrait sin compresión excesiva al convertir a PDF
+        ws.column_dimensions['A'].width = 1.2
+        ws.column_dimensions['B'].width = 28.0
+        ws.column_dimensions['C'].width = 15.0
+        ws.column_dimensions['D'].width = 28.0
+        ws.column_dimensions['E'].width = 15.0
+        ws.column_dimensions['F'].width = 1.2
 
         # 1. Renderizar Boleta Superior (Copia 1 - Empresa)
         end_r1 = DocumentService._render_single_payslip(ws, start_r=1, boleta_data=boleta_data, copia_num=1)
@@ -780,12 +780,12 @@ class DocumentService:
             ws.print_options.horizontalCentered = True
             ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.35, right=0.35, top=0.40, bottom=0.35, header=0.0, footer=0.0)
 
-            ws.column_dimensions['A'].width = 1.5
-            ws.column_dimensions['B'].width = 33.0
-            ws.column_dimensions['C'].width = 18.0
-            ws.column_dimensions['D'].width = 33.0
-            ws.column_dimensions['E'].width = 18.0
-            ws.column_dimensions['F'].width = 1.5
+            ws.column_dimensions['A'].width = 1.2
+            ws.column_dimensions['B'].width = 28.0
+            ws.column_dimensions['C'].width = 15.0
+            ws.column_dimensions['D'].width = 28.0
+            ws.column_dimensions['E'].width = 15.0
+            ws.column_dimensions['F'].width = 1.2
 
             curr_r = 1
             for i in range(0, len(boletas_list), 2):
@@ -829,12 +829,12 @@ class DocumentService:
                 ws.print_options.horizontalCentered = True
                 ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.35, right=0.35, top=0.40, bottom=0.35, header=0.0, footer=0.0)
 
-                ws.column_dimensions['A'].width = 1.5
-                ws.column_dimensions['B'].width = 33.0
-                ws.column_dimensions['C'].width = 18.0
-                ws.column_dimensions['D'].width = 33.0
-                ws.column_dimensions['E'].width = 18.0
-                ws.column_dimensions['F'].width = 1.5
+                ws.column_dimensions['A'].width = 1.2
+                ws.column_dimensions['B'].width = 28.0
+                ws.column_dimensions['C'].width = 15.0
+                ws.column_dimensions['D'].width = 28.0
+                ws.column_dimensions['E'].width = 15.0
+                ws.column_dimensions['F'].width = 1.2
 
                 end_r1 = DocumentService._render_single_payslip(ws, start_r=1, boleta_data=slip, copia_num=f"{idx} - ORIGINAL")
                 r_cut = end_r1 + 2
@@ -914,34 +914,34 @@ class DocumentService:
             
             DocumentService._set_cell_value(ws, 'D2', str(empresa).upper())
             try:
-                ws['D2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['D2'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
                 ws['D2'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
 
             DocumentService._set_cell_value(ws, 'G3', str(nit))
             try:
-                ws['G3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['G3'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
                 ws['G3'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
 
             DocumentService._set_cell_value(ws, 'P2', str(nit))
             try:
-                ws['P2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['P2'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
                 ws['P2'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
 
             DocumentService._set_cell_value(ws, 'P3', str(patronal))
             try:
-                ws['P3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['P3'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
                 ws['P3'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
 
             # Título principal y moneda centrados y sin cortes
             try:
                 DocumentService._set_cell_value(ws, 'G6', "(Expresado en Bolivianos)")
-                ws['G5'].font = openpyxl.styles.Font(name="Arial", size=15, bold=True)
+                ws['G5'].font = openpyxl.styles.Font(name="Arial", size=15.5, bold=True)
                 ws['G5'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=False)
-                ws['G6'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
+                ws['G6'].font = openpyxl.styles.Font(name="Arial", size=11, bold=True)
                 ws['G6'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=False)
             except: pass
             
@@ -949,14 +949,14 @@ class DocumentService:
             base_text = "CORRESPONDIENTE AL MES DE"
             DocumentService._set_cell_value(ws, 'S6', f"{base_text} {MESES.get(mes_int, str(mes_int))} DE {anio}")
             try:
-                ws['S6'].font = openpyxl.styles.Font(name="Arial", size=9.5, bold=True)
+                ws['S6'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
                 ws['S6'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=False)
             except: pass
             
             # Encabezado descriptivo para Aportes Gestora Pública (12.71%)
             try:
                 DocumentService._set_cell_value(ws, 'S8', "Aportes Gestora Pública\n12.71%")
-                ws['S8'].font = openpyxl.styles.Font(name="Arial", size=9, bold=True)
+                ws['S8'].font = openpyxl.styles.Font(name="Arial", size=9.5, bold=True)
                 ws['S8'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=True)
             except: pass
 
@@ -971,9 +971,17 @@ class DocumentService:
         ws.row_dimensions[5].height = 30
         ws.row_dimensions[6].height = 20
         ws.row_dimensions[7].height = 12
-        ws.row_dimensions[8].height = 22
-        ws.row_dimensions[9].height = 20
-        ws.row_dimensions[10].height = 20
+        ws.row_dimensions[8].height = 25
+        ws.row_dimensions[9].height = 22
+        ws.row_dimensions[10].height = 22
+
+        # Mejorar visibilidad y tamaño de fuente de cabeceras heredadas de plantilla
+        for hdr_r in (8, 9, 10):
+            for col_idx in range(1, 25):
+                try:
+                    ws.cell(row=hdr_r, column=col_idx).font = openpyxl.styles.Font(name='Arial', size=9.5, bold=True)
+                except Exception:
+                    pass
 
         # 1. Limpiar rangos combinados residuales en filas >= 11 para evitar corrupción de openpyxl
         for m in list(ws.merged_cells.ranges):
@@ -985,8 +993,8 @@ class DocumentService:
 
         thin_border = openpyxl.styles.Side(border_style='thin', color='000000')
         border_all = openpyxl.styles.Border(top=thin_border, bottom=thin_border, left=thin_border, right=thin_border)
-        font_data = openpyxl.styles.Font(name='Arial', size=9)
-        font_bold = openpyxl.styles.Font(name='Arial', size=9.5, bold=True)
+        font_data = openpyxl.styles.Font(name='Arial', size=9.5)
+        font_bold = openpyxl.styles.Font(name='Arial', size=10, bold=True)
 
         # Rellenos gris claro para destacar columnas clave
         fill_highlight = openpyxl.styles.PatternFill(start_color="EDEDED", end_color="EDEDED", fill_type="solid")
@@ -1139,8 +1147,8 @@ class DocumentService:
         else:
             ci_display = ""
 
-        font_sig_val = openpyxl.styles.Font(name='Arial', size=9.5, bold=True)
-        font_sig_lbl = openpyxl.styles.Font(name='Arial', size=8.5, bold=True)
+        font_sig_val = openpyxl.styles.Font(name='Arial', size=10, bold=True)
+        font_sig_lbl = openpyxl.styles.Font(name='Arial', size=9.0, bold=True)
 
         # 1. D a I: Nombre del empleador arriba, línea continua abajo
         ws.merge_cells(start_row=sig_line, start_column=4, end_row=sig_line, end_column=9)
@@ -1439,12 +1447,12 @@ class DocumentService:
             except Exception:
                 pass
             ws.merge_cells('C28:F28')
-            ws.row_dimensions[28].height = 15.0
+            ws.row_dimensions[28].height = 16.0
             if saldo <= 0:
                 ws['C28'] = f"   ABONADO: {format_bs(total_pagado)} ({len(pagos_realizados)} aportes)  |  TOTALMENTE LIQUIDADO (100%)"
             else:
                 ws['C28'] = f"   ABONADO: {format_bs(total_pagado)} ({len(pagos_realizados)} aportes)  |  SALDO PENDIENTE (DEBE): {format_bs(saldo)}"
-            ws['C28'].font = openpyxl.styles.Font(name="Arial", size=8.5, italic=True)
+            ws['C28'].font = openpyxl.styles.Font(name="Arial", size=9.0, italic=True)
             ws['C28'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
             
             # Detalle en el recuadro interior (filas 35-37 con altura adecuada y alineación centrada)
@@ -1452,9 +1460,9 @@ class DocumentService:
                 try: ws.merge_cells('C35:F35')
                 except Exception: pass
                 ws['C35'] = "HISTORIAL DE ABONOS / APORTES REALIZADOS:"
-                ws['C35'].font = openpyxl.styles.Font(name="Arial", size=8, bold=True)
+                ws['C35'].font = openpyxl.styles.Font(name="Arial", size=9.0, bold=True)
                 ws['C35'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
-                ws.row_dimensions[35].height = 14.0
+                ws.row_dimensions[35].height = 15.5
 
                 cuotas_line1 = []
                 cuotas_line2 = []
@@ -1472,23 +1480,23 @@ class DocumentService:
                     try: ws.merge_cells('C36:F36')
                     except Exception: pass
                     ws['C36'] = " | ".join(cuotas_line1)
-                    ws['C36'].font = openpyxl.styles.Font(name="Arial", size=7.5)
+                    ws['C36'].font = openpyxl.styles.Font(name="Arial", size=8.5)
                     ws['C36'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
-                    ws.row_dimensions[36].height = 14.0
+                    ws.row_dimensions[36].height = 15.5
                 if cuotas_line2:
                     try: ws.merge_cells('C37:F37')
                     except Exception: pass
                     ws['C37'] = " | ".join(cuotas_line2)
-                    ws['C37'].font = openpyxl.styles.Font(name="Arial", size=7.5)
+                    ws['C37'].font = openpyxl.styles.Font(name="Arial", size=8.5)
                     ws['C37'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
-                    ws.row_dimensions[37].height = 14.0
+                    ws.row_dimensions[37].height = 15.5
             else:
                 try: ws.merge_cells('C35:F35')
                 except Exception: pass
                 ws['C35'] = f"MODALIDAD EN CUOTAS: Saldo pendiente total de {format_bs(saldo)} (Sin abonos registrados)"
-                ws['C35'].font = openpyxl.styles.Font(name="Arial", size=8, italic=True)
+                ws['C35'].font = openpyxl.styles.Font(name="Arial", size=9.0, italic=True)
                 ws['C35'].alignment = openpyxl.styles.Alignment(horizontal='left', vertical='center')
-                ws.row_dimensions[35].height = 14.0
+                ws.row_dimensions[35].height = 15.5
         else:
             ws['D27'] = "OTROS PAGOS (PAGO ÚNICO)" if otros_monto > 0 else "OTROS PAGOS"
             set_val('F27', format_bs(otros_monto))
@@ -1943,15 +1951,15 @@ class DocumentService:
         ws.page_margins.footer = 0.2
 
         # 2. Tipografía y Estilos Visuales (Fieles al comprobante de referencia oficial)
-        font_header_title = Font(name="Arial", size=10.5, bold=True, color="000000")
-        font_header_month = Font(name="Arial", size=10.5, bold=True, color="1F4E78")
-        font_banner = Font(name="Arial", size=10.0, bold=True, color="000000")
-        font_col_header = Font(name="Arial", size=9.5, bold=True, color="000000")
-        font_row = Font(name="Arial", size=8.5, color="000000")
-        font_subcuenta = Font(name="Arial", size=8.0, italic=True, color="595959")
-        font_glosa = Font(name="Arial", size=8.0, italic=True, color="333333")
-        font_subtotal = Font(name="Arial", size=9.0, bold=True, color="000000")
-        font_total = Font(name="Arial", size=10.0, bold=True, color="000000")
+        font_header_title = Font(name="Arial", size=11.5, bold=True, color="000000")
+        font_header_month = Font(name="Arial", size=11.5, bold=True, color="1F4E78")
+        font_banner = Font(name="Arial", size=10.5, bold=True, color="000000")
+        font_col_header = Font(name="Arial", size=10.0, bold=True, color="000000")
+        font_row = Font(name="Arial", size=9.5, color="000000")
+        font_subcuenta = Font(name="Arial", size=8.5, italic=True, color="595959")
+        font_glosa = Font(name="Arial", size=8.5, italic=True, color="333333")
+        font_subtotal = Font(name="Arial", size=9.5, bold=True, color="000000")
+        font_total = Font(name="Arial", size=10.5, bold=True, color="000000")
 
         fill_header_title = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
         fill_banner = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
@@ -2071,7 +2079,7 @@ class DocumentService:
         # 4. CUADRANTES 1 A 4: TABLA CONTINUA TRADICIONAL DE DEVENGAMIENTO Y PROVISIONES
         if export_payroll_sections:
             # Fila de Cabeceras: DETALLE DE CUENTAS | DEBE | HABER
-            ws.row_dimensions[curr_row].height = 18
+            ws.row_dimensions[curr_row].height = 19
             ws.merge_cells(f"A{curr_row}:B{curr_row}")
             ws[f"A{curr_row}"] = "DETALLE DE CUENTAS"
             ws[f"A{curr_row}"].font = font_col_header
@@ -2104,7 +2112,7 @@ class DocumentService:
                     if item.debe == 0 and item.haber == 0:
                         continue
 
-                    ws.row_dimensions[curr_row].height = 15.0
+                    ws.row_dimensions[curr_row].height = 16.0
                     ws.merge_cells(f"A{curr_row}:B{curr_row}")
                     c_cuenta = ws[f"A{curr_row}"]
                     c_cuenta.value = item.cuenta
@@ -2135,7 +2143,7 @@ class DocumentService:
 
                     if item.subcuentas:
                         for sub in item.subcuentas:
-                            ws.row_dimensions[curr_row].height = 13.5
+                            ws.row_dimensions[curr_row].height = 14.5
                             ws.merge_cells(f"A{curr_row}:B{curr_row}")
                             c_sub = ws[f"A{curr_row}"]
                             c_sub.value = f"   ↳ {sub}"
@@ -2151,7 +2159,7 @@ class DocumentService:
                             curr_row += 1
 
                 # Fila Subtotal de la sección
-                ws.row_dimensions[curr_row].height = 16.0
+                ws.row_dimensions[curr_row].height = 17.5
                 ws.merge_cells(f"A{curr_row}:B{curr_row}")
                 c_stitle = ws[f"A{curr_row}"]
                 c_stitle.value = f"Subtotal {section.title}"
@@ -2197,7 +2205,7 @@ class DocumentService:
             else:
                 header_full = voucher_title.upper()
 
-            ws.row_dimensions[curr_row].height = 18
+            ws.row_dimensions[curr_row].height = 19.5
             ws.merge_cells(f"A{curr_row}:D{curr_row}")
             cell_v = ws[f"A{curr_row}"]
             cell_v.value = header_full
@@ -2214,7 +2222,7 @@ class DocumentService:
             curr_row += 1
 
             # 5.2 Fila de Cabeceras: Fecha | Detalle | Debe | Haber
-            ws.row_dimensions[curr_row].height = 17
+            ws.row_dimensions[curr_row].height = 18.5
             headers = [("A", "Fecha", "center"), ("B", "Detalle", "center"), ("C", "Debe", "center"), ("D", "Haber", "center")]
             for col, label, align in headers:
                 c = ws[f"{col}{curr_row}"]
@@ -2236,7 +2244,7 @@ class DocumentService:
                 if item.debe == 0 and item.haber == 0:
                     continue
 
-                ws.row_dimensions[curr_row].height = 14.5
+                ws.row_dimensions[curr_row].height = 16.0
 
                 # Columna A: Fecha (solo en la primera fila de cuenta del comprobante)
                 c_fec = ws[f"A{curr_row}"]
@@ -2279,7 +2287,7 @@ class DocumentService:
                 # Subcuentas si existen
                 if item.subcuentas:
                     for sub in item.subcuentas:
-                        ws.row_dimensions[curr_row].height = 13.0
+                        ws.row_dimensions[curr_row].height = 14.5
                         ws[f"A{curr_row}"].border = Border(left=thin_black)
                         c_sub = ws[f"B{curr_row}"]
                         c_sub.value = sub
@@ -2311,7 +2319,7 @@ class DocumentService:
                 curr_row += 1
 
             # 5.5 Fila "Sumas iguales" con doble subrayado en Debe y Haber
-            ws.row_dimensions[curr_row].height = 18
+            ws.row_dimensions[curr_row].height = 19
             ws[f"A{curr_row}"].border = Border(left=thin_black, bottom=thin_black)
 
             c_slabel = ws[f"B{curr_row}"]
@@ -2340,7 +2348,7 @@ class DocumentService:
             curr_row += 1
 
         # 6. Fila de Totales Generales Consolidados del Mes
-        ws.row_dimensions[curr_row].height = 19
+        ws.row_dimensions[curr_row].height = 20.0
         ws.merge_cells(f"A{curr_row}:B{curr_row}")
         c_tot = ws[f"A{curr_row}"]
         c_tot.value = "TOTALES GENERALES DEL MES"
@@ -2440,16 +2448,16 @@ class DocumentService:
         ws.page_margins.bottom = 0.4
 
         # 2. Tipografía y Estilos Visuales
-        font_header_title = Font(name="Arial", size=10.5, bold=True, color="000000")
-        font_header_month = Font(name="Arial", size=9.5, bold=True, color="1F4E78")
-        font_banner = Font(name="Arial", size=9.5, bold=True, color="000000")
-        font_col_header = Font(name="Arial", size=8.5, bold=True, color="000000")
-        font_row = Font(name="Arial", size=8.5, color="000000")
-        font_subcuenta = Font(name="Arial", size=8.0, italic=True, color="595959")
-        font_subtotal = Font(name="Arial", size=9.0, bold=True, color="000000")
-        font_total = Font(name="Arial", size=9.5, bold=True, color="000000")
-        font_date_hdr = Font(name="Arial", size=8.5, bold=True, color="1F4E78")
-        font_date_val = Font(name="Arial", size=8.5, bold=True, color="1F4E78")
+        font_header_title = Font(name="Arial", size=11.5, bold=True, color="000000")
+        font_header_month = Font(name="Arial", size=10.0, bold=True, color="1F4E78")
+        font_banner = Font(name="Arial", size=10.0, bold=True, color="000000")
+        font_col_header = Font(name="Arial", size=9.5, bold=True, color="000000")
+        font_row = Font(name="Arial", size=9.5, color="000000")
+        font_subcuenta = Font(name="Arial", size=8.5, italic=True, color="595959")
+        font_subtotal = Font(name="Arial", size=9.5, bold=True, color="000000")
+        font_total = Font(name="Arial", size=10.0, bold=True, color="000000")
+        font_date_hdr = Font(name="Arial", size=9.0, bold=True, color="1F4E78")
+        font_date_val = Font(name="Arial", size=9.0, bold=True, color="1F4E78")
 
         fill_header_title = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
         fill_header_month = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
@@ -2758,7 +2766,7 @@ class DocumentService:
             # Renderizar cada cuenta contable en la sección
             for cuenta in ordered_keys:
                 is_cred, subcuentas = seen_cuentas[cuenta]
-                ws.row_dimensions[curr_row].height = 14.5
+                ws.row_dimensions[curr_row].height = 16.0
 
                 # Columna A: Fecha (en blanco en filas de cuentas, con borde izquierdo)
                 c_fec = ws[f"A{curr_row}"]
@@ -2832,7 +2840,7 @@ class DocumentService:
                 # Subcuentas si existen
                 if subcuentas:
                     for sub in subcuentas:
-                        ws.row_dimensions[curr_row].height = 13.0
+                        ws.row_dimensions[curr_row].height = 14.5
                         ws[f"A{curr_row}"].border = Border(left=thin_black)
                         c_sub = ws[f"B{curr_row}"]
                         c_sub.value = f"   ↳ {sub}"
@@ -2846,7 +2854,7 @@ class DocumentService:
                         curr_row += 1
 
             # Fila de Subtotales o Sumas Iguales de la Sección
-            ws.row_dimensions[curr_row].height = 17.0
+            ws.row_dimensions[curr_row].height = 18.0
             ws[f"A{curr_row}"].border = Border(left=thin_black, bottom=thin_black)
 
             c_sub_label = ws[f"B{curr_row}"]
@@ -3106,14 +3114,14 @@ class DocumentService:
             ws.column_dimensions[col_let].width = width
 
         # Estilos
-        font_empresa = Font(name="Arial", size=11, bold=True, italic=True)
-        font_ciudad = Font(name="Arial", size=9, bold=True)
-        font_patronal = Font(name="Arial", size=9, bold=True)
-        font_title = Font(name="Arial", size=14, bold=True)
-        font_th = Font(name="Arial", size=8.5, bold=True, color="000000")
-        font_td = Font(name="Arial", size=8.5)
-        font_td_bold = Font(name="Arial", size=8.5, bold=True)
-        font_totales = Font(name="Arial", size=9, bold=True, color="000000")
+        font_empresa = Font(name="Arial", size=11.5, bold=True, italic=True)
+        font_ciudad = Font(name="Arial", size=9.5, bold=True)
+        font_patronal = Font(name="Arial", size=9.5, bold=True)
+        font_title = Font(name="Arial", size=14.5, bold=True)
+        font_th = Font(name="Arial", size=9.5, bold=True, color="000000")
+        font_td = Font(name="Arial", size=9.5)
+        font_td_bold = Font(name="Arial", size=9.5, bold=True)
+        font_totales = Font(name="Arial", size=10, bold=True, color="000000")
 
         fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
         fill_totales = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
@@ -3181,7 +3189,7 @@ class DocumentService:
             ("M", "TOTAL\nPROVISIONES"),
             ("N", "TOTAL CARGA\nPATRONAL")
         ]
-        ws.row_dimensions[7].height = 32
+        ws.row_dimensions[7].height = 34
         for col_let, text in headers:
             cell = ws[f"{col_let}7"]
             cell.value = text
@@ -3195,7 +3203,7 @@ class DocumentService:
         details = patronal_data.get('details', [])
         
         for idx, item in enumerate(details, start=1):
-            ws.row_dimensions[current_row].height = 24
+            ws.row_dimensions[current_row].height = 25
             
             emp_name = str(item.get('employee_name') or '').upper()
             emp_cargo = str(item.get('employee_cargo') or '').upper()
@@ -3237,7 +3245,7 @@ class DocumentService:
             current_row += 1
 
         # Fila TOTALES
-        ws.row_dimensions[current_row].height = 25
+        ws.row_dimensions[current_row].height = 26
         ws.merge_cells(f"B{current_row}:D{current_row}")
         ws[f"B{current_row}"] = "T O T A L E S"
         ws[f"B{current_row}"].font = font_totales
@@ -3277,14 +3285,14 @@ class DocumentService:
         # Bloque 1: C:E (Representante Legal)
         ws.merge_cells(f'C{r_sig}:E{r_sig}')
         ws[f'C{r_sig}'] = rep_legal
-        ws[f'C{r_sig}'].font = Font(name="Arial", size=9, bold=True)
+        ws[f'C{r_sig}'].font = Font(name="Arial", size=9.5, bold=True)
         ws[f'C{r_sig}'].alignment = Alignment(horizontal="center", vertical="bottom")
         for col_l in ['C', 'D', 'E']:
             ws[f'{col_l}{r_sig}'].border = thin_black_line
 
         ws.merge_cells(f'C{r_sig+1}:E{r_sig+1}')
         ws[f'C{r_sig+1}'] = "NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL"
-        ws[f'C{r_sig+1}'].font = Font(name="Arial", size=7.5, bold=True)
+        ws[f'C{r_sig+1}'].font = Font(name="Arial", size=8.5, bold=True)
         ws[f'C{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
 
         # Columna F: Separador en blanco (sin bordes)
@@ -3292,14 +3300,14 @@ class DocumentService:
         # Bloque 2: G:I (Documento de Identidad)
         ws.merge_cells(f'G{r_sig}:I{r_sig}')
         ws[f'G{r_sig}'] = rep_ci
-        ws[f'G{r_sig}'].font = Font(name="Arial", size=9, bold=True)
+        ws[f'G{r_sig}'].font = Font(name="Arial", size=9.5, bold=True)
         ws[f'G{r_sig}'].alignment = Alignment(horizontal="center", vertical="bottom")
         for col_l in ['G', 'H', 'I']:
             ws[f'{col_l}{r_sig}'].border = thin_black_line
 
         ws.merge_cells(f'G{r_sig+1}:I{r_sig+1}')
         ws[f'G{r_sig+1}'] = "N° DE DOCUMENTO DE IDENTIDAD"
-        ws[f'G{r_sig+1}'].font = Font(name="Arial", size=7.5, bold=True)
+        ws[f'G{r_sig+1}'].font = Font(name="Arial", size=8.5, bold=True)
         ws[f'G{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
 
         # Columna J: Separador en blanco (sin bordes)
@@ -3313,7 +3321,7 @@ class DocumentService:
 
         ws.merge_cells(f'L{r_sig+1}:N{r_sig+1}')
         ws[f'L{r_sig+1}'] = "FIRMA"
-        ws[f'L{r_sig+1}'].font = Font(name="Arial", size=7.5, bold=True)
+        ws[f'L{r_sig+1}'].font = Font(name="Arial", size=8.5, bold=True)
         ws[f'L{r_sig+1}'].alignment = Alignment(horizontal="center", vertical="top")
 
         xlsx_path = os.path.join(exports_dir, f"planilla_patronal_{empresa_slug}_{mes_nombre.lower()}_{anio}.xlsx")
@@ -3381,13 +3389,13 @@ class DocumentService:
             ws.column_dimensions[col_let].width = width
 
         # Estilos
-        font_h_bold = Font(name="Arial", size=8.5, bold=True)
-        font_h_val = Font(name="Arial", size=8.5)
-        font_title_main = Font(name="Arial", size=11, bold=True)
-        font_th = Font(name="Arial", size=7.5, bold=True)
-        font_td = Font(name="Arial", size=7.5)
-        font_td_bold = Font(name="Arial", size=7.5, bold=True)
-        font_totales = Font(name="Arial", size=8, bold=True)
+        font_h_bold = Font(name="Arial", size=9.5, bold=True)
+        font_h_val = Font(name="Arial", size=9.5)
+        font_title_main = Font(name="Arial", size=13, bold=True)
+        font_th = Font(name="Arial", size=9.0, bold=True)
+        font_td = Font(name="Arial", size=9.0)
+        font_td_bold = Font(name="Arial", size=9.0, bold=True)
+        font_totales = Font(name="Arial", size=9.5, bold=True)
 
         fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
         fill_totales = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
@@ -3475,7 +3483,7 @@ class DocumentService:
             ("S", "Total ganado\ndespués de\nduodécimas\n(J=H*I/12)"),
             ("T", "FIRMA DEL\nEMPLEADO")
         ]
-        ws.row_dimensions[9].height = 48
+        ws.row_dimensions[9].height = 50
         for col_l, text in th_list:
             cell = ws[f"{col_l}9"]
             cell.value = text
@@ -3489,7 +3497,7 @@ class DocumentService:
         current_row = 10
         slips = aguinaldo_data.get('slips', [])
         for idx, item in enumerate(slips, start=1):
-            ws.row_dimensions[current_row].height = 20
+            ws.row_dimensions[current_row].height = 23
 
             ws[f"B{current_row}"] = idx
             ws[f"B{current_row}"].alignment = Alignment(horizontal="center", vertical="center")
@@ -3550,7 +3558,7 @@ class DocumentService:
             current_row += 1
 
         # Fila TOTALES
-        ws.row_dimensions[current_row].height = 22
+        ws.row_dimensions[current_row].height = 24
         ws.merge_cells(f"B{current_row}:I{current_row}")
         ws[f"B{current_row}"] = "TOTALES"
         ws[f"B{current_row}"].font = font_totales
@@ -3595,7 +3603,7 @@ class DocumentService:
 
         ws.merge_cells(f"C{f_row+1}:G{f_row+1}")
         ws[f"C{f_row+1}"] = "NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL"
-        ws[f"C{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+        ws[f"C{f_row+1}"].font = Font(name="Arial", size=9.0, bold=True)
         ws[f"C{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
 
         # Bloque 2: N° Documento de Identidad (Cols I a L)
@@ -3608,7 +3616,7 @@ class DocumentService:
 
         ws.merge_cells(f"I{f_row+1}:L{f_row+1}")
         ws[f"I{f_row+1}"] = "N° DE DOCUMENTO DE IDENTIDAD"
-        ws[f"I{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+        ws[f"I{f_row+1}"].font = Font(name="Arial", size=9.0, bold=True)
         ws[f"I{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
 
         # Bloque 3: Firma (Cols N a P)
@@ -3619,17 +3627,17 @@ class DocumentService:
 
         ws.merge_cells(f"N{f_row+1}:P{f_row+1}")
         ws[f"N{f_row+1}"] = "FIRMA"
-        ws[f"N{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+        ws[f"N{f_row+1}"].font = Font(name="Arial", size=9.0, bold=True)
         ws[f"N{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
 
         # Bloque 4: Fecha (Cols R a T)
         ws[f"R{f_row}"] = "FECHA:"
-        ws[f"R{f_row}"].font = Font(name="Arial", size=8, bold=True)
+        ws[f"R{f_row}"].font = Font(name="Arial", size=9.0, bold=True)
         ws[f"R{f_row}"].alignment = Alignment(horizontal="right", vertical="bottom")
 
         ws.merge_cells(f"S{f_row}:T{f_row}")
         ws[f"S{f_row}"] = f"Diciembre {anio}"
-        ws[f"S{f_row}"].font = Font(name="Arial", size=8, bold=True)
+        ws[f"S{f_row}"].font = Font(name="Arial", size=9.0, bold=True)
         ws[f"S{f_row}"].alignment = Alignment(horizontal="center", vertical="bottom")
         for col_c in ['S', 'T']:
             ws[f"{col_c}{f_row}"].border = border_underline
@@ -3665,16 +3673,16 @@ class DocumentService:
         monto_fmt = f"{liquido:,.2f}"
 
         # Fonts
-        font_empresa = Font(name="Arial", size=10, bold=True)
-        font_patronal = Font(name="Arial", size=8.5, bold=True)
-        font_papeleta_tag = Font(name="Arial", size=8.5, bold=True)
-        font_title_main = Font(name="Arial", size=11, bold=True, underline="single")
-        font_title_sub = Font(name="Arial", size=8.5, bold=True)
-        font_lbl = Font(name="Arial", size=8.5, bold=True)
-        font_val = Font(name="Arial", size=8.5)
-        font_liq_lbl = Font(name="Arial", size=8.5, bold=True)
-        font_liq_val = Font(name="Arial", size=9, bold=True)
-        font_lit = Font(name="Arial", size=8.0, italic=True)
+        font_empresa = Font(name="Arial", size=11, bold=True)
+        font_patronal = Font(name="Arial", size=9.5, bold=True)
+        font_papeleta_tag = Font(name="Arial", size=9.5, bold=True)
+        font_title_main = Font(name="Arial", size=12, bold=True, underline="single")
+        font_title_sub = Font(name="Arial", size=9.5, bold=True)
+        font_lbl = Font(name="Arial", size=9.5, bold=True)
+        font_val = Font(name="Arial", size=9.5)
+        font_liq_lbl = Font(name="Arial", size=9.5, bold=True)
+        font_liq_val = Font(name="Arial", size=10.5, bold=True)
+        font_lit = Font(name="Arial", size=9.0, italic=True)
 
         thin = Side(style='thin', color='000000')
         border_all = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -3790,7 +3798,7 @@ class DocumentService:
         # Marco exterior en recuadro completo simétrico y altura de fila explícita
         end_row = start_row + 18
         for r in range(start_row, end_row + 1):
-            ws.row_dimensions[r].height = 15.5
+            ws.row_dimensions[r].height = 16.2
             for col in ['B', 'C', 'D', 'E', 'F']:
                 curr_cell = ws[f"{col}{r}"]
                 cur_b = curr_cell.border
@@ -4022,13 +4030,13 @@ class DocumentService:
             for col_let, width in col_widths.items():
                 ws.column_dimensions[col_let].width = width
 
-            font_h_bold = Font(name="Arial", size=8.5, bold=True)
-            font_h_val = Font(name="Arial", size=8.5)
-            font_title_main = Font(name="Arial", size=11, bold=True)
-            font_th = Font(name="Arial", size=7.5, bold=True)
-            font_td = Font(name="Arial", size=7.5)
-            font_td_bold = Font(name="Arial", size=7.5, bold=True)
-            font_totales = Font(name="Arial", size=8, bold=True)
+            font_h_bold = Font(name="Arial", size=9.5, bold=True)
+            font_h_val = Font(name="Arial", size=9.5)
+            font_title_main = Font(name="Arial", size=13.5, bold=True)
+            font_th = Font(name="Arial", size=9.5, bold=True)
+            font_td = Font(name="Arial", size=9.5)
+            font_td_bold = Font(name="Arial", size=9.5, bold=True)
+            font_totales = Font(name="Arial", size=10, bold=True)
 
             fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
             fill_totales = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
@@ -4111,7 +4119,7 @@ class DocumentService:
                 ("M", "HABER BÁSICO\n(Bs.)"),
                 ("N", "ESTADO")
             ]
-            ws.row_dimensions[9].height = 36
+            ws.row_dimensions[9].height = 38
             for col_l, text_h in th_list:
                 cell = ws[f"{col_l}9"]
                 cell.value = text_h
@@ -4126,7 +4134,7 @@ class DocumentService:
             inactivos_c = 0
 
             for idx, emp in enumerate(emps_list, start=1):
-                ws.row_dimensions[current_row].height = 20
+                ws.row_dimensions[current_row].height = 23
                 is_act = bool(emp.get('is_active', True))
                 if is_act:
                     activos_c += 1
@@ -4207,7 +4215,7 @@ class DocumentService:
                 current_row += 1
 
             # Fila TOTALES
-            ws.row_dimensions[current_row].height = 22
+            ws.row_dimensions[current_row].height = 25
             ws.merge_cells(f"B{current_row}:L{current_row}")
             ws[f"B{current_row}"] = f"TOTAL: {len(emps_list)} EMPLEADOS ({activos_c} ACTIVOS, {inactivos_c} RETIRADOS)"
             ws[f"B{current_row}"].font = font_totales
@@ -4247,7 +4255,7 @@ class DocumentService:
 
             ws.merge_cells(f"C{f_row+1}:F{f_row+1}")
             ws[f"C{f_row+1}"] = "NOMBRE DEL EMPLEADOR O REPRESENTANTE LEGAL"
-            ws[f"C{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+            ws[f"C{f_row+1}"].font = Font(name="Arial", size=9, bold=True)
             ws[f"C{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
 
             # Bloque 2: CI (Cols H a J)
@@ -4260,7 +4268,7 @@ class DocumentService:
 
             ws.merge_cells(f"H{f_row+1}:J{f_row+1}")
             ws[f"H{f_row+1}"] = "N° DE DOCUMENTO DE IDENTIDAD"
-            ws[f"H{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+            ws[f"H{f_row+1}"].font = Font(name="Arial", size=9, bold=True)
             ws[f"H{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
 
             # Bloque 3: Firma y Sello (Cols L a N)
@@ -4271,7 +4279,7 @@ class DocumentService:
 
             ws.merge_cells(f"L{f_row+1}:N{f_row+1}")
             ws[f"L{f_row+1}"] = "FIRMA Y SELLO"
-            ws[f"L{f_row+1}"].font = Font(name="Arial", size=8, bold=True)
+            ws[f"L{f_row+1}"].font = Font(name="Arial", size=9, bold=True)
             ws[f"L{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
 
         # Generar pestañas según filtro
@@ -4363,41 +4371,41 @@ class DocumentService:
             
             DocumentService._set_cell_value(ws, 'D2', str(empresa).upper())
             try:
-                ws['D2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['D2'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
                 ws['D2'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
 
             DocumentService._set_cell_value(ws, 'G3', str(nit))
             try:
-                ws['G3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['G3'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
                 ws['G3'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
 
             DocumentService._set_cell_value(ws, 'P2', str(nit))
             try:
-                ws['P2'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['P2'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
                 ws['P2'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
 
             DocumentService._set_cell_value(ws, 'P3', str(patronal))
             try:
-                ws['P3'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
+                ws['P3'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
                 ws['P3'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
             except: pass
 
             try:
                 DocumentService._set_cell_value(ws, 'G5', "PLANILLA DE SUELDOS Y SALARIOS - EVENTUALES")
                 DocumentService._set_cell_value(ws, 'G6', "(Expresado en Bolivianos)")
-                ws['G5'].font = openpyxl.styles.Font(name="Arial", size=14, bold=True)
+                ws['G5'].font = openpyxl.styles.Font(name="Arial", size=15.5, bold=True)
                 ws['G5'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=False)
-                ws['G6'].font = openpyxl.styles.Font(name="Arial", size=10.5, bold=True)
+                ws['G6'].font = openpyxl.styles.Font(name="Arial", size=11, bold=True)
                 ws['G6'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=False)
             except: pass
             
             base_text = "CORRESPONDIENTE AL MES DE"
             DocumentService._set_cell_value(ws, 'S6', f"{base_text} {MESES.get(mes_int, str(mes_int))} DE {anio}")
             try:
-                ws['S6'].font = openpyxl.styles.Font(name="Arial", size=9.5, bold=True)
+                ws['S6'].font = openpyxl.styles.Font(name="Arial", size=10, bold=True)
                 ws['S6'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center', wrap_text=False)
             except: pass
 
@@ -4410,9 +4418,17 @@ class DocumentService:
         ws.row_dimensions[5].height = 30
         ws.row_dimensions[6].height = 20
         ws.row_dimensions[7].height = 12
-        ws.row_dimensions[8].height = 22
-        ws.row_dimensions[9].height = 20
-        ws.row_dimensions[10].height = 20
+        ws.row_dimensions[8].height = 25
+        ws.row_dimensions[9].height = 22
+        ws.row_dimensions[10].height = 22
+
+        # Mejorar visibilidad y tamaño de fuente de cabeceras heredadas de plantilla
+        for hdr_r in (8, 9, 10):
+            for col_idx in range(1, 25):
+                try:
+                    ws.cell(row=hdr_r, column=col_idx).font = openpyxl.styles.Font(name='Arial', size=9.5, bold=True)
+                except Exception:
+                    pass
 
         for m in list(ws.merged_cells.ranges):
             if m.min_row >= 11:
@@ -4422,8 +4438,8 @@ class DocumentService:
 
         thin_border = openpyxl.styles.Side(border_style='thin', color='000000')
         border_all = openpyxl.styles.Border(top=thin_border, bottom=thin_border, left=thin_border, right=thin_border)
-        font_data = openpyxl.styles.Font(name='Arial', size=9)
-        font_bold = openpyxl.styles.Font(name='Arial', size=9.5, bold=True)
+        font_data = openpyxl.styles.Font(name='Arial', size=9.5)
+        font_bold = openpyxl.styles.Font(name='Arial', size=10, bold=True)
         fill_highlight = openpyxl.styles.PatternFill(start_color="EDEDED", end_color="EDEDED", fill_type="solid")
         fill_totales = openpyxl.styles.PatternFill(start_color="DFDFDF", end_color="DFDFDF", fill_type="solid")
 
@@ -4555,6 +4571,25 @@ class DocumentService:
         c_sello.font = font_bold
         c_sello.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
 
+        # Anchos de columna y configuración de impresión horizontal consistente con Planilla de Sueldos
+        col_widths_ev = {
+            'A': 4.5, 'B': 13.5, 'C': 29.0, 'D': 9.5, 'E': 11.5, 'F': 5.5, 'G': 16.5, 'H': 11.5,
+            'I': 8.5, 'J': 8.0, 'K': 11.5, 'L': 11.0, 'M': 9.5, 'N': 9.5, 'O': 11.5, 'P': 11.5,
+            'Q': 9.0, 'R': 12.0, 'S': 11.0, 'T': 8.0, 'U': 9.5, 'V': 12.0, 'W': 12.5, 'X': 14.5
+        }
+        for col_let, w in col_widths_ev.items():
+            ws.column_dimensions[col_let].width = w
+
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+        ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+        ws.print_options.horizontalCentered = True
+        ws.page_margins = openpyxl.worksheet.page.PageMargins(
+            left=0.25, right=0.25, top=0.8, bottom=0.35, header=0.1, footer=0.1
+        )
+
         effective_xlsx = DocumentService._safe_save_workbook(wb, output_xlsx)
         if output_format.lower() == "pdf":
             pdf_path = os.path.join(exports_dir, f"planilla_eventuales_{empresa_slug}_{mes_nombre.lower()}_{anio}.pdf")
@@ -4627,13 +4662,13 @@ class DocumentService:
         for col_let, width in col_widths.items():
             ws.column_dimensions[col_let].width = width
 
-        font_h_bold = Font(name="Arial", size=8.5, bold=True)
-        font_h_val = Font(name="Arial", size=8.5)
-        font_title_main = Font(name="Arial", size=13, bold=True)
-        font_th = Font(name="Arial", size=7.5, bold=True)
-        font_td = Font(name="Arial", size=7.5)
-        font_td_bold = Font(name="Arial", size=7.5, bold=True)
-        font_totales = Font(name="Arial", size=8, bold=True)
+        font_h_bold = Font(name="Arial", size=9.5, bold=True)
+        font_h_val = Font(name="Arial", size=9.5)
+        font_title_main = Font(name="Arial", size=14, bold=True)
+        font_th = Font(name="Arial", size=9.0, bold=True)
+        font_td = Font(name="Arial", size=9.0)
+        font_td_bold = Font(name="Arial", size=9.0, bold=True)
+        font_totales = Font(name="Arial", size=9.5, bold=True)
         
         fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
         fill_totales = PatternFill(start_color="DFDFDF", end_color="DFDFDF", fill_type="solid")
@@ -4671,7 +4706,7 @@ class DocumentService:
 
         ws.merge_cells('B6:O6')
         ws['B6'] = f"DEL {desde_fmt} AL {hasta_fmt}"
-        ws['B6'].font = Font(name="Arial", size=10, bold=True, color="334155")
+        ws['B6'].font = Font(name="Arial", size=10.5, bold=True, color="334155")
         ws['B6'].alignment = Alignment(horizontal="center", vertical="center")
 
         headers = [
@@ -4691,7 +4726,7 @@ class DocumentService:
             ("O", "SALDO DÍAS\nPENDIENTES")
         ]
         
-        ws.row_dimensions[8].height = 28
+        ws.row_dimensions[8].height = 32
         for col_c, h_text in headers:
             cell = ws[f"{col_c}8"]
             cell.value = h_text
@@ -4700,9 +4735,12 @@ class DocumentService:
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             cell.border = border_cell
 
+        def _fmt_xl_num(val):
+            return '#,##0.00' if round(float(val or 0.0) * 100) % 10 != 0 else '#,##0.0'
+
         curr_row = 9
         for idx, emp in enumerate(employees, start=1):
-            ws.row_dimensions[curr_row].height = 20
+            ws.row_dimensions[curr_row].height = 23
             
             f_ing = emp.get('fecha_ingreso', '')
             if f_ing and len(f_ing) >= 10:
@@ -4710,6 +4748,13 @@ class DocumentService:
                 if len(f_parts) == 3:
                     f_ing = f"{f_parts[2]}/{f_parts[1]}/{f_parts[0]}"
                     
+            d_acum = emp.get('dias_acumulados', 0.0)
+            d_pag = emp.get('dias_pagados', emp.get('dias_a_cuenta', 0.0))
+            d_sol = emp.get('dias_solicitadas', 0.0)
+            d_col = emp.get('dias_colectivas', 0.0)
+            d_tom = emp.get('total_dias_tomados', 0.0)
+            d_sal = emp.get('saldo_dias_pendientes', 0.0)
+
             row_data = [
                 ('B', idx, 'center', None, font_td),
                 ('C', emp.get('employee_code', ''), 'center', None, font_td),
@@ -4719,12 +4764,12 @@ class DocumentService:
                 ('G', f_ing, 'center', None, font_td),
                 ('H', emp.get('antiguedad_formato', ''), 'center', None, font_td),
                 ('I', emp.get('escala_dias', 15), 'center', None, font_td_bold),
-                ('J', emp.get('dias_acumulados', 0.0), 'right', '#,##0.0', font_td),
-                ('K', emp.get('dias_pagados', emp.get('dias_a_cuenta', 0.0)), 'right', '#,##0.0', font_td),
-                ('L', emp.get('dias_solicitadas', 0.0), 'right', '#,##0.0', font_td),
-                ('M', emp.get('dias_colectivas', 0.0), 'right', '#,##0.0', font_td),
-                ('N', emp.get('total_dias_tomados', 0.0), 'right', '#,##0.0', font_td_bold),
-                ('O', emp.get('saldo_dias_pendientes', 0.0), 'right', '#,##0.0', font_td_bold),
+                ('J', d_acum, 'right', _fmt_xl_num(d_acum), font_td),
+                ('K', d_pag, 'right', _fmt_xl_num(d_pag), font_td),
+                ('L', d_sol, 'right', _fmt_xl_num(d_sol), font_td),
+                ('M', d_col, 'right', _fmt_xl_num(d_col), font_td),
+                ('N', d_tom, 'right', _fmt_xl_num(d_tom), font_td_bold),
+                ('O', d_sal, 'right', _fmt_xl_num(d_sal), font_td_bold),
             ]
             for col_c, val, align, num_fmt, f_style in row_data:
                 c = ws[f"{col_c}{curr_row}"]
@@ -4738,7 +4783,7 @@ class DocumentService:
                     c.fill = fill_highlight
             curr_row += 1
 
-        ws.row_dimensions[curr_row].height = 22
+        ws.row_dimensions[curr_row].height = 25
         ws.merge_cells(f"B{curr_row}:I{curr_row}")
         ws[f"B{curr_row}"] = "TOTALES GENERALES:"
         ws[f"B{curr_row}"].font = font_totales
@@ -4762,7 +4807,7 @@ class DocumentService:
             c.font = font_totales
             c.fill = fill_totales
             c.alignment = Alignment(horizontal="right", vertical="center")
-            c.number_format = '#,##0.0'
+            c.number_format = _fmt_xl_num(tot_val)
             c.border = double_bottom
             
         f_row = curr_row + 4
@@ -4772,11 +4817,11 @@ class DocumentService:
             ws[f"{c_let}{f_row}"].border = Border(bottom=Side(style='thin', color='000000'))
         ws.merge_cells(f"C{f_row+1}:F{f_row+1}")
         ws[f"C{f_row+1}"] = rep_legal
-        ws[f"C{f_row+1}"].font = Font(name="Arial", size=8.5, bold=True)
+        ws[f"C{f_row+1}"].font = Font(name="Arial", size=9.5, bold=True)
         ws[f"C{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
         ws.merge_cells(f"C{f_row+2}:F{f_row+2}")
         ws[f"C{f_row+2}"] = f"REPRESENTANTE LEGAL - C.I. {rep_ci}"
-        ws[f"C{f_row+2}"].font = Font(name="Arial", size=7.5)
+        ws[f"C{f_row+2}"].font = Font(name="Arial", size=8.5)
         ws[f"C{f_row+2}"].alignment = Alignment(horizontal="center", vertical="top")
 
         ws.merge_cells(f"K{f_row}:N{f_row}")
@@ -4785,11 +4830,11 @@ class DocumentService:
             ws[f"{c_let}{f_row}"].border = Border(bottom=Side(style='thin', color='000000'))
         ws.merge_cells(f"K{f_row+1}:N{f_row+1}")
         ws[f"K{f_row+1}"] = "RESPONSABLE DE RECURSOS HUMANOS"
-        ws[f"K{f_row+1}"].font = Font(name="Arial", size=8.5, bold=True)
+        ws[f"K{f_row+1}"].font = Font(name="Arial", size=9.5, bold=True)
         ws[f"K{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top")
         ws.merge_cells(f"K{f_row+2}:N{f_row+2}")
         ws[f"K{f_row+2}"] = "FIRMA Y SELLO"
-        ws[f"K{f_row+2}"].font = Font(name="Arial", size=7.5)
+        ws[f"K{f_row+2}"].font = Font(name="Arial", size=8.5)
         ws[f"K{f_row+2}"].alignment = Alignment(horizontal="center", vertical="top")
 
         fecha_slug = now_dt.strftime("%d_%m_%Y")
@@ -4849,27 +4894,27 @@ class DocumentService:
         ws.print_options.horizontalCentered = True
         ws.page_margins = openpyxl.worksheet.page.PageMargins(left=0.3, right=0.3, top=0.6, bottom=0.3)
 
-        # 7 Columnas principales (B a H) perfectamente dimensionadas y responsivas para evitar cualquier corte
+        # 7 Columnas principales (B a H) proporcionadas para Portrait sin reducción excesiva al convertir a PDF
         col_widths = {
-            'A': 2.0,   # Margen izquierdo
-            'B': 6.0,   # N°
-            'C': 20.0,  # FECHA / PERIODO
-            'D': 22.0,  # TIPO DE VACACIÓN
-            'E': 18.0,  # DÍAS GANADOS (+)
-            'F': 18.0,  # DÍAS TOMADOS (-)
-            'G': 18.0,  # SALDO RESTANTE (=)
-            'H': 40.0   # MOTIVO / DETALLE
+            'A': 1.5,   # Margen izquierdo
+            'B': 5.5,   # N°
+            'C': 16.5,  # FECHA / PERIODO
+            'D': 17.0,  # TIPO DE VACACIÓN
+            'E': 13.0,  # DÍAS GANADOS (+)
+            'F': 13.0,  # DÍAS TOMADOS (-)
+            'G': 13.5,  # SALDO RESTANTE (=)
+            'H': 33.0   # MOTIVO / DETALLE
         }
         for col_let, width in col_widths.items():
             ws.column_dimensions[col_let].width = width
 
-        font_h_bold = Font(name="Arial", size=8.5, bold=True)
-        font_h_val = Font(name="Arial", size=8.5)
-        font_title_main = Font(name="Arial", size=13, bold=True)
-        font_box_title = Font(name="Arial", size=8.5, bold=True)
-        font_th = Font(name="Arial", size=8, bold=True)
-        font_td = Font(name="Arial", size=8)
-        font_td_bold = Font(name="Arial", size=8, bold=True)
+        font_h_bold = Font(name="Arial", size=9.5, bold=True)
+        font_h_val = Font(name="Arial", size=9.5)
+        font_title_main = Font(name="Arial", size=14, bold=True)
+        font_box_title = Font(name="Arial", size=9.5, bold=True)
+        font_th = Font(name="Arial", size=9.5, bold=True)
+        font_td = Font(name="Arial", size=9.5)
+        font_td_bold = Font(name="Arial", size=9.5, bold=True)
         
         fill_header = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
         fill_box = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
@@ -4915,10 +4960,10 @@ class DocumentService:
         ws['B5'].alignment = Alignment(horizontal="center", vertical="center")
 
         # Rango de fechas
-        ws.row_dimensions[6].height = 18
+        ws.row_dimensions[6].height = 20
         ws.merge_cells('B6:H6')
         ws['B6'] = f"DEL {desde_fmt} AL {hasta_fmt}"
-        ws['B6'].font = Font(name="Arial", size=9.5, bold=True, color="334155")
+        ws['B6'].font = Font(name="Arial", size=10.5, bold=True, color="334155")
         ws['B6'].alignment = Alignment(horizontal="center", vertical="center")
 
         # Datos del Trabajador
@@ -4993,6 +5038,10 @@ class DocumentService:
         tot_tomados_hist = float(kardex["total_dias_tomados"] if kardex else emp.get('total_dias_tomados', 0.0))
         tot_saldo_hist = float(kardex["saldo_dias_pendientes"] if kardex else emp.get('saldo_dias_pendientes', 0.0))
 
+        def _fmt_d_num(val: float) -> str:
+            val = float(val or 0.0)
+            return f"{val:.1f}" if round(val * 100) % 10 == 0 else f"{val:.2f}"
+
         # Resumen de Saldos - Diseño intuitivo con desglose de periodo y conciliación matemática
         r_bal_title = r_emp + 1
         ws.row_dimensions[r_bal_title].height = 20
@@ -5006,51 +5055,51 @@ class DocumentService:
         ws[f"B{r_bal_title}"].alignment = Alignment(horizontal="left", vertical="center")
 
         r_b1 = r_bal_title + 1
-        ws.row_dimensions[r_b1].height = 16
-        ws.row_dimensions[r_b1+1].height = 22
+        ws.row_dimensions[r_b1].height = 18
+        ws.row_dimensions[r_b1+1].height = 24
 
         if has_saldo_ant:
             # 4 Tarjetas Claras de Periodo: Saldo Ant. + Ganados - Tomados = Saldo Final
             # Caja 1: SALDO ANTERIOR (+) (B:C)
             ws.merge_cells(f"B{r_b1}:C{r_b1}")
             ws[f"B{r_b1}"] = "SALDO ANTERIOR (+)"
-            ws[f"B{r_b1}"].font = Font(name="Arial", size=8.0, bold=True)
+            ws[f"B{r_b1}"].font = Font(name="Arial", size=9.0, bold=True)
             ws[f"B{r_b1}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"B{r_b1}"].fill = fill_box
             for c in ['B', 'C']:
                 ws[f"{c}{r_b1}"].border = border_cell
 
             ws.merge_cells(f"B{r_b1+1}:C{r_b1+1}")
-            ws[f"B{r_b1+1}"] = f"{saldo_pre:.1f} d"
-            ws[f"B{r_b1+1}"].font = Font(name="Arial", size=11, bold=True)
+            ws[f"B{r_b1+1}"] = f"{_fmt_d_num(saldo_pre)} d"
+            ws[f"B{r_b1+1}"].font = Font(name="Arial", size=12, bold=True)
             ws[f"B{r_b1+1}"].alignment = Alignment(horizontal="center", vertical="center")
             for c in ['B', 'C']:
                 ws[f"{c}{r_b1+1}"].border = border_cell
 
             # Caja 2: GANADOS EN PERIODO (+) (D)
             ws[f"D{r_b1}"] = "GANADOS (+)"
-            ws[f"D{r_b1}"].font = Font(name="Arial", size=8.0, bold=True)
+            ws[f"D{r_b1}"].font = Font(name="Arial", size=9.0, bold=True)
             ws[f"D{r_b1}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"D{r_b1}"].fill = fill_box
             ws[f"D{r_b1}"].border = border_cell
 
-            ws[f"D{r_b1+1}"] = f"+{ganados_periodo:.1f} d"
-            ws[f"D{r_b1+1}"].font = Font(name="Arial", size=11, bold=True)
+            ws[f"D{r_b1+1}"] = f"+{_fmt_d_num(ganados_periodo)} d"
+            ws[f"D{r_b1+1}"].font = Font(name="Arial", size=12, bold=True)
             ws[f"D{r_b1+1}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"D{r_b1+1}"].border = border_cell
 
             # Caja 3: TOMADOS EN PERIODO (-) (E:F)
             ws.merge_cells(f"E{r_b1}:F{r_b1}")
             ws[f"E{r_b1}"] = "TOMADOS EN PERIODO (-)"
-            ws[f"E{r_b1}"].font = Font(name="Arial", size=8.0, bold=True)
+            ws[f"E{r_b1}"].font = Font(name="Arial", size=9.0, bold=True)
             ws[f"E{r_b1}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"E{r_b1}"].fill = fill_box
             for c in ['E', 'F']:
                 ws[f"{c}{r_b1}"].border = border_cell
 
             ws.merge_cells(f"E{r_b1+1}:F{r_b1+1}")
-            ws[f"E{r_b1+1}"] = f"-{tomados_periodo:.1f} d"
-            ws[f"E{r_b1+1}"].font = Font(name="Arial", size=11, bold=True)
+            ws[f"E{r_b1+1}"] = f"-{_fmt_d_num(tomados_periodo)} d"
+            ws[f"E{r_b1+1}"].font = Font(name="Arial", size=12, bold=True)
             ws[f"E{r_b1+1}"].alignment = Alignment(horizontal="center", vertical="center")
             for c in ['E', 'F']:
                 ws[f"{c}{r_b1+1}"].border = border_cell
@@ -5058,15 +5107,15 @@ class DocumentService:
             # Caja 4: SALDO DISPONIBLE (=) (G:H)
             ws.merge_cells(f"G{r_b1}:H{r_b1}")
             ws[f"G{r_b1}"] = "SALDO DISPONIBLE (=)"
-            ws[f"G{r_b1}"].font = Font(name="Arial", size=8.0, bold=True)
+            ws[f"G{r_b1}"].font = Font(name="Arial", size=9.0, bold=True)
             ws[f"G{r_b1}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"G{r_b1}"].fill = fill_box
             for c in ['G', 'H']:
                 ws[f"{c}{r_b1}"].border = border_cell
 
             ws.merge_cells(f"G{r_b1+1}:H{r_b1+1}")
-            ws[f"G{r_b1+1}"] = f"{saldo_final_periodo:.1f} d"
-            ws[f"G{r_b1+1}"].font = Font(name="Arial", size=12, bold=True)
+            ws[f"G{r_b1+1}"] = f"{_fmt_d_num(saldo_final_periodo)} d"
+            ws[f"G{r_b1+1}"].font = Font(name="Arial", size=12.5, bold=True)
             ws[f"G{r_b1+1}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"G{r_b1+1}"].fill = fill_box
             for c in ['G', 'H']:
@@ -5077,45 +5126,45 @@ class DocumentService:
             # 3 Cajas Clásicas para Histórico Completo
             ws.merge_cells(f"B{r_b1}:C{r_b1}")
             ws[f"B{r_b1}"] = "DÍAS GANADOS (+)"
-            ws[f"B{r_b1}"].font = Font(name="Arial", size=8.5, bold=True)
+            ws[f"B{r_b1}"].font = Font(name="Arial", size=9.0, bold=True)
             ws[f"B{r_b1}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"B{r_b1}"].fill = fill_box
             for c in ['B', 'C']:
                 ws[f"{c}{r_b1}"].border = border_cell
 
             ws.merge_cells(f"B{r_b1+1}:C{r_b1+1}")
-            ws[f"B{r_b1+1}"] = f"{tot_ganados_hist:.1f} días"
-            ws[f"B{r_b1+1}"].font = Font(name="Arial", size=11.5, bold=True)
+            ws[f"B{r_b1+1}"] = f"{_fmt_d_num(tot_ganados_hist)} días"
+            ws[f"B{r_b1+1}"].font = Font(name="Arial", size=12, bold=True)
             ws[f"B{r_b1+1}"].alignment = Alignment(horizontal="center", vertical="center")
             for c in ['B', 'C']:
                 ws[f"{c}{r_b1+1}"].border = border_cell
 
             ws.merge_cells(f"D{r_b1}:F{r_b1}")
             ws[f"D{r_b1}"] = "DÍAS TOMADOS (-)"
-            ws[f"D{r_b1}"].font = Font(name="Arial", size=8.5, bold=True)
+            ws[f"D{r_b1}"].font = Font(name="Arial", size=9.0, bold=True)
             ws[f"D{r_b1}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"D{r_b1}"].fill = fill_box
             for c in ['D', 'E', 'F']:
                 ws[f"{c}{r_b1}"].border = border_cell
 
             ws.merge_cells(f"D{r_b1+1}:F{r_b1+1}")
-            ws[f"D{r_b1+1}"] = f"{tot_tomados_hist:.1f} días"
-            ws[f"D{r_b1+1}"].font = Font(name="Arial", size=11.5, bold=True)
+            ws[f"D{r_b1+1}"] = f"{_fmt_d_num(tot_tomados_hist)} días"
+            ws[f"D{r_b1+1}"].font = Font(name="Arial", size=12, bold=True)
             ws[f"D{r_b1+1}"].alignment = Alignment(horizontal="center", vertical="center")
             for c in ['D', 'E', 'F']:
                 ws[f"{c}{r_b1+1}"].border = border_cell
 
             ws.merge_cells(f"G{r_b1}:H{r_b1}")
             ws[f"G{r_b1}"] = "SALDO DISPONIBLE (=)"
-            ws[f"G{r_b1}"].font = Font(name="Arial", size=8.5, bold=True)
+            ws[f"G{r_b1}"].font = Font(name="Arial", size=9.0, bold=True)
             ws[f"G{r_b1}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"G{r_b1}"].fill = fill_box
             for c in ['G', 'H']:
                 ws[f"{c}{r_b1}"].border = border_cell
 
             ws.merge_cells(f"G{r_b1+1}:H{r_b1+1}")
-            ws[f"G{r_b1+1}"] = f"{tot_saldo_hist:.1f} días"
-            ws[f"G{r_b1+1}"].font = Font(name="Arial", size=12, bold=True)
+            ws[f"G{r_b1+1}"] = f"{_fmt_d_num(tot_saldo_hist)} días"
+            ws[f"G{r_b1+1}"].font = Font(name="Arial", size=12.5, bold=True)
             ws[f"G{r_b1+1}"].alignment = Alignment(horizontal="center", vertical="center")
             ws[f"G{r_b1+1}"].fill = fill_box
             for c in ['G', 'H']:
@@ -5152,8 +5201,11 @@ class DocumentService:
                 return f"{VacationService.MESES_ES[d_ini.month]} {d_ini.year} a {VacationService.MESES_ES[d_fin.month]} {d_fin.year}"
             return f"{_fmt_dmy(d_ini)} al {_fmt_dmy(d_fin)}"
 
-        def _fmt_motivo(motivo_val: str, tipo_raw: str, fecha_sol = None) -> str:
+        def _fmt_motivo(motivo_val: str, tipo_raw: str, fecha_sol = None, es_cierre: bool = False, fecha_ev = None) -> str:
             m = str(motivo_val or "").strip()
+            if es_cierre or "CIERRE CONCILIADO" in m.upper():
+                ref_fmt = _fmt_dmy(fecha_sol or fecha_ev)
+                return f"CIERRE CONCILIADO ({ref_fmt})" if ref_fmt and ref_fmt != "-" else "CIERRE CONCILIADO"
             if not m or m == "-":
                 if tipo_raw in ("dias_pagados", "a_cuenta"):
                     m = "Compensación de días pagados"
@@ -5187,7 +5239,7 @@ class DocumentService:
         ws[f"B{r_hist_title}"].alignment = Alignment(horizontal="left", vertical="center")
 
         r_th = r_hist_title + 1
-        ws.row_dimensions[r_th].height = 22
+        ws.row_dimensions[r_th].height = 25
         th_list = [
             ("B", "N°"),
             ("C", "FECHA / PERIODO"),
@@ -5210,7 +5262,7 @@ class DocumentService:
         if kardex:
             apertura = kardex.get("apertura")
             if apertura:
-                ws.row_dimensions[r_data].height = 19
+                ws.row_dimensions[r_data].height = 21
                 ws[f"B{r_data}"] = "Inicio"
                 ws[f"B{r_data}"].alignment = Alignment(horizontal="center", vertical="center")
                 ws[f"B{r_data}"].font = font_td_bold
@@ -5220,7 +5272,7 @@ class DocumentService:
                     ws[f"C{r_data}"] = f"Previo al {_fmt_dmy(apertura['fecha'])}"
                     ws[f"D{r_data}"] = "Saldo Anterior"
                     saldo_ant = apertura.get('saldo_restante', 0.0)
-                    ws[f"E{r_data}"] = f"+{saldo_ant:.1f}" if saldo_ant > 0 else "-"
+                    ws[f"E{r_data}"] = f"+{_fmt_d_num(saldo_ant)}" if saldo_ant > 0 else "-"
                     ws[f"F{r_data}"] = "-"
                 else:
                     ws[f"C{r_data}"] = _fmt_dmy(apertura['fecha'])
@@ -5244,7 +5296,7 @@ class DocumentService:
                 ws[f"F{r_data}"].font = Font(name="Arial", size=8, color="94A3B8")
                 ws[f"F{r_data}"].border = border_cell
 
-                ws[f"G{r_data}"] = f"{apertura.get('saldo_restante', 0.0):.1f}"
+                ws[f"G{r_data}"] = f"{_fmt_d_num(apertura.get('saldo_restante', 0.0))}"
                 ws[f"G{r_data}"].alignment = Alignment(horizontal="right", vertical="center")
                 ws[f"G{r_data}"].font = font_td_bold
                 ws[f"G{r_data}"].border = border_cell
@@ -5259,22 +5311,30 @@ class DocumentService:
             timeline = kardex.get("timeline", [])
             if timeline:
                 for idx, ev in enumerate(timeline, start=1):
-                    ws.row_dimensions[r_data].height = 19
+                    ws.row_dimensions[r_data].height = 22
                     tipo_raw = ev.get("tipo", "")
                     if tipo_raw == "derecho_anual":
                         periodo_str = _fmt_dmy(ev.get("fecha"))
-                        tipo_str = "Derecho Anual"
-                        ganados_str = f"+{ev.get('dias_ganados', 0.0):.1f}"
-                        tomados_str = "-"
+                        tipo_str = ev.get("tipo_label", "Derecho Anual")
+                        d_gan = float(ev.get('dias_ganados', 0.0) or 0.0)
+                        d_tom = float(ev.get('dias_tomados', 0.0) or 0.0)
+                        ganados_str = f"+{_fmt_d_num(d_gan)}" if d_gan > 0 else "-"
+                        tomados_str = f"-{_fmt_d_num(d_tom)}" if d_tom > 0 else "-"
                         motivo_str = ev.get("motivo", "")
                     else:
                         tipo_str = ev.get("tipo_label", tipo_raw)
                         periodo_str = _fmt_periodo(ev.get("fecha"), ev.get("fecha_fin"), tipo_raw)
                         ganados_str = "-"
-                        tomados_str = f"-{ev.get('dias_tomados', 0.0):.1f}"
-                        motivo_str = _fmt_motivo(ev.get("motivo"), tipo_raw, ev.get("fecha_solicitud"))
+                        tomados_str = f"-{_fmt_d_num(ev.get('dias_tomados', 0.0))}"
+                        motivo_str = _fmt_motivo(
+                            ev.get("motivo"),
+                            tipo_raw,
+                            ev.get("fecha_solicitud"),
+                            bool(ev.get("es_cierre_conciliado")),
+                            ev.get("fecha"),
+                        )
 
-                    saldo_str = f"{ev.get('saldo_restante', 0.0):.1f}"
+                    saldo_str = f"{_fmt_d_num(ev.get('saldo_restante', 0.0))}"
 
                     # Fondo de fila suave según el tipo (rojo muy leve para colectivas, verde muy leve para solicitadas)
                     row_fill = None
@@ -5320,7 +5380,7 @@ class DocumentService:
             r_data += 1
 
         # Fila de Totales Finales - 100% Cuadrados y Concordantes con el Periodo
-        ws.row_dimensions[r_data].height = 22
+        ws.row_dimensions[r_data].height = 24
         ws.merge_cells(f"B{r_data}:D{r_data}")
         ws[f"B{r_data}"] = "TOTALES Y SALDO FINAL:"
         ws[f"B{r_data}"].font = font_td_bold
@@ -5333,20 +5393,20 @@ class DocumentService:
         tot_tomados_row = tomados_periodo if has_saldo_ant else tot_tomados_hist
         tot_saldo_row = saldo_final_periodo if has_saldo_ant else tot_saldo_hist
 
-        ws[f"E{r_data}"] = f"+{tot_ganados_row:.1f}"
-        ws[f"E{r_data}"].font = Font(name="Arial", size=9, bold=True)
+        ws[f"E{r_data}"] = f"+{_fmt_d_num(tot_ganados_row)}"
+        ws[f"E{r_data}"].font = Font(name="Arial", size=10, bold=True)
         ws[f"E{r_data}"].alignment = Alignment(horizontal="right", vertical="center")
         ws[f"E{r_data}"].fill = fill_totales
         ws[f"E{r_data}"].border = double_bottom
 
-        ws[f"F{r_data}"] = f"-{tot_tomados_row:.1f}"
-        ws[f"F{r_data}"].font = Font(name="Arial", size=9, bold=True)
+        ws[f"F{r_data}"] = f"-{_fmt_d_num(tot_tomados_row)}"
+        ws[f"F{r_data}"].font = Font(name="Arial", size=10, bold=True)
         ws[f"F{r_data}"].alignment = Alignment(horizontal="right", vertical="center")
         ws[f"F{r_data}"].fill = fill_totales
         ws[f"F{r_data}"].border = double_bottom
 
-        ws[f"G{r_data}"] = f"{tot_saldo_row:.1f}"
-        ws[f"G{r_data}"].font = Font(name="Arial", size=10, bold=True)
+        ws[f"G{r_data}"] = f"{_fmt_d_num(tot_saldo_row)}"
+        ws[f"G{r_data}"].font = Font(name="Arial", size=10.5, bold=True)
         ws[f"G{r_data}"].alignment = Alignment(horizontal="right", vertical="center")
         ws[f"G{r_data}"].fill = fill_totales
         ws[f"G{r_data}"].border = double_bottom
@@ -5370,7 +5430,7 @@ class DocumentService:
         ws[f"B{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top", shrink_to_fit=True)
         ws.merge_cells(f"B{f_row+2}:D{f_row+2}")
         ws[f"B{f_row+2}"] = f"FIRMA TRABAJADOR - C.I. {emp.get('employee_ci', '')}"
-        ws[f"B{f_row+2}"].font = Font(name="Arial", size=7.5)
+        ws[f"B{f_row+2}"].font = Font(name="Arial", size=9.0)
         ws[f"B{f_row+2}"].alignment = Alignment(horizontal="center", vertical="top", shrink_to_fit=True)
 
         # Separador central (E) - 14 de ancho, totalmente vacío y sin bordes
@@ -5389,7 +5449,7 @@ class DocumentService:
         ws[f"F{f_row+1}"].alignment = Alignment(horizontal="center", vertical="top", shrink_to_fit=True)
         ws.merge_cells(f"F{f_row+2}:H{f_row+2}")
         ws[f"F{f_row+2}"] = "REPRESENTANTE LEGAL / ADMINISTRACIÓN"
-        ws[f"F{f_row+2}"].font = Font(name="Arial", size=7.5)
+        ws[f"F{f_row+2}"].font = Font(name="Arial", size=9.0)
         ws[f"F{f_row+2}"].alignment = Alignment(horizontal="center", vertical="top", shrink_to_fit=True)
 
         # =========================================================================
@@ -5445,10 +5505,10 @@ class DocumentService:
             ws_det['B5'].font = font_title_main
             ws_det['B5'].alignment = Alignment(horizontal="center", vertical="center")
 
-            ws_det.row_dimensions[6].height = 16
+            ws_det.row_dimensions[6].height = 18
             ws_det.merge_cells('B6:I6')
             ws_det['B6'] = f"DEL {desde_fmt} AL {hasta_fmt}  -  DESGLOSE MENSUAL PARA AUDITORÍA Y JUSTIFICACIÓN"
-            ws_det['B6'].font = Font(name="Arial", size=9, bold=True, color="334155")
+            ws_det['B6'].font = Font(name="Arial", size=10.0, bold=True, color="334155")
             ws_det['B6'].alignment = Alignment(horizontal="center", vertical="center")
 
             # Datos del Trabajador
@@ -5501,20 +5561,20 @@ class DocumentService:
             ws_det[f"B{r_d_bal}"].alignment = Alignment(horizontal="left", vertical="center")
 
             r_d_cards = r_d_bal + 1
-            ws_det.row_dimensions[r_d_cards].height = 16
-            ws_det.row_dimensions[r_d_cards+1].height = 20
+            ws_det.row_dimensions[r_d_cards].height = 18
+            ws_det.row_dimensions[r_d_cards+1].height = 23
 
             if has_saldo_ant:
                 cards_det = [
-                    ("B", "C", "SALDO ANTERIOR (+)", f"{saldo_pre:.1f} d"),
-                    ("D", "E", "GANADOS EN PERIODO (+)", f"+{ganados_periodo:.1f} d"),
-                    ("F", "G", "TOMADOS EN PERIODO (-)", f"-{tomados_periodo:.1f} d"),
-                    ("H", "I", "SALDO DISPONIBLE (=)", f"{saldo_final_periodo:.1f} d")
+                    ("B", "C", "SALDO ANTERIOR (+)", f"{_fmt_d_num(saldo_pre)} d"),
+                    ("D", "E", "GANADOS EN PERIODO (+)", f"+{_fmt_d_num(ganados_periodo)} d"),
+                    ("F", "G", "TOMADOS EN PERIODO (-)", f"-{_fmt_d_num(tomados_periodo)} d"),
+                    ("H", "I", "SALDO DISPONIBLE (=)", f"{_fmt_d_num(saldo_final_periodo)} d")
                 ]
                 for c_ini, c_fin, lbl, val_str in cards_det:
                     ws_det.merge_cells(f"{c_ini}{r_d_cards}:{c_fin}{r_d_cards}")
                     ws_det[f"{c_ini}{r_d_cards}"] = lbl
-                    ws_det[f"{c_ini}{r_d_cards}"].font = Font(name="Arial", size=8.0, bold=True)
+                    ws_det[f"{c_ini}{r_d_cards}"].font = Font(name="Arial", size=9.0, bold=True)
                     ws_det[f"{c_ini}{r_d_cards}"].fill = fill_box
                     ws_det[f"{c_ini}{r_d_cards}"].alignment = Alignment(horizontal="center", vertical="center")
                     for col_x in [c_ini, c_fin]:
@@ -5522,7 +5582,7 @@ class DocumentService:
 
                     ws_det.merge_cells(f"{c_ini}{r_d_cards+1}:{c_fin}{r_d_cards+1}")
                     ws_det[f"{c_ini}{r_d_cards+1}"] = val_str
-                    ws_det[f"{c_ini}{r_d_cards+1}"].font = Font(name="Arial", size=11, bold=True)
+                    ws_det[f"{c_ini}{r_d_cards+1}"].font = Font(name="Arial", size=12, bold=True)
                     ws_det[f"{c_ini}{r_d_cards+1}"].alignment = Alignment(horizontal="center", vertical="center")
                     for col_x in [c_ini, c_fin]:
                         ws_det[f"{col_x}{r_d_cards+1}"].border = border_cell
@@ -5530,26 +5590,26 @@ class DocumentService:
                 r_d_th = r_d_cards + 3
             else:
                 cards_det = [
-                    ("B", "D", "DÍAS GANADOS (+)", f"{tot_ganados_hist:.1f} días"),
-                    ("E", "G", "DÍAS TOMADOS (-)", f"{tot_tomados_hist:.1f} días"),
-                    ("H", "I", "SALDO DISPONIBLE (=)", f"{tot_saldo_hist:.1f} días")
+                    ("B", "D", "DÍAS GANADOS (+)", f"{_fmt_d_num(tot_ganados_hist)} días"),
+                    ("E", "G", "DÍAS TOMADOS (-)", f"{_fmt_d_num(tot_tomados_hist)} días"),
+                    ("H", "I", "SALDO DISPONIBLE (=)", f"{_fmt_d_num(tot_saldo_hist)} días")
                 ]
                 for c_ini, c_fin, lbl, val_str in cards_det:
                     ws_det.merge_cells(f"{c_ini}{r_d_cards}:{c_fin}{r_d_cards}")
                     ws_det[f"{c_ini}{r_d_cards}"] = lbl
-                    ws_det[f"{c_ini}{r_d_cards}"].font = Font(name="Arial", size=8.5, bold=True)
+                    ws_det[f"{c_ini}{r_d_cards}"].font = Font(name="Arial", size=9.0, bold=True)
                     ws_det[f"{c_ini}{r_d_cards}"].fill = fill_box
                     ws_det[f"{c_ini}{r_d_cards}"].alignment = Alignment(horizontal="center", vertical="center")
 
                     ws_det.merge_cells(f"{c_ini}{r_d_cards+1}:{c_fin}{r_d_cards+1}")
                     ws_det[f"{c_ini}{r_d_cards+1}"] = val_str
-                    ws_det[f"{c_ini}{r_d_cards+1}"].font = Font(name="Arial", size=11, bold=True)
+                    ws_det[f"{c_ini}{r_d_cards+1}"].font = Font(name="Arial", size=12, bold=True)
                     ws_det[f"{c_ini}{r_d_cards+1}"].alignment = Alignment(horizontal="center", vertical="center")
 
                 r_d_th = r_d_cards + 3
 
             # Tabla Detallada
-            ws_det.row_dimensions[r_d_th].height = 22
+            ws_det.row_dimensions[r_d_th].height = 25
             th_list_det = [
                 ("B", "N°"),
                 ("C", "MES / GESTIÓN"),
@@ -5573,7 +5633,7 @@ class DocumentService:
             # Fila 0 Apertura en Hoja Detallada
             apertura_det = kardex_det.get("apertura")
             if apertura_det:
-                ws_det.row_dimensions[r_d_row].height = 19
+                ws_det.row_dimensions[r_d_row].height = 21
                 ws_det[f"B{r_d_row}"] = "Inicio"
                 ws_det[f"B{r_d_row}"].font = font_td_bold
                 ws_det[f"B{r_d_row}"].alignment = Alignment(horizontal="center", vertical="center")
@@ -5584,7 +5644,7 @@ class DocumentService:
                     ws_det[f"D{r_d_row}"] = "Apertura"
                     ws_det[f"E{r_d_row}"] = f"Computado previo al {_fmt_dmy(apertura_det['fecha'])}"
                     s_ant = apertura_det.get('saldo_restante', 0.0)
-                    ws_det[f"F{r_d_row}"] = f"+{s_ant:.1f}" if s_ant > 0 else "-"
+                    ws_det[f"F{r_d_row}"] = f"+{_fmt_d_num(s_ant)}" if s_ant > 0 else "-"
                     ws_det[f"G{r_d_row}"] = "-"
                 else:
                     ws_det[f"C{r_d_row}"] = "Ingreso Empresa"
@@ -5607,7 +5667,7 @@ class DocumentService:
                     ws_det[f"{c_l}{r_d_row}"].alignment = Alignment(horizontal="right" if ws_det[f"{c_l}{r_d_row}"].value != "-" else "center", vertical="center")
                     ws_det[f"{c_l}{r_d_row}"].border = border_cell
 
-                ws_det[f"H{r_d_row}"] = f"{apertura_det.get('saldo_restante', 0.0):.1f}"
+                ws_det[f"H{r_d_row}"] = f"{_fmt_d_num(apertura_det.get('saldo_restante', 0.0))}"
                 ws_det[f"H{r_d_row}"].font = font_td_bold
                 ws_det[f"H{r_d_row}"].alignment = Alignment(horizontal="right", vertical="center")
                 ws_det[f"H{r_d_row}"].border = border_cell
@@ -5622,14 +5682,20 @@ class DocumentService:
             det_timeline = kardex_det.get("timeline", [])
             for idx_d, dev in enumerate(det_timeline, start=1):
                 f_esp_txt = str(dev.get("dias_especificos_formato", ""))
-                mot_val = _fmt_motivo(dev.get("motivo"), dev.get("tipo", ""), dev.get("fecha_solicitud"))
+                mot_val = _fmt_motivo(
+                    dev.get("motivo"),
+                    dev.get("tipo", ""),
+                    dev.get("fecha_solicitud"),
+                    bool(dev.get("es_cierre_conciliado")),
+                    dev.get("fecha"),
+                )
                 num_lines_e = max(1, f_esp_txt.count("\n") + 1)
                 num_lines_i = max(1, (len(mot_val) + 26) // 27)
                 num_lines = max(num_lines_e, num_lines_i)
-                h_val = max(20, num_lines * 13 + 6)
+                h_val = max(22, num_lines * 14 + 6)
                 ws_det.row_dimensions[r_d_row].height = h_val
-                gan_val = f"+{dev['dias_ganados']:.1f}" if dev['dias_ganados'] > 0 else "-"
-                tom_val = f"-{dev['dias_tomados']:.1f}" if dev['dias_tomados'] > 0 else "-"
+                gan_val = f"+{_fmt_d_num(dev['dias_ganados'])}" if dev['dias_ganados'] > 0 else "-"
+                tom_val = f"-{_fmt_d_num(dev['dias_tomados'])}" if dev['dias_tomados'] > 0 else "-"
 
                 det_tipo_raw = dev.get("tipo", "")
                 det_row_fill = None
@@ -5645,7 +5711,7 @@ class DocumentService:
                     ('E', f_esp_txt, 'left', font_td, True, False),
                     ('F', gan_val, 'right' if gan_val != '-' else 'center', font_td_bold if gan_val != '-' else Font(name="Arial", size=8, color="94A3B8"), False, False),
                     ('G', tom_val, 'right' if tom_val != '-' else 'center', font_td_bold if tom_val != '-' else Font(name="Arial", size=8, color="94A3B8"), False, False),
-                    ('H', f"{dev['saldo_restante']:.1f}", 'right', font_td_bold, False, False),
+                    ('H', f"{_fmt_d_num(dev['saldo_restante'])}", 'right', font_td_bold, False, False),
                     ('I', mot_val, 'left', font_td, True, False)
                 ]
                 for c_l, v, al, fn, wp, sh in row_vals_det:
@@ -5659,7 +5725,7 @@ class DocumentService:
                 r_d_row += 1
 
             # Totales en Hoja Detallada - 100% Cuadrados y Concordantes
-            ws_det.row_dimensions[r_d_row].height = 22
+            ws_det.row_dimensions[r_d_row].height = 24
             ws_det.merge_cells(f"B{r_d_row}:E{r_d_row}")
             ws_det[f"B{r_d_row}"] = "TOTALES Y SALDO FINAL:"
             ws_det[f"B{r_d_row}"].font = font_td_bold
@@ -5672,20 +5738,20 @@ class DocumentService:
             tot_tomados_det_row = tomados_periodo if has_saldo_ant else tot_tomados_hist
             tot_saldo_det_row = saldo_final_periodo if has_saldo_ant else tot_saldo_hist
 
-            ws_det[f"F{r_d_row}"] = f"+{tot_ganados_det_row:.1f}"
-            ws_det[f"F{r_d_row}"].font = Font(name="Arial", size=9, bold=True)
+            ws_det[f"F{r_d_row}"] = f"+{_fmt_d_num(tot_ganados_det_row)}"
+            ws_det[f"F{r_d_row}"].font = Font(name="Arial", size=10, bold=True)
             ws_det[f"F{r_d_row}"].alignment = Alignment(horizontal="right", vertical="center")
             ws_det[f"F{r_d_row}"].fill = fill_totales
             ws_det[f"F{r_d_row}"].border = double_bottom
 
-            ws_det[f"G{r_d_row}"] = f"-{tot_tomados_det_row:.1f}"
-            ws_det[f"G{r_d_row}"].font = Font(name="Arial", size=9, bold=True)
+            ws_det[f"G{r_d_row}"] = f"-{_fmt_d_num(tot_tomados_det_row)}"
+            ws_det[f"G{r_d_row}"].font = Font(name="Arial", size=10, bold=True)
             ws_det[f"G{r_d_row}"].alignment = Alignment(horizontal="right", vertical="center")
             ws_det[f"G{r_d_row}"].fill = fill_totales
             ws_det[f"G{r_d_row}"].border = double_bottom
 
-            ws_det[f"H{r_d_row}"] = f"{tot_saldo_det_row:.1f}"
-            ws_det[f"H{r_d_row}"].font = Font(name="Arial", size=10, bold=True)
+            ws_det[f"H{r_d_row}"] = f"{_fmt_d_num(tot_saldo_det_row)}"
+            ws_det[f"H{r_d_row}"].font = Font(name="Arial", size=10.5, bold=True)
             ws_det[f"H{r_d_row}"].alignment = Alignment(horizontal="right", vertical="center")
             ws_det[f"H{r_d_row}"].fill = fill_totales
             ws_det[f"H{r_d_row}"].border = double_bottom
@@ -5760,15 +5826,18 @@ class DocumentService:
         dias_int = int(dias_pagados)
         if dias_int == dias_pagados:
             dias_str = f"{dias_int} ({DocumentService._numero_a_letras(dias_int).lower()})"
+            dias_bullet_str = f"{dias_int} días"
         else:
-            dias_str = f"{dias_pagados:g}"
+            dias_fmt = f"{dias_pagados:.2f}".rstrip('0').rstrip('.')
+            dias_str = dias_fmt
+            dias_bullet_str = f"{dias_fmt} días"
 
-        font_header_nro = Font(name="Arial", size=9, bold=True)
-        font_title = Font(name="Arial", size=12, bold=True, color="0F172A")
-        font_body = Font(name="Arial", size=9.5)
-        font_body_bold = Font(name="Arial", size=9.5, bold=True)
-        font_sub = Font(name="Arial", size=9)
-        font_sub_bold = Font(name="Arial", size=9.5, bold=True)
+        font_header_nro = Font(name="Arial", size=10, bold=True)
+        font_title = Font(name="Arial", size=13, bold=True, color="0F172A")
+        font_body = Font(name="Arial", size=10.5)
+        font_body_bold = Font(name="Arial", size=10.5, bold=True)
+        font_sub = Font(name="Arial", size=10)
+        font_sub_bold = Font(name="Arial", size=10, bold=True)
 
         thin_side = Side(style='thin', color='475569')
         border_box = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
@@ -5801,9 +5870,9 @@ class DocumentService:
         r += 1
         ws.row_dimensions[r].height = 6
 
-        # Fila 3: Declaración con C.I. y altura 52pt para que jamás se corte el texto
+        # Fila 3: Declaración con C.I. y altura 54pt para que jamás se corte el texto
         r += 1
-        ws.row_dimensions[r].height = 52
+        ws.row_dimensions[r].height = 54
         ws.merge_cells(f"B{r}:G{r}")
         ci_phrase = f" con C.I. {trabajador_ci}" if trabajador_ci else ""
         decl_text = (
@@ -5828,7 +5897,7 @@ class DocumentService:
         items = [
             ("•  Total ganado mensual:", f"Bs {total_ganado:,.2f}"),
             ("•  Salario diario:", f"Bs {total_ganado:,.2f} ÷ 30 = Bs {salario_diario:,.2f}"),
-            ("•  Días de vacaciones pagados:", f"{dias_pagados:g} días"),
+            ("•  Días de vacaciones pagados:", dias_bullet_str),
             ("•  Importe cancelado:", f"Bs {importe_cancelado:,.2f}")
         ]
 
@@ -5882,16 +5951,16 @@ class DocumentService:
         ws[f"E{r}"].font = font_sub_bold
         ws[f"E{r}"].alignment = Alignment(horizontal="center", vertical="center")
 
-        # Fila 8: Espacio vertical amplio y cómodo para la firma física y sello (68 pt)
+        # Fila 8: Espacio vertical amplio y cómodo para la firma física y sello (64 pt)
         r += 1
-        ws.row_dimensions[r].height = 68
+        ws.row_dimensions[r].height = 64
         ws.merge_cells(f"B{r}:D{r}")
         ws.merge_cells(f"E{r}:G{r}")
 
-        dots_pay_nombre = "." * 125
-        dots_pay_ci = "." * 130
-        dots_pay_firma = "." * 127
-        font_dot_pay = Font(name="Arial", size=8.0, bold=False, color="475569")
+        dots_pay_nombre = "." * 105
+        dots_pay_ci = "." * 110
+        dots_pay_firma = "." * 107
+        font_dot_pay = Font(name="Arial", size=9.0, bold=False, color="475569")
 
         # Fila 9: Línea de Firma (arriba de los datos)
         r += 1
@@ -6046,15 +6115,15 @@ class DocumentService:
         fecha_str = str(data.get('fecha', now_dt.strftime("%d/%m/%Y"))).strip()
         total_dias = sum(float(r.get('dias', 0.0)) for r in records)
 
-        font_title = Font(name="Arial", size=9.5, bold=True, color="0F172A")
-        font_sec_hdr = Font(name="Arial", size=7.5, bold=True, color="1E293B")
-        font_lbl_bold = Font(name="Arial", size=7.5, bold=True, color="334155")
-        font_val = Font(name="Arial", size=7.5, color="0F172A")
-        font_th = Font(name="Arial", size=7.5, bold=True, color="1E293B")
-        font_td = Font(name="Arial", size=7.0, color="0F172A")
-        font_td_bold = Font(name="Arial", size=7.0, bold=True, color="0F172A")
-        font_conf = Font(name="Arial", size=7.0, color="1E293B")
-        font_dot_standard = Font(name="Arial", size=7.5, bold=False, color="475569")
+        font_title = Font(name="Arial", size=11, bold=True, color="0F172A")
+        font_sec_hdr = Font(name="Arial", size=8.5, bold=True, color="1E293B")
+        font_lbl_bold = Font(name="Arial", size=8.5, bold=True, color="334155")
+        font_val = Font(name="Arial", size=8.5, color="0F172A")
+        font_th = Font(name="Arial", size=8.5, bold=True, color="1E293B")
+        font_td = Font(name="Arial", size=8.5, color="0F172A")
+        font_td_bold = Font(name="Arial", size=8.5, bold=True, color="0F172A")
+        font_conf = Font(name="Arial", size=8.5, color="1E293B")
+        font_dot_standard = Font(name="Arial", size=8.5, bold=False, color="475569")
 
         fill_hdr = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
         thin_side = Side(style='thin', color='CBD5E1')
@@ -6062,7 +6131,7 @@ class DocumentService:
 
         r = start_r
         # Cabecera con fecha del documento a la derecha (sin etiquetas de ORIGINAL/COPIA)
-        ws.row_dimensions[r].height = 12
+        ws.row_dimensions[r].height = 14
         ws.merge_cells(f"B{r}:H{r}")
         ws[f"B{r}"] = f"Fecha: {fecha_str}"
         ws[f"B{r}"].font = font_val
@@ -6070,7 +6139,7 @@ class DocumentService:
 
         # Título
         r += 1
-        ws.row_dimensions[r].height = 15
+        ws.row_dimensions[r].height = 18
         ws.merge_cells(f"B{r}:H{r}")
         ws[f"B{r}"] = f"FICHA DE VACACIONES {tipo_doc}"
         ws[f"B{r}"].font = font_title
@@ -6078,7 +6147,7 @@ class DocumentService:
 
         # Datos Trabajador
         r += 1
-        ws.row_dimensions[r].height = 12
+        ws.row_dimensions[r].height = 14.5
         ws.merge_cells(f"B{r}:H{r}")
         ws[f"B{r}"] = "DATOS DEL TRABAJADOR / INFORMACIÓN"
         ws[f"B{r}"].font = font_sec_hdr
@@ -6088,7 +6157,7 @@ class DocumentService:
             ws[f"{cl}{r}"].border = border_cell
 
         r += 1
-        ws.row_dimensions[r].height = 12
+        ws.row_dimensions[r].height = 14.5
         ws.merge_cells(f"B{r}:C{r}")
         ws[f"B{r}"] = "Nombre del trabajador:"
         ws[f"B{r}"].font = font_lbl_bold
@@ -6099,7 +6168,7 @@ class DocumentService:
             ws[f"{cl}{r}"].border = border_cell
 
         r += 1
-        ws.row_dimensions[r].height = 12
+        ws.row_dimensions[r].height = 14.5
         ws.merge_cells(f"B{r}:C{r}")
         ws[f"B{r}"] = "Cargo:"
         ws[f"B{r}"].font = font_lbl_bold
@@ -6117,7 +6186,7 @@ class DocumentService:
 
         # Detalle de Vacaciones
         r += 1
-        ws.row_dimensions[r].height = 12
+        ws.row_dimensions[r].height = 14.5
         ws.merge_cells(f"B{r}:H{r}")
         ws[f"B{r}"] = f"DETALLE DE VACACIONES {tipo_doc}"
         ws[f"B{r}"].font = font_sec_hdr
@@ -6125,7 +6194,7 @@ class DocumentService:
 
         # Cabecera Tabla
         r += 1
-        ws.row_dimensions[r].height = 13
+        ws.row_dimensions[r].height = 15
         cols = [
             ("B", "N°", Alignment(horizontal="center", vertical="center")),
             ("C", "Fecha Inicio", Alignment(horizontal="center", vertical="center")),
@@ -6145,17 +6214,17 @@ class DocumentService:
 
         if not records:
             r += 1
-            ws.row_dimensions[r].height = 14
+            ws.row_dimensions[r].height = 16
             ws.merge_cells(f"B{r}:H{r}")
             ws[f"B{r}"] = "No existen registros de vacaciones solicitadas o colectivas."
-            ws[f"B{r}"].font = Font(name="Arial", size=7.0, italic=True)
+            ws[f"B{r}"].font = Font(name="Arial", size=8.5, italic=True)
             ws[f"B{r}"].alignment = Alignment(horizontal="center", vertical="center")
             for c_x in ['B', 'C', 'D', 'E', 'F', 'G', 'H']:
                 ws[f"{c_x}{r}"].border = border_cell
         else:
             for idx, rec in enumerate(records, start=1):
                 r += 1
-                ws.row_dimensions[r].height = 11.5
+                ws.row_dimensions[r].height = 13.5
                 tipo_lbl = "Solicitada" if rec.get('tipo') == "solicitada" else ("Colectiva" if rec.get('tipo') == "colectiva" else str(rec.get('tipo', '')))
                 f_ini = rec.get('fecha_inicio', '')
                 if len(str(f_ini)) >= 10 and '-' in str(f_ini):
@@ -6188,7 +6257,7 @@ class DocumentService:
 
         # Fila Total
         r += 1
-        ws.row_dimensions[r].height = 12
+        ws.row_dimensions[r].height = 14.5
         ws.merge_cells(f"B{r}:D{r}")
         ws[f"B{r}"] = "TOTAL DÍAS REGISTRADOS:"
         ws[f"B{r}"].font = font_th
@@ -6213,9 +6282,9 @@ class DocumentService:
 
         # Observaciones con líneas de puntos para completar a mano
         r += 1
-        ws.row_dimensions[r].height = 12
-        dots_obs_line1 = "." * 220
-        dots_obs_line2 = "." * 270
+        ws.row_dimensions[r].height = 14
+        dots_obs_line1 = "." * 185
+        dots_obs_line2 = "." * 225
         if observaciones:
             ws.merge_cells(f"B{r}:C{r}")
             ws[f"B{r}"] = "Observaciones:"
@@ -6226,7 +6295,7 @@ class DocumentService:
             ws[f"D{r}"].font = font_val
             ws[f"D{r}"].alignment = Alignment(horizontal="left", vertical="center")
             r += 1
-            ws.row_dimensions[r].height = 11
+            ws.row_dimensions[r].height = 13.5
             ws.merge_cells(f"B{r}:H{r}")
             ws[f"B{r}"] = dots_obs_line2
             ws[f"B{r}"].font = font_dot_standard
@@ -6241,7 +6310,7 @@ class DocumentService:
             ws[f"D{r}"].font = font_dot_standard
             ws[f"D{r}"].alignment = Alignment(horizontal="left", vertical="center")
             r += 1
-            ws.row_dimensions[r].height = 11
+            ws.row_dimensions[r].height = 13.5
             ws.merge_cells(f"B{r}:H{r}")
             ws[f"B{r}"] = dots_obs_line2
             ws[f"B{r}"].font = font_dot_standard
@@ -6249,14 +6318,14 @@ class DocumentService:
 
         # CONFORMIDAD
         r += 1
-        ws.row_dimensions[r].height = 11
+        ws.row_dimensions[r].height = 13.5
         ws.merge_cells(f"B{r}:H{r}")
         ws[f"B{r}"] = "CONFORMIDAD"
         ws[f"B{r}"].font = font_sec_hdr
         ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
 
         r += 1
-        ws.row_dimensions[r].height = 20
+        ws.row_dimensions[r].height = 24
         ws.merge_cells(f"B{r}:H{r}")
         conf_text = (
             f"Declaro mi conformidad con el registro de {total_dias:g} días de vacación consignados "
@@ -6268,7 +6337,7 @@ class DocumentService:
 
         # Tablas de Firma 100% simétricas (B:F = 47.0, G:H = 47.0)
         r += 1
-        ws.row_dimensions[r].height = 12
+        ws.row_dimensions[r].height = 14
         ws.merge_cells(f"B{r}:F{r}")
         ws[f"B{r}"] = "Firma del trabajador"
         ws[f"B{r}"].font = font_th
@@ -6286,12 +6355,12 @@ class DocumentService:
             ws[f"{cl}{r}"].border = border_cell
 
         firmas_en_blanco = bool(data.get('firmas_en_blanco', True))
-        dots_sig_nombre = "." * 115
-        dots_sig_fecha = "." * 118
-        dots_sig_firma = "." * 118
+        dots_sig_nombre = "." * 95
+        dots_sig_fecha = "." * 98
+        dots_sig_firma = "." * 98
 
         r += 1
-        ws.row_dimensions[r].height = 12
+        ws.row_dimensions[r].height = 14
         ws.merge_cells(f"B{r}:F{r}")
         ws[f"B{r}"] = f"Nombre: {dots_sig_nombre}" if firmas_en_blanco else f"Nombre: {trabajador_nombre}"
         ws[f"B{r}"].font = font_dot_standard if firmas_en_blanco else font_val
@@ -6307,7 +6376,7 @@ class DocumentService:
             ws[f"{cl}{r}"].border = border_cell
 
         r += 1
-        ws.row_dimensions[r].height = 12
+        ws.row_dimensions[r].height = 14
         ws.merge_cells(f"B{r}:F{r}")
         ws[f"B{r}"] = f"Fecha: {dots_sig_fecha}" if firmas_en_blanco else f"Fecha: {fecha_str}"
         ws[f"B{r}"].font = font_dot_standard if firmas_en_blanco else font_val
@@ -6323,7 +6392,7 @@ class DocumentService:
             ws[f"{cl}{r}"].border = border_cell
 
         r += 1
-        ws.row_dimensions[r].height = 16
+        ws.row_dimensions[r].height = 18
         ws.merge_cells(f"B{r}:F{r}")
         ws[f"B{r}"] = f"Firma: {dots_sig_firma}" if firmas_en_blanco else "Firma: ________________________"
         ws[f"B{r}"].font = font_dot_standard if firmas_en_blanco else font_val

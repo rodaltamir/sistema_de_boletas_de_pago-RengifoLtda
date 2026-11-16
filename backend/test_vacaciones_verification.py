@@ -802,6 +802,88 @@ def test_ficha_vacaciones_solicitadas_colectivas():
     print("  [OK] Cuadros de firma de trabajador y responsable estructurados fielmente")
 
 
+def test_fractional_calculation_and_cierre_conciliado():
+    print("\n--- TEST 10: Cálculo Exacto/Fraccionado y Cierre Conciliado (Saldo a 0) ---")
+    # 1. Antigüedad con años, meses y días: 2024-01-15 a 2026-10-20 -> 2 años, 9 meses, 5 días
+    res_frac = VacationService.calculate_accumulated_vacation_days(
+        date(2024, 1, 15),
+        date(2026, 10, 20),
+        fraccionado=True
+    )
+    assert res_frac["anios"] == 2 and res_frac["meses"] == 9 and res_frac["dias"] == 5, f"YMD inválido: {res_frac}"
+    assert res_frac["escala_dias"] == 15
+    assert res_frac["dias_por_anios"] == 30.0
+    assert abs(res_frac["tasa_mensual"] - 1.25) < 1e-6
+    assert res_frac["dias_por_meses"] == 11.25
+    assert res_frac["dias_por_dias"] == 0.21
+    assert res_frac["dias_acumulados_fraccionado"] == 41.46
+    assert res_frac["dias_acumulados_estandar"] == 30.0
+    print(f"  [OK] Desglose fraccionado: años={res_frac['dias_por_anios']}, meses={res_frac['dias_por_meses']}, días={res_frac['dias_por_dias']} -> total={res_frac['dias_acumulados_fraccionado']}")
+
+    # 2. Descuento de solicitadas (3d) y colectivas (2d) + registro de Cierre Conciliado (36.46d)
+    recs = [
+        {
+            "id": 1, "tipo": "solicitada", "fecha_inicio": date(2025, 4, 1), "fecha_fin": date(2025, 4, 3),
+            "dias": 3.0, "motivo": "Vacación personal", "fecha_solicitud": date(2025, 3, 25), "es_cierre_conciliado": False
+        },
+        {
+            "id": 2, "tipo": "colectiva", "fecha_inicio": date(2025, 12, 26), "fecha_fin": date(2025, 12, 28),
+            "dias": 2.0, "motivo": "Receso anual", "fecha_solicitud": None, "es_cierre_conciliado": False
+        },
+        {
+            "id": 3, "tipo": "dias_pagados", "fecha_inicio": date(2026, 10, 20), "fecha_fin": date(2026, 10, 20),
+            "dias": 36.46, "motivo": "Cierre Conciliado Exacto", "fecha_solicitud": date(2026, 10, 20),
+            "es_cierre_conciliado": True, "modo_calculo": "fraccionado"
+        },
+    ]
+    kt = VacationService.build_kardex_timeline(
+        date(2024, 1, 15), recs, date(2024, 1, 1), date(2026, 10, 20)
+    )
+    labels = [row["tipo_label"] for row in kt["timeline"]]
+    assert "Devengado Fraccionado" in labels, f"Falta Devengado Fraccionado en timeline: {labels}"
+    assert "Cierre Conciliado" in labels, f"Falta Cierre Conciliado en timeline: {labels}"
+    assert kt["saldo_dias_pendientes"] == 0.0, f"Saldo tras cierre debe ser 0.0, fue {kt['saldo_dias_pendientes']}"
+    cierre_row = [row for row in kt["timeline"] if row["tipo_label"] == "Cierre Conciliado"][0]
+    assert cierre_row["saldo_restante"] == 0.0, f"Saldo de fila Cierre Conciliado debe ser 0.0, fue {cierre_row['saldo_restante']}"
+    print("  [OK] Kárdex registra 'Devengado Fraccionado' (+11.46) y 'Cierre Conciliado' (-36.46) dejando saldo 0.0")
+
+    # 3. Cómputo posterior al Cierre Conciliado reinicia desde 0
+    res_at_cierre = VacationService.calculate_accumulated_vacation_days(
+        date(2024, 1, 15), date(2026, 10, 20), fraccionado=True, fecha_ultimo_cierre=date(2026, 10, 20)
+    )
+    assert res_at_cierre["dias_acumulados"] == 0.0
+    res_next_month = VacationService.calculate_accumulated_vacation_days(
+        date(2024, 1, 15), date(2026, 11, 20), fraccionado=True, fecha_ultimo_cierre=date(2026, 10, 20)
+    )
+    assert res_next_month["dias_acumulados"] == 1.25, f"Devengado 1 mes post-cierre esperado 1.25, fue {res_next_month['dias_acumulados']}"
+    print("  [OK] Reinicio de ciclo en 0.0 al Cierre Conciliado y nuevo devengado (+1.25 d al mes siguiente) verificado")
+
+    # 4. Generación de recibo con días decimales (36.46)
+    data_recibo_frac = {
+        "trabajador_nombre": "YUJRA JACINTO SERGIO",
+        "trabajador_ci": "10079603 LP",
+        "empleador_nombre": "MANRRIQUE SANTI HIPOLITO",
+        "empleador_rol": "propietario",
+        "empleador_ci": "6570013",
+        "recibo_nro": "0099",
+        "total_ganado": 3300.0,
+        "salario_diario": 110.0,
+        "dias_pagados": 36.46,
+        "importe_cancelado": round(110.0 * 36.46, 2),
+        "lugar_fecha": "La Paz, 20 de octubre de 2026"
+    }
+    excel_path = DocumentService.generate_vacation_payment_receipt_excel(
+        data_recibo_frac, output_format="xlsx", schema_name="prueba_schema"
+    )
+    assert os.path.exists(excel_path)
+    wb = openpyxl.load_workbook(excel_path)
+    ws = wb.active
+    all_text = " ".join([str(cell.value or "") for row in ws.rows for cell in row])
+    assert "36.46" in all_text, "Los días fraccionados '36.46' no aparecieron en el recibo"
+    assert "4,010.60" in all_text, "El importe 4,010.60 no apareció en el recibo"
+    print("  [OK] Recibo de pago generado con días fraccionados exactos (36.46 días / Bs 4,010.60)")
+
+
 if __name__ == "__main__":
     test_vacation_tenure_calculation()
     test_anniversary_exact_date_accrual()
@@ -812,6 +894,7 @@ if __name__ == "__main__":
     test_mathematical_reconciliation_kardex()
     test_recibo_pago_vacaciones()
     test_ficha_vacaciones_solicitadas_colectivas()
+    test_fractional_calculation_and_cierre_conciliado()
     print("\n=============================================")
     print("  ¡TODAS LAS PRUEBAS PASARON EXITOSAMENTE!  ")
     print("=============================================\n")

@@ -14,6 +14,8 @@ class VacationRecordCreate(BaseModel):
     motivo: Optional[str] = None
     gestion: Optional[int] = None
     aprobado_por: Optional[str] = None
+    es_cierre_conciliado: Optional[bool] = False
+    modo_calculo: Optional[str] = "estandar"
 
 class VacationRecordResponse(BaseModel):
     id: int
@@ -28,6 +30,8 @@ class VacationRecordResponse(BaseModel):
     motivo: Optional[str] = None
     gestion: int
     aprobado_por: Optional[str] = None
+    es_cierre_conciliado: Optional[bool] = False
+    modo_calculo: Optional[str] = "estandar"
     created_at: Optional[str] = None
 
     class Config:
@@ -52,6 +56,17 @@ class EmployeeVacationSummary(BaseModel):
     antiguedad_formato: str
     escala_dias: int
     dias_acumulados: float
+    dias_por_anios: Optional[float] = 0.0
+    dias_por_meses: Optional[float] = 0.0
+    dias_por_dias: Optional[float] = 0.0
+    tasa_mensual: Optional[float] = 0.0
+    tasa_diaria: Optional[float] = 0.0
+    dias_acumulados_fraccionado: Optional[float] = 0.0
+    saldo_fraccionado: Optional[float] = 0.0
+    tiene_cierre_conciliado: Optional[bool] = False
+    fecha_ultimo_cierre: Optional[str] = None
+    dias_ultimo_cierre: Optional[float] = 0.0
+    id_ultimo_cierre: Optional[int] = None
     dias_a_cuenta: float = 0.0
     dias_pagados: float = 0.0
     dias_solicitadas: float = 0.0

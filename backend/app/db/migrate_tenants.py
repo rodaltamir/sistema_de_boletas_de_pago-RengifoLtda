@@ -180,14 +180,19 @@ def migrate_tenants():
                         fecha_inicio DATE NOT NULL,
                         fecha_fin DATE NOT NULL,
                         fecha_solicitud DATE,
-                        dias NUMERIC(5, 1) NOT NULL,
+                        dias NUMERIC(8, 2) NOT NULL,
                         fechas_detalle TEXT,
                         motivo VARCHAR(255),
                         gestion INTEGER NOT NULL,
                         aprobado_por VARCHAR(100),
+                        es_cierre_conciliado BOOLEAN DEFAULT FALSE,
+                        modo_calculo VARCHAR(30) DEFAULT 'estandar',
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                     );
                     ALTER TABLE "{schema}".vacation_records ADD COLUMN IF NOT EXISTS fecha_solicitud DATE;
+                    ALTER TABLE "{schema}".vacation_records ALTER COLUMN dias TYPE NUMERIC(8, 2);
+                    ALTER TABLE "{schema}".vacation_records ADD COLUMN IF NOT EXISTS es_cierre_conciliado BOOLEAN DEFAULT FALSE;
+                    ALTER TABLE "{schema}".vacation_records ADD COLUMN IF NOT EXISTS modo_calculo VARCHAR(30) DEFAULT 'estandar';
                 '''))
                 
                 # 8. Sembrar departamentos predeterminados si no existen

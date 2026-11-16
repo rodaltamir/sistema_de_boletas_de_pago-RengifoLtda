@@ -62,6 +62,8 @@ interface VacationRecord {
   fecha_solicitud?: string | null;
   gestion: number;
   aprobado_por?: string;
+  es_cierre_conciliado?: boolean;
+  modo_calculo?: string;
   created_at?: string;
 }
 
@@ -77,6 +79,8 @@ interface KardexItem {
   saldoRestante: number;
   motivo?: string;
   fecha_solicitud?: string | null;
+  es_cierre_conciliado?: boolean;
+  isFractionalCierre?: boolean;
   isRecord: boolean;
   isApertura?: boolean;
   kardexIndex?: number | string;
@@ -96,6 +100,8 @@ interface DetailedKardexItem {
   saldoRestante: number;
   motivo?: string;
   fecha_solicitud?: string | null;
+  es_cierre_conciliado?: boolean;
+  isFractionalCierre?: boolean;
   diasEspecificos: string[];
   diasEspecificosFormato: string;
   isRecord: boolean;
@@ -130,6 +136,17 @@ interface EmployeeVacationSummary {
   antiguedad_formato: string;
   escala_dias: number;
   dias_acumulados: number;
+  dias_por_anios?: number;
+  dias_por_meses?: number;
+  dias_por_dias?: number;
+  tasa_mensual?: number;
+  tasa_diaria?: number;
+  dias_acumulados_fraccionado?: number;
+  saldo_fraccionado?: number;
+  tiene_cierre_conciliado?: boolean;
+  fecha_ultimo_cierre?: string | null;
+  dias_ultimo_cierre?: number;
+  id_ultimo_cierre?: number | null;
   dias_a_cuenta: number;
   dias_pagados?: number;
   dias_solicitadas: number;
@@ -207,7 +224,151 @@ function formatearDiasLiteral(dias: number): string {
   if (Number.isInteger(dias)) {
     return `${dias} (${numeroALetrasEs(dias)})`;
   }
-  return `${dias}`;
+  return `${Number(dias.toFixed(2))}`;
+}
+
+function fmtDias(val?: number | null): string {
+  const v = Number(val || 0);
+  if (Math.round(v * 100) % 10 !== 0) {
+    return v.toFixed(2);
+  }
+  return v.toFixed(1);
+}
+
+function diffYMD(startStr: string, endStr: string): { anios: number; meses: number; dias: number } {
+  if (!startStr || !endStr || endStr <= startStr) {
+    return { anios: 0, meses: 0, dias: 0 };
+  }
+  const p1 = startStr.slice(0, 10).split("-").map(Number);
+  const p2 = endStr.slice(0, 10).split("-").map(Number);
+  if (p1.length !== 3 || p2.length !== 3) return { anios: 0, meses: 0, dias: 0 };
+
+  let anios = p2[0] - p1[0];
+  let meses = p2[1] - p1[1];
+  let dias = p2[2] - p1[2];
+
+  if (dias < 0) {
+    meses -= 1;
+    const prevMonth = p2[1] > 1 ? p2[1] - 1 : 12;
+    const prevYear = p2[1] > 1 ? p2[0] : p2[0] - 1;
+    const daysInPrev = new Date(prevYear, prevMonth, 0).getDate();
+    dias += daysInPrev;
+  }
+
+  if (meses < 0) {
+    anios -= 1;
+    meses += 12;
+  }
+
+  return { anios: Math.max(0, anios), meses: Math.max(0, meses), dias: Math.max(0, dias) };
+}
+
+function getScaleForCompletedYears(completedYears: number): number {
+  if (completedYears < 5) return 15;
+  if (completedYears < 10) return 20;
+  return 30;
+}
+
+function getDaysForYearIndex(yearNum: number): number {
+  if (yearNum <= 5) return 15;
+  if (yearNum <= 10) return 20;
+  return 30;
+}
+
+function getAnnivStr(startStr: string, targetYear: number): string {
+  const parts = startStr.slice(0, 10).split("-").map(Number);
+  if (parts.length !== 3) return startStr;
+  const [, month, day] = parts;
+  const d = new Date(targetYear, month - 1, day);
+  if (d.getMonth() !== month - 1) {
+    return `${targetYear}-02-28`;
+  }
+  return `${targetYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function calcularLiquidacionEmpleado(
+  emp: EmployeeVacationSummary,
+  fechaCorteStr: string,
+  excludeRecId?: number | null
+) {
+  const corte = (fechaCorteStr || "").slice(0, 10);
+  const allRecs = [...(emp.records || [])]
+    .filter(r => !excludeRecId || r.id !== excludeRecId)
+    .sort((a, b) => (a.fecha_inicio.localeCompare(b.fecha_inicio) || a.id - b.id));
+
+  const cierreRecs = allRecs.filter(r => Boolean(r.es_cierre_conciliado) && r.fecha_inicio <= corte);
+  const lastCierre = cierreRecs.length > 0 ? cierreRecs[cierreRecs.length - 1] : null;
+
+  const activeRecs = lastCierre
+    ? allRecs.filter(r =>
+        (r.fecha_inicio > lastCierre.fecha_inicio || (r.fecha_inicio === lastCierre.fecha_inicio && r.id > lastCierre.id))
+        && r.fecha_inicio <= corte
+      )
+    : allRecs.filter(r => r.fecha_inicio <= corte);
+
+  const cycleStartStr = lastCierre ? lastCierre.fecha_inicio : emp.fecha_ingreso;
+  const totalTenure = diffYMD(emp.fecha_ingreso, corte);
+  const cycleTenure = diffYMD(cycleStartStr, corte);
+
+  const escala = getScaleForCompletedYears(totalTenure.anios);
+  const tasaMensual = escala / 12;
+  const tasaDiaria = tasaMensual / 30;
+
+  let diasPorAnios = 0;
+  if (lastCierre) {
+    const startY = parseInt(lastCierre.fecha_inicio.slice(0, 4)) || new Date().getFullYear();
+    for (let k = 1; k <= cycleTenure.anios; k++) {
+      const annivC = getAnnivStr(lastCierre.fecha_inicio, startY + k);
+      const totalAtAnniv = Math.max(1, diffYMD(emp.fecha_ingreso, annivC).anios);
+      diasPorAnios += getDaysForYearIndex(totalAtAnniv);
+    }
+  } else {
+    const y1_5 = Math.min(cycleTenure.anios, 5);
+    const y6_10 = Math.max(0, Math.min(cycleTenure.anios - 5, 5));
+    const y11_plus = Math.max(0, cycleTenure.anios - 10);
+    diasPorAnios = y1_5 * 15 + y6_10 * 20 + y11_plus * 30;
+  }
+
+  const diasPorMeses = Number((cycleTenure.meses * tasaMensual).toFixed(2));
+  const diasPorDias = Number((cycleTenure.dias * tasaDiaria).toFixed(2));
+  const totalFraccionado = Number((diasPorAnios + (cycleTenure.meses * tasaMensual) + (cycleTenure.dias * tasaDiaria)).toFixed(2));
+  const totalEstandar = Number(diasPorAnios.toFixed(2));
+
+  const rebajaSolicitadas = Number(
+    activeRecs.filter(r => r.tipo === "solicitada").reduce((acc, r) => acc + (Number(r.dias) || 0), 0).toFixed(2)
+  );
+  const rebajaColectivas = Number(
+    activeRecs.filter(r => r.tipo === "colectiva").reduce((acc, r) => acc + (Number(r.dias) || 0), 0).toFixed(2)
+  );
+  const rebajaPagados = Number(
+    activeRecs.filter(r => r.tipo === "dias_pagados" || r.tipo === "a_cuenta").reduce((acc, r) => acc + (Number(r.dias) || 0), 0).toFixed(2)
+  );
+  const totalRebaja = Number((rebajaSolicitadas + rebajaColectivas + rebajaPagados).toFixed(2));
+
+  const saldoFraccionado = Number((totalFraccionado - totalRebaja).toFixed(2));
+  const saldoEstandar = Number((totalEstandar - totalRebaja).toFixed(2));
+
+  return {
+    anios: cycleTenure.anios,
+    meses: cycleTenure.meses,
+    dias: cycleTenure.dias,
+    escala,
+    tasaMensual,
+    tasaDiaria,
+    diasPorAnios,
+    diasPorMeses,
+    diasPorDias,
+    totalFraccionado,
+    totalEstandar,
+    rebajaSolicitadas,
+    rebajaColectivas,
+    rebajaPagados,
+    totalRebaja,
+    saldoFraccionado,
+    saldoEstandar,
+    tieneCierrePrevio: Boolean(lastCierre),
+    fechaCierrePrevio: lastCierre ? lastCierre.fecha_inicio : null
+  };
 }
 
 function VacacionesContent() {
@@ -273,12 +434,14 @@ function VacacionesContent() {
     setStoredVacationsPeriod(fechaDesde, val, tenantSchema);
   };
 
+  const [modoFraccionado, setModoFraccionado] = useState<boolean>(false);
+
   const updatePeriodoCompleto = (d1: string, d2: string, autoFetch: boolean = true) => {
     setFechaDesde(d1);
     setFechaHasta(d2);
     setStoredVacationsPeriod(d1, d2, tenantSchema);
     if (autoFetch) {
-      fetchSummary(d1, d2);
+      fetchSummary(d1, d2, modoFraccionado);
     }
   };
 
@@ -292,9 +455,11 @@ function VacacionesContent() {
   const [fechaSolicitud, setFechaSolicitud] = useState<string>("");
   const [onlyBusinessDays, setOnlyBusinessDays] = useState(true);
 
-  // Días Pagados (número de días y fecha de liquidación)
+  // Días Pagados (número de días, fecha de liquidación, modo exacto/fraccionado y cierre conciliado)
   const [diasPagadosInput, setDiasPagadosInput] = useState<string>("");
   const [fechaPago, setFechaPago] = useState<string>("");
+  const [liquidacionFraccionada, setLiquidacionFraccionada] = useState<boolean>(false);
+  const [esCierreConciliado, setEsCierreConciliado] = useState<boolean>(false);
 
   // Notificación de último registro guardado para permanecer en la ventana
   const [lastSavedAlert, setLastSavedAlert] = useState<{ empName: string; dias: number; tipo: string } | null>(null);
@@ -321,7 +486,7 @@ function VacacionesContent() {
   const [receiptDocType, setReceiptDocType] = useState<"pago" | "solicitadas">("pago");
   const [showReceiptSettings, setShowReceiptSettings] = useState(false);
 
-  // Campos Recibo de Pago
+  // Campos Recibo de Pago + Liquidación Exacta/Fraccionada y Cierre Conciliado
   const [reciboNro, setReciboNro] = useState<string>("001");
   const [reciboPaidRecordId, setReciboPaidRecordId] = useState<number | "all" | "manual">("all");
   const [reciboTotalGanado, setReciboTotalGanado] = useState<number>(3300);
@@ -333,6 +498,9 @@ function VacacionesContent() {
   const [reciboEmpleadorRol, setReciboEmpleadorRol] = useState<string>("propietario");
   const [reciboEmpleadorCi, setReciboEmpleadorCi] = useState<string>("");
   const [reciboFirmasEnBlanco, setReciboFirmasEnBlanco] = useState<boolean>(true);
+  const [reciboModoFraccionado, setReciboModoFraccionado] = useState<boolean>(false);
+  const [reciboFechaCorte, setReciboFechaCorte] = useState<string>("");
+  const [savingCierreRecibo, setSavingCierreRecibo] = useState<boolean>(false);
 
   // Campos Ficha Solicitadas y Colectivas
   const [fichaTipoFilter, setFichaTipoFilter] = useState<"todas" | "solicitada" | "colectiva">("todas");
@@ -382,8 +550,12 @@ function VacacionesContent() {
     return `${formatDMY(fechaIni)} al ${formatDMY(fechaFin)}`;
   };
 
-  const cleanMotivo = (motivo?: string, tipo?: string, fechaSol?: string | null) => {
+  const cleanMotivo = (motivo?: string, tipo?: string, fechaSol?: string | null, esCierre?: boolean, fechaEv?: string) => {
     let m = motivo?.trim() || "";
+    if (esCierre || m.toUpperCase().includes("CIERRE CONCILIADO")) {
+      const refFmt = formatDMY(fechaSol || fechaEv);
+      return refFmt && refFmt !== "-" ? `CIERRE CONCILIADO (${refFmt})` : "CIERRE CONCILIADO";
+    }
     if (!m) {
       if (tipo === "dias_pagados" || tipo === "a_cuenta") m = "Compensación de días pagados";
       else if (tipo === "colectiva") m = "Vacación colectiva institucional";
@@ -485,66 +657,173 @@ function VacacionesContent() {
     const cutoffDate = activeHasta;
     const startDate = activeDesde;
 
-    // 1. Aniversarios anuales cumplidos hasta cutoffDate
-    const annivEvents: KardexItem[] = [];
-    const cutoffYear = parseInt(cutoffDate.split("-")[0]) || new Date().getFullYear();
-    const maxYears = Math.max(0, cutoffYear - hireYear + 1);
-
-    for (let y = 1; y <= maxYears; y++) {
-      const annivStr = getAnniversaryDate(hireDateStr, hireYear + y);
-      if (annivStr && annivStr <= cutoffDate) {
-        const days = getDaysForYear(y);
-        annivEvents.push({
-          id: `anniv-${y}`,
-          fecha: annivStr,
-          fecha_fin: annivStr,
-          tipo: "derecho_anual",
-          tipoLabel: "Derecho Anual",
-          diasGanados: days,
-          diasTomados: 0,
-          saldoRestante: 0,
-          motivo: `${y}° Año de antigüedad cumplido (+${days} d/año)`,
-          fecha_solicitud: null,
-          isRecord: false
-        });
-      }
-    }
-
-    // 2. Registros de vacaciones tomadas / pagadas
+    // 1. Parsear registros de vacaciones tomadas / pagadas / cierres conciliados hasta cutoffDate
     const recEvents: KardexItem[] = [];
     (viewingEmployee.records || []).forEach(r => {
+      if (!r.fecha_inicio || r.fecha_inicio > cutoffDate) return;
       const isPagado = r.tipo === "dias_pagados" || r.tipo === "a_cuenta";
+      const isCierre = Boolean(r.es_cierre_conciliado);
       recEvents.push({
         id: `rec-${r.id}`,
         recordId: r.id,
         fecha: r.fecha_inicio,
         fecha_fin: r.fecha_fin,
         tipo: r.tipo,
-        tipoLabel: isPagado ? "Días Pagados" : r.tipo === "colectiva" ? "Colectiva" : "Solicitada",
+        tipoLabel: isCierre ? "Cierre Conciliado" : isPagado ? "Días Pagados" : r.tipo === "colectiva" ? "Colectiva" : "Solicitada",
         diasGanados: 0,
-        diasTomados: r.dias,
+        diasTomados: Number(r.dias || 0),
         saldoRestante: 0,
         motivo: r.motivo,
         fecha_solicitud: r.fecha_solicitud,
+        es_cierre_conciliado: isCierre,
         isRecord: true
       });
     });
 
-    // 3. Filtrar previos a startDate para consolidación en apertura / saldo anterior
-    const annivPre = annivEvents.filter(e => e.fecha < startDate);
-    const annivInRange = annivEvents.filter(e => e.fecha >= startDate && e.fecha <= cutoffDate);
+    // 2. Generar derechos anuales respetando cierres conciliados
+    const cierreEvents = recEvents
+      .filter(e => e.es_cierre_conciliado)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha) || ((a.recordId || 0) - (b.recordId || 0)));
 
-    const recsPre = recEvents.filter(e => e.fecha < startDate);
-    const recsInRange = recEvents.filter(e => e.fecha >= startDate && e.fecha <= cutoffDate);
+    const annivEvents: KardexItem[] = [];
+    if (cierreEvents.length === 0) {
+      const cutoffYear = parseInt(cutoffDate.split("-")[0]) || new Date().getFullYear();
+      const maxYears = Math.max(0, cutoffYear - hireYear + 1);
+      for (let y = 1; y <= maxYears; y++) {
+        const annivStr = getAnniversaryDate(hireDateStr, hireYear + y);
+        if (annivStr && annivStr <= cutoffDate) {
+          const days = getDaysForYear(y);
+          annivEvents.push({
+            id: `anniv-${y}`,
+            fecha: annivStr,
+            fecha_fin: annivStr,
+            tipo: "derecho_anual",
+            tipoLabel: "Derecho Anual",
+            diasGanados: days,
+            diasTomados: 0,
+            saldoRestante: 0,
+            motivo: `${y}° Año de antigüedad cumplido (+${days} d/año)`,
+            fecha_solicitud: null,
+            es_cierre_conciliado: false,
+            isRecord: false
+          });
+        }
+      }
+    } else {
+      const firstCierreDate = cierreEvents[0].fecha;
+      const maxYears = Math.max(0, parseInt(firstCierreDate.split("-")[0]) - hireYear + 1);
+      for (let y = 1; y <= maxYears; y++) {
+        const annivStr = getAnniversaryDate(hireDateStr, hireYear + y);
+        if (annivStr && annivStr <= firstCierreDate) {
+          const days = getDaysForYear(y);
+          annivEvents.push({
+            id: `anniv-${y}`,
+            fecha: annivStr,
+            fecha_fin: annivStr,
+            tipo: "derecho_anual",
+            tipoLabel: "Derecho Anual",
+            diasGanados: days,
+            diasTomados: 0,
+            saldoRestante: 0,
+            motivo: `${y}° Año de antigüedad cumplido (+${days} d/año)`,
+            fecha_solicitud: null,
+            es_cierre_conciliado: false,
+            isRecord: false
+          });
+        }
+      }
 
-    const ganadosPre = annivPre.reduce((acc, e) => acc + e.diasGanados, 0);
-    const tomadosPre = recsPre.reduce((acc, e) => acc + e.diasTomados, 0);
-    const saldoPre = Math.round((ganadosPre - tomadosPre) * 10) / 10;
-    const hasSaldoAnterior = annivPre.length > 0 || recsPre.length > 0;
+      cierreEvents.forEach((cEv, ci) => {
+        const cStart = cEv.fecha;
+        const cEnd = ci + 1 < cierreEvents.length ? cierreEvents[ci + 1].fecha : cutoffDate;
+        const cStartYear = parseInt(cStart.split("-")[0]) || new Date().getFullYear();
+        let k = 1;
+        while (k < 60) {
+          const annivC = getAnniversaryDate(cStart, cStartYear + k);
+          if (!annivC || annivC > cEnd) break;
+          const totalY = Math.max(1, diffYMD(hireDateStr, annivC).anios);
+          const days = getDaysForYear(totalY);
+          annivEvents.push({
+            id: `anniv-c${cEv.recordId || ci}-${k}`,
+            fecha: annivC,
+            fecha_fin: annivC,
+            tipo: "derecho_anual",
+            tipoLabel: "Derecho Anual",
+            diasGanados: days,
+            diasTomados: 0,
+            saldoRestante: 0,
+            motivo: `${k}° Año post-cierre cumplido (+${days} d/año)`,
+            fecha_solicitud: null,
+            es_cierre_conciliado: false,
+            isRecord: false
+          });
+          k += 1;
+        }
+      });
+    }
 
-    const ganadosPeriodo = annivInRange.reduce((acc, e) => acc + e.diasGanados, 0);
-    const tomadosPeriodo = recsInRange.reduce((acc, e) => acc + e.diasTomados, 0);
-    const totalComputablePeriodo = Math.round((saldoPre + ganadosPeriodo) * 10) / 10;
+    // 3. Orden cronológico unificado e inserción de Devengado Fraccionado en cierres
+    const allSorted = [...annivEvents, ...recEvents].sort((a, b) => {
+      const cmpDate = a.fecha.localeCompare(b.fecha);
+      if (cmpDate !== 0) return cmpDate;
+      const aType = a.tipo === "derecho_anual" ? 0 : 1;
+      const bType = b.tipo === "derecho_anual" ? 0 : 1;
+      if (aType !== bType) return aType - bType;
+      const aCierre = a.es_cierre_conciliado ? 1 : 0;
+      const bCierre = b.es_cierre_conciliado ? 1 : 0;
+      if (aCierre !== bCierre) return aCierre - bCierre;
+      const cmpSol = (a.fecha_solicitud || "").localeCompare(b.fecha_solicitud || "");
+      if (cmpSol !== 0) return cmpSol;
+      return (a.recordId || 0) - (b.recordId || 0);
+    });
+
+    const fullTimeline: KardexItem[] = [];
+    let runningBal = 0;
+    allSorted.forEach(ev => {
+      if (ev.tipo === "derecho_anual") {
+        runningBal = Math.round((runningBal + ev.diasGanados) * 100) / 100;
+        fullTimeline.push({ ...ev, saldoRestante: runningBal });
+      } else if (ev.es_cierre_conciliado) {
+        const diffFrac = Math.round((ev.diasTomados - runningBal) * 100) / 100;
+        if (Math.abs(diffFrac) >= 0.01) {
+          runningBal = Math.round((runningBal + diffFrac) * 100) / 100;
+          fullTimeline.push({
+            id: `frac-cierre-${ev.recordId || ev.id}`,
+            fecha: ev.fecha,
+            fecha_fin: ev.fecha,
+            tipo: "derecho_anual",
+            tipoLabel: "Devengado Fraccionado",
+            diasGanados: diffFrac > 0 ? diffFrac : 0,
+            diasTomados: diffFrac < 0 ? Math.abs(diffFrac) : 0,
+            saldoRestante: runningBal,
+            motivo: "Días devengados fraccionados computados al Cierre Conciliado",
+            fecha_solicitud: null,
+            es_cierre_conciliado: false,
+            isFractionalCierre: true,
+            isRecord: false
+          });
+        }
+        runningBal = Math.round((runningBal - ev.diasTomados) * 100) / 100;
+        fullTimeline.push({ ...ev, saldoRestante: runningBal });
+      } else {
+        runningBal = Math.round((runningBal - ev.diasTomados) * 100) / 100;
+        fullTimeline.push({ ...ev, saldoRestante: runningBal });
+      }
+    });
+
+    // 4. Separar eventos previos a startDate (para consolidación en apertura / saldo anterior)
+    const preEvents = fullTimeline.filter(e => e.fecha < startDate);
+    const orderedTimeline = fullTimeline.filter(e => e.fecha >= startDate && e.fecha <= cutoffDate);
+
+    const ganadosPre = Math.round(preEvents.reduce((acc, e) => acc + e.diasGanados, 0) * 100) / 100;
+    const tomadosPre = Math.round(preEvents.reduce((acc, e) => acc + e.diasTomados, 0) * 100) / 100;
+    const saldoPre = Math.round((ganadosPre - tomadosPre) * 100) / 100;
+    const hasSaldoAnterior = preEvents.length > 0;
+
+    const ganadosPeriodo = Math.round(orderedTimeline.reduce((acc, e) => acc + e.diasGanados, 0) * 100) / 100;
+    const tomadosPeriodo = Math.round(orderedTimeline.reduce((acc, e) => acc + e.diasTomados, 0) * 100) / 100;
+    const totalComputablePeriodo = Math.round((saldoPre + ganadosPeriodo) * 100) / 100;
+    const saldoFinalPeriodo = orderedTimeline.length > 0 ? orderedTimeline[orderedTimeline.length - 1].saldoRestante : saldoPre;
 
     let apertura: KardexItem | null = null;
     if (hasSaldoAnterior) {
@@ -579,38 +858,9 @@ function VacacionesContent() {
       };
     }
 
-    // 4. ORDEN CRONOLÓGICO NATURAL SEGÚN LOS DATOS:
-    const allPeriodEvents = [...annivInRange, ...recsInRange];
-    allPeriodEvents.sort((a, b) => {
-      const cmpDate = a.fecha.localeCompare(b.fecha);
-      if (cmpDate !== 0) return cmpDate;
-      const aType = a.tipo === "derecho_anual" ? 0 : 1;
-      const bType = b.tipo === "derecho_anual" ? 0 : 1;
-      if (aType !== bType) return aType - bType;
-      const cmpSol = (a.fecha_solicitud || "").localeCompare(b.fecha_solicitud || "");
-      if (cmpSol !== 0) return cmpSol;
-      return (a.recordId || 0) - (b.recordId || 0);
-    });
-
-    const orderedTimeline = allPeriodEvents;
-
-    // 5. Cómputo del saldo progresivo paso a paso
-    let cur = apertura.saldoRestante;
-    orderedTimeline.forEach(ev => {
-      if (ev.tipo === "derecho_anual") {
-        cur = Math.round((cur + ev.diasGanados) * 10) / 10;
-      } else {
-        cur = Math.round((cur - ev.diasTomados) * 10) / 10;
-      }
-      ev.saldoRestante = cur;
-    });
-
-    const eventsUpToCutoffAnniv = annivEvents.filter(e => e.fecha <= cutoffDate);
-    const eventsUpToCutoffRecs = recEvents.filter(e => e.fecha <= cutoffDate);
-
-    const totGanados = eventsUpToCutoffAnniv.reduce((acc, e) => acc + e.diasGanados, 0);
-    const totTomados = eventsUpToCutoffRecs.reduce((acc, e) => acc + e.diasTomados, 0);
-    const saldoFinal = Math.round((totGanados - totTomados) * 10) / 10;
+    const totGanados = Math.round(fullTimeline.reduce((acc, e) => acc + e.diasGanados, 0) * 100) / 100;
+    const totTomados = Math.round(fullTimeline.reduce((acc, e) => acc + e.diasTomados, 0) * 100) / 100;
+    const saldoFinal = Math.round((totGanados - totTomados) * 100) / 100;
 
     const timelineWithIdx = orderedTimeline.map((e, idx) => ({
       ...e,
@@ -627,7 +877,7 @@ function VacacionesContent() {
       ganadosPeriodo,
       tomadosPeriodo,
       totalComputablePeriodo,
-      saldoFinalPeriodo: cur,
+      saldoFinalPeriodo,
       totGanadosHist: totGanados,
       totTomadosHist: totTomados,
       saldoFinalHist: saldoFinal,
@@ -656,7 +906,7 @@ function VacacionesContent() {
 
     const detailedEvents: DetailedKardexItem[] = [];
 
-    // 1. Derechos Anuales de Antigüedad
+    // 1. Derechos Anuales y Devengados Fraccionados
     const annivList = kardexData.timeline.filter(e => e.tipo === "derecho_anual");
     annivList.forEach(ev => {
       const parts = ev.fecha.split("-").map(Number);
@@ -667,7 +917,9 @@ function VacacionesContent() {
       const dObj = new Date(parts[0], mIdx, parts[2]);
       const dayIdx = dObj.getDay();
       const dayName = WEEK_DAYS[dayIdx === 0 ? 6 : dayIdx - 1] || "";
-      const espStr = `• ${dayName} ${formatDMY(ev.fecha)} (Vacación Devengada)`;
+      const espStr = ev.isFractionalCierre
+        ? `• ${dayName} ${formatDMY(ev.fecha)} (Cómputo Fraccionado al Cierre)`
+        : `• ${dayName} ${formatDMY(ev.fecha)} (Vacación Devengada)`;
 
       detailedEvents.push({
         id: ev.id,
@@ -677,12 +929,14 @@ function VacacionesContent() {
         fecha: ev.fecha,
         fecha_fin: ev.fecha_fin,
         tipo: "derecho_anual",
-        tipoLabel: "Derecho Anual",
+        tipoLabel: ev.tipoLabel || "Derecho Anual",
         diasGanados: ev.diasGanados,
-        diasTomados: 0,
+        diasTomados: ev.diasTomados || 0,
         saldoRestante: 0,
         motivo: ev.motivo,
         fecha_solicitud: null,
+        es_cierre_conciliado: false,
+        isFractionalCierre: Boolean(ev.isFractionalCierre),
         diasEspecificos: [ev.fecha],
         diasEspecificosFormato: espStr,
         isRecord: false
@@ -693,6 +947,7 @@ function VacacionesContent() {
     const recsList = kardexData.timeline.filter(e => e.isRecord);
     recsList.forEach(ev => {
       const isPagado = ev.tipo === "dias_pagados" || ev.tipo === "a_cuenta";
+      const isCierre = Boolean(ev.es_cierre_conciliado);
       const parts = ev.fecha.split("-").map(Number);
       const mIdx = parts[1] - 1;
       const y = parts[0];
@@ -708,14 +963,17 @@ function VacacionesContent() {
           fecha: ev.fecha,
           fecha_fin: ev.fecha_fin,
           tipo: "dias_pagados",
-          tipoLabel: "Días Pagados",
+          tipoLabel: isCierre ? "Cierre Conciliado" : "Días Pagados",
           diasGanados: 0,
           diasTomados: ev.diasTomados,
           saldoRestante: 0,
           motivo: ev.motivo,
           fecha_solicitud: ev.fecha_solicitud,
+          es_cierre_conciliado: isCierre,
           diasEspecificos: [],
-          diasEspecificosFormato: "No aplica (Días pagados / compensación económica en dinero)",
+          diasEspecificosFormato: isCierre
+            ? "Liquidación total y Cierre Conciliado (Saldo reiniciado a 0)"
+            : "No aplica (Días pagados / compensación económica en dinero)",
           isRecord: true
         });
       } else {
@@ -771,6 +1029,7 @@ function VacacionesContent() {
             saldoRestante: 0,
             motivo: ev.motivo,
             fecha_solicitud: ev.fecha_solicitud,
+            es_cierre_conciliado: false,
             diasEspecificos: mDates,
             diasEspecificosFormato: espStr,
             isRecord: true
@@ -785,6 +1044,9 @@ function VacacionesContent() {
       const aType = a.tipo === "derecho_anual" ? 0 : 1;
       const bType = b.tipo === "derecho_anual" ? 0 : 1;
       if (aType !== bType) return aType - bType;
+      const aCierre = a.es_cierre_conciliado ? 1 : 0;
+      const bCierre = b.es_cierre_conciliado ? 1 : 0;
+      if (aCierre !== bCierre) return aCierre - bCierre;
       const cmpSol = (a.fecha_solicitud || "").localeCompare(b.fecha_solicitud || "");
       if (cmpSol !== 0) return cmpSol;
       return (a.recordId || 0) - (b.recordId || 0);
@@ -792,7 +1054,7 @@ function VacacionesContent() {
 
     let cur = kardexData.apertura.saldoRestante;
     detailedEvents.forEach(ev => {
-      cur = Math.round((cur + ev.diasGanados - ev.diasTomados) * 10) / 10;
+      cur = Math.round((cur + ev.diasGanados - ev.diasTomados) * 100) / 100;
       ev.saldoRestante = cur;
     });
 
@@ -814,8 +1076,8 @@ function VacacionesContent() {
           count: 0
         };
       }
-      monthlyMap[mk].diasGanados = Math.round((monthlyMap[mk].diasGanados + dev.diasGanados) * 10) / 10;
-      monthlyMap[mk].diasTomados = Math.round((monthlyMap[mk].diasTomados + dev.diasTomados) * 10) / 10;
+      monthlyMap[mk].diasGanados = Math.round((monthlyMap[mk].diasGanados + dev.diasGanados) * 100) / 100;
+      monthlyMap[mk].diasTomados = Math.round((monthlyMap[mk].diasTomados + dev.diasTomados) * 100) / 100;
       monthlyMap[mk].saldoCierre = dev.saldoRestante;
       monthlyMap[mk].count += 1;
     });
@@ -829,7 +1091,7 @@ function VacacionesContent() {
     };
   }, [viewingEmployee, kardexData, modalFechaDesde, modalFechaHasta, fechaDesde, fechaHasta]);
 
-  const fetchSummary = useCallback(async (customDesde?: string, customHasta?: string) => {
+  const fetchSummary = useCallback(async (customDesde?: string, customHasta?: string, customFraccionado?: boolean) => {
     if (!tenantSchema) return;
     try {
       if (!summary) {
@@ -839,15 +1101,18 @@ function VacacionesContent() {
       }
       const dVal = customDesde !== undefined ? customDesde : fechaDesde;
       const hVal = customHasta !== undefined ? customHasta : fechaHasta;
+      const fVal = customFraccionado !== undefined ? customFraccionado : modoFraccionado;
       const qParams = new URLSearchParams();
       if (dVal) qParams.set("desde", dVal);
       if (hVal) qParams.set("hasta", hVal);
+      if (fVal) qParams.set("fraccionado", "true");
       const qs = qParams.toString() ? `?${qParams.toString()}` : "";
 
       const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/vacaciones/summary/${qs}`);
       if (res.ok) {
-        const data = await res.json();
+        const data: CompanyVacationSummary = await res.json();
         setSummary(data);
+        setReceiptEmployee(prev => prev ? (data.employees.find(e => e.employee_id === prev.employee_id) || prev) : prev);
       } else {
         console.error("Error al obtener resumen de vacaciones", await res.text());
       }
@@ -857,17 +1122,19 @@ function VacacionesContent() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [tenantSchema, fechaDesde, fechaHasta, summary]);
+  }, [tenantSchema, fechaDesde, fechaHasta, modoFraccionado, summary]);
 
-  const refreshEmployeeData = async (empId: number, customDesde?: string, customHasta?: string) => {
+  const refreshEmployeeData = async (empId: number, customDesde?: string, customHasta?: string, customFraccionado?: boolean) => {
     if (!tenantSchema) return;
     try {
       setRefreshingEmployee(true);
       const dVal = customDesde !== undefined ? customDesde : (modalFechaDesde || fechaDesde);
       const hVal = customHasta !== undefined ? customHasta : (modalFechaHasta || fechaHasta);
+      const fVal = customFraccionado !== undefined ? customFraccionado : modoFraccionado;
       const qParams = new URLSearchParams();
       if (dVal) qParams.set("desde", dVal);
       if (hVal) qParams.set("hasta", hVal);
+      if (fVal) qParams.set("fraccionado", "true");
       const qs = qParams.toString() ? `?${qParams.toString()}` : "";
 
       const updatedRes = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/vacaciones/employee/${empId}/${qs}`);
@@ -889,7 +1156,7 @@ function VacacionesContent() {
       const stored = getStoredVacationsPeriod(tenantSchema);
       setFechaDesde(stored.desde);
       setFechaHasta(stored.hasta);
-      fetchSummary(stored.desde, stored.hasta);
+      fetchSummary(stored.desde, stored.hasta, false);
     }
   }, [tenantSchema]);
 
@@ -902,6 +1169,7 @@ function VacacionesContent() {
       const qParams = new URLSearchParams();
       if (fechaDesde) qParams.set("desde", fechaDesde);
       if (fechaHasta) qParams.set("hasta", fechaHasta);
+      if (modoFraccionado) qParams.set("fraccionado", "true");
       const qs = qParams.toString() ? `?${qParams.toString()}` : "";
 
       const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/vacaciones/export/company/${format}${qs}`);
@@ -1025,6 +1293,7 @@ function VacacionesContent() {
       const hVal = customHasta !== undefined ? customHasta : (modalFechaHasta || fechaHasta);
       if (dVal) qParams.set("desde", dVal);
       if (hVal) qParams.set("hasta", hVal);
+      if (modoFraccionado) qParams.set("fraccionado", "true");
       const qs = qParams.toString() ? `?${qParams.toString()}` : "";
 
       const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/vacaciones/export/employee/${empId}/${format}${qs}`);
@@ -1169,6 +1438,7 @@ function VacacionesContent() {
   };
 
   const handleOpenRegisterModal = (empId?: number) => {
+    const todayYmd = formatYMD(new Date());
     setEditingRecordId(null);
     if (empId) {
       setSelectedEmpId(empId);
@@ -1178,11 +1448,13 @@ function VacacionesContent() {
     setVacationType("solicitada");
     setSelectionMode("individual");
     setMotivo("");
-    setFechaSolicitud("");
+    setFechaSolicitud(todayYmd);
     setSelectedDates([]);
     setRangeStart(null);
     setDiasPagadosInput("");
-    setFechaPago(formatYMD(new Date()));
+    setFechaPago(todayYmd);
+    setLiquidacionFraccionada(false);
+    setEsCierreConciliado(false);
     setLastSavedAlert(null);
     setCalMonth(new Date().getMonth());
     setCalYear(new Date().getFullYear());
@@ -1201,13 +1473,22 @@ function VacacionesContent() {
     setLastSavedAlert(null);
 
     if (tipo === "dias_pagados") {
+      const isCierreMode = Boolean(record.es_cierre_conciliado || record.modo_calculo === "fraccionado");
+      const recDate = record.fecha_inicio || formatYMD(new Date());
       setDiasPagadosInput(String(record.dias ?? record.diasTomados ?? ""));
-      setFechaPago(record.fecha_inicio || formatYMD(new Date()));
+      setFechaPago(recDate);
+      if (isCierreMode && !record.fecha_solicitud) {
+        setFechaSolicitud(recDate);
+      }
+      setLiquidacionFraccionada(isCierreMode);
+      setEsCierreConciliado(isCierreMode);
       setSelectedDates([]);
       setRangeStart(null);
     } else {
       setDiasPagadosInput("");
       setFechaPago(formatYMD(new Date()));
+      setLiquidacionFraccionada(false);
+      setEsCierreConciliado(false);
       const dates = record.fechas_detalle && record.fechas_detalle.length > 0
         ? [...record.fechas_detalle]
         : record.fecha_inicio
@@ -1303,30 +1584,38 @@ function VacacionesContent() {
 
     const dp = selectedPaid
       ? Number(selectedPaid.dias)
-      : ((emp.dias_pagados && emp.dias_pagados > 0) ? emp.dias_pagados : 10);
+      : (emp.saldo_dias_pendientes > 0 ? emp.saldo_dias_pendientes : ((emp.dias_pagados && emp.dias_pagados > 0) ? emp.dias_pagados : 0));
 
     setReciboNro(selectedPaid ? `00${selectedPaid.id}` : "001");
-    setReciboPaidRecordId(selectedPaid ? selectedPaid.id : (paidRecs.length > 0 ? paidRecs[0].id : "all"));
+    setReciboPaidRecordId(selectedPaid ? selectedPaid.id : "manual");
     setReciboTotalGanado(tg);
     setReciboSalarioDiario(sd);
     setReciboDiasPagados(dp);
     setReciboImporteCancelado(Number((sd * dp).toFixed(2)));
+    setReciboModoFraccionado(Boolean(selectedPaid?.modo_calculo === "fraccionado"));
 
     const today = new Date();
     const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
     
-    // Lugar y fecha: si se seleccionó un registro de vacación pagada, tomar su fecha
+    // Lugar y fecha: si se seleccionó un registro de vacación pagada, tomar su fecha para la vista previa;
+    // para la Fecha de Conciliación usar la fecha del cierre si ya es cierre, caso contrario hoy por defecto.
     let recDate = today;
+    let corteStr = formatYMD(today);
+    const isSelectedPaidCierre = Boolean(selectedPaid?.es_cierre_conciliado || selectedPaid?.modo_calculo === "fraccionado");
     if (selectedPaid) {
       const recDateStr = selectedPaid.fecha_solicitud || selectedPaid.fecha_inicio;
       if (recDateStr) {
         const cleanStr = recDateStr.includes("T") ? recDateStr.split("T")[0] : recDateStr;
+        if (isSelectedPaidCierre) {
+          corteStr = cleanStr;
+        }
         const parts = cleanStr.split("-").map(Number);
         if (parts.length === 3 && parts[0] > 1900 && parts[1] >= 1 && parts[1] <= 12) {
           recDate = new Date(parts[0], parts[1] - 1, parts[2]);
         }
       }
     }
+    setReciboFechaCorte(corteStr);
     setReciboLugarFecha(`La Paz, ${recDate.getDate()} de ${meses[recDate.getMonth()]} de ${recDate.getFullYear()}`);
     setReciboEmpleadorNombre(summary?.tenant_empleador || "Hipólito Manrrique Santi");
     setReciboEmpleadorRol("propietario");
@@ -1347,6 +1636,7 @@ function VacacionesContent() {
     
     if (val === "all") {
       setReciboPaidRecordId("all");
+      setReciboModoFraccionado(false);
       const dp = receiptEmployee.dias_pagados || 0;
       setReciboDiasPagados(dp);
       setReciboImporteCancelado(Number((reciboSalarioDiario * dp).toFixed(2)));
@@ -1358,12 +1648,14 @@ function VacacionesContent() {
       const found = paidRecs.find(r => r.id === recId);
       if (found) {
         setReciboNro(`00${found.id}`);
+        setReciboModoFraccionado(Boolean(found.modo_calculo === "fraccionado"));
         const dp = Number(found.dias);
         setReciboDiasPagados(dp);
         setReciboImporteCancelado(Number((reciboSalarioDiario * dp).toFixed(2)));
         const recDateStr = found.fecha_solicitud || found.fecha_inicio;
         if (recDateStr) {
           const cleanStr = recDateStr.includes("T") ? recDateStr.split("T")[0] : recDateStr;
+          setReciboFechaCorte(cleanStr);
           const parts = cleanStr.split("-").map(Number);
           if (parts.length === 3 && parts[0] > 1900 && parts[1] >= 1 && parts[1] <= 12) {
             const d = new Date(parts[0], parts[1] - 1, parts[2]);
@@ -1372,6 +1664,134 @@ function VacacionesContent() {
           }
         }
       }
+    }
+  };
+
+  const handleToggleReciboFraccionado = (enabled: boolean) => {
+    if (!receiptEmployee) return;
+    setReciboModoFraccionado(enabled);
+    const corteStr = reciboFechaCorte || formatYMD(new Date());
+    if (enabled) {
+      setReciboPaidRecordId("manual");
+      const calc = calcularLiquidacionEmpleado(receiptEmployee, corteStr);
+      const diasLiq = Math.max(0, calc.saldoFraccionado);
+      setReciboDiasPagados(diasLiq);
+      setReciboImporteCancelado(Number((reciboSalarioDiario * diasLiq).toFixed(2)));
+      const parts = corteStr.split("-").map(Number);
+      if (parts.length === 3) {
+        const d = new Date(parts[0], parts[1] - 1, parts[2]);
+        const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+        setReciboLugarFecha(`La Paz, ${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`);
+      }
+    } else {
+      const calc = calcularLiquidacionEmpleado(receiptEmployee, corteStr);
+      const diasStd = Math.max(0, calc.saldoEstandar);
+      setReciboDiasPagados(diasStd);
+      setReciboImporteCancelado(Number((reciboSalarioDiario * diasStd).toFixed(2)));
+    }
+  };
+
+  const handleReciboFechaCorteChange = (newDate: string) => {
+    setReciboFechaCorte(newDate);
+    if (!newDate) return;
+    const parts = newDate.split("-").map(Number);
+    if (parts.length === 3 && parts[0] > 1900 && parts[1] >= 1 && parts[1] <= 12) {
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+      setReciboLugarFecha(`La Paz, ${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`);
+    }
+    if (receiptEmployee && reciboModoFraccionado) {
+      const calc = calcularLiquidacionEmpleado(receiptEmployee, newDate);
+      const diasLiq = Math.max(0, calc.saldoFraccionado);
+      setReciboDiasPagados(diasLiq);
+      setReciboImporteCancelado(Number((reciboSalarioDiario * diasLiq).toFixed(2)));
+    }
+  };
+
+  const handleSaveCierreFromReceipt = async () => {
+    if (!receiptEmployee || !tenantSchema) return;
+    if (reciboDiasPagados <= 0) {
+      Swal.fire({
+        icon: "warning",
+        title: "Sin días pendientes",
+        text: "El saldo calculado es 0 o negativo. Verifica la fecha de corte o ingresa los días a liquidar.",
+        confirmButtonColor: "#0D9488"
+      });
+      return;
+    }
+
+    const corte = reciboFechaCorte || formatYMD(new Date());
+    const confirm = await Swal.fire({
+      title: "¿Guardar Cierre Conciliado?",
+      html: `<div class="text-sm text-left space-y-1.5">
+        <p>Se registrará una liquidación y <strong>Cierre Conciliado</strong> para <strong>${receiptEmployee.employee_name}</strong> por:</p>
+        <p class="font-mono font-bold text-teal-700">• ${fmtDias(reciboDiasPagados)} días — Bs ${reciboImporteCancelado.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+        <p class="text-xs text-slate-600">Todas las obligaciones de vacación previas quedarán saldadas y su saldo activo se reiniciará en <strong>0.0 días</strong> a partir del <strong>${formatDMY(corte)}</strong>.</p>
+      </div>`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Sí, consolidar y saldar en 0",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#0D9488"
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    setSavingCierreRecibo(true);
+    try {
+      const payload = {
+        employee_id: receiptEmployee.employee_id,
+        tipo: "dias_pagados",
+        fecha_inicio: corte,
+        fecha_fin: corte,
+        fecha_solicitud: corte,
+        dias: reciboDiasPagados,
+        fechas_detalle: [],
+        motivo: "CIERRE CONCILIADO",
+        gestion: parseInt(corte.split("-")[0]) || new Date().getFullYear(),
+        aprobado_por: reciboEmpleadorNombre || "",
+        es_cierre_conciliado: true,
+        modo_calculo: "fraccionado"
+      };
+
+      const res = await fetch(`${getApiUrl()}/api/tenants/${tenantSchema}/vacaciones/record/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ detail: "Error al registrar cierre conciliado" }));
+        throw new Error(errData.detail || "No se pudo guardar el cierre conciliado");
+      }
+
+      const savedRec: VacationRecord = await res.json();
+      setReciboPaidRecordId(savedRec.id);
+      setReciboNro(`00${savedRec.id}`);
+
+      await fetchSummary(fechaDesde, fechaHasta, modoFraccionado);
+      if (viewingEmployee && viewingEmployee.employee_id === receiptEmployee.employee_id) {
+        await refreshEmployeeData(receiptEmployee.employee_id, modalFechaDesde || fechaDesde, modalFechaHasta || fechaHasta, modoFraccionado);
+      }
+
+      Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: "Cierre Conciliado Guardado",
+        text: `Saldo liquidado (${fmtDias(reciboDiasPagados)} d). El trabajador inicia un nuevo ciclo en 0.0 días.`,
+        timer: 3800,
+        showConfirmButton: false,
+        timerProgressBar: true
+      });
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Error al guardar cierre",
+        text: err.message || "Ocurrió un problema al guardar el cierre conciliado."
+      });
+    } finally {
+      setSavingCierreRecibo(false);
     }
   };
 
@@ -1542,6 +1962,15 @@ function VacacionesContent() {
 
     setSubmitting(true);
     try {
+      const isPaidType = vacationType === "dias_pagados";
+      const isUnifiedCierre = isPaidType && (esCierreConciliado || liquidacionFraccionada);
+      const finalMotivo = isUnifiedCierre
+        ? "CIERRE CONCILIADO"
+        : (motivo.trim() || (isPaidType ? "Días de vacación pagados en liquidación / compensación" : `Vacaciones ${vacationType}`));
+      const finalFechaSolicitud = isUnifiedCierre
+        ? startDate
+        : (fechaSolicitud ? fechaSolicitud : null);
+
       const payload = {
         employee_id: selectedEmpId,
         tipo: vacationType,
@@ -1549,10 +1978,12 @@ function VacacionesContent() {
         fecha_fin: endDate,
         dias: computedDays,
         fechas_detalle: fechasDetalle,
-        motivo: motivo.trim() || (vacationType === "dias_pagados" ? "Días de vacación pagados en liquidación / compensación" : `Vacaciones ${vacationType}`),
-        fecha_solicitud: fechaSolicitud ? fechaSolicitud : null,
+        motivo: finalMotivo,
+        fecha_solicitud: finalFechaSolicitud,
         gestion: parseInt(startDate.split("-")[0]) || new Date().getFullYear(),
-        aprobado_por: ""
+        aprobado_por: "",
+        es_cierre_conciliado: isUnifiedCierre,
+        modo_calculo: isUnifiedCierre ? "fraccionado" : "estandar"
       };
 
       let res;
@@ -1576,18 +2007,20 @@ function VacacionesContent() {
       }
 
       // Actualizar resumen en segundo plano para que el saldo se actualice en la pantalla
-      await fetchSummary(fechaDesde, fechaHasta);
+      await fetchSummary(fechaDesde, fechaHasta, modoFraccionado);
 
       // Si la ficha individual del empleado está abierta, refrescarla de inmediato con el periodo evaluado activo
       if (viewingEmployee && (viewingEmployee.employee_id === selectedEmpId || editingRecordId)) {
         const empToRefresh = selectedEmpId || viewingEmployee.employee_id;
         const activeModalDesde = modalFechaDesde || fechaDesde;
         const activeModalHasta = modalFechaHasta || fechaHasta;
-        await refreshEmployeeData(empToRefresh, activeModalDesde, activeModalHasta);
+        await refreshEmployeeData(empToRefresh, activeModalDesde, activeModalHasta, modoFraccionado);
       }
 
       const empName = selectedEmp?.employee_name || "Trabajador";
-      const tipoLabel = vacationType === "dias_pagados" ? "Días Pagados" : vacationType === "colectiva" ? "Colectiva" : "Solicitada";
+      const tipoLabel = isPaidType
+        ? (esCierreConciliado ? "Cierre Conciliado" : "Días Pagados")
+        : vacationType === "colectiva" ? "Colectiva" : "Solicitada";
 
       if (editingRecordId) {
         setShowRegisterModal(false);
@@ -1597,6 +2030,8 @@ function VacacionesContent() {
         setDiasPagadosInput("");
         setMotivo("");
         setFechaSolicitud("");
+        setLiquidacionFraccionada(false);
+        setEsCierreConciliado(false);
 
         Swal.fire({
           toast: true,
@@ -1613,11 +2048,15 @@ function VacacionesContent() {
         setLastSavedAlert({ empName, dias: computedDays, tipo: tipoLabel });
 
         // Limpiar campos para el siguiente registro manteniendo al empleado seleccionado
+        const nextTodayYmd = formatYMD(new Date());
         setSelectedDates([]);
         setRangeStart(null);
         setDiasPagadosInput("");
         setMotivo("");
-        setFechaSolicitud("");
+        setFechaPago(nextTodayYmd);
+        setFechaSolicitud(nextTodayYmd);
+        setLiquidacionFraccionada(false);
+        setEsCierreConciliado(false);
 
         // Notificación toast moderna
         Swal.fire({
@@ -2020,12 +2459,51 @@ function VacacionesContent() {
             />
           </div>
 
+          {/* Toggle Cómputo Anual vs Exacto / Fraccionado */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">Cómputo:</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (modoFraccionado) {
+                  setModoFraccionado(false);
+                  fetchSummary(fechaDesde, fechaHasta, false);
+                }
+              }}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                !modoFraccionado
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+              title="Cálculo legal estándar por años completos (Art. 44 LGT)"
+            >
+              Anual
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!modoFraccionado) {
+                  setModoFraccionado(true);
+                  fetchSummary(fechaDesde, fechaHasta, true);
+                }
+              }}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                modoFraccionado
+                  ? "bg-teal-600 text-white shadow-xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+              title="Cálculo proporcional exacto considerando años, meses (÷12) y días (÷30)"
+            >
+              Exacto / Fraccionado
+            </button>
+          </div>
+
           {/* Botón de Recargar Principal */}
           <button
             type="button"
             onClick={() => {
               setStoredVacationsPeriod(fechaDesde, fechaHasta, tenantSchema);
-              fetchSummary(fechaDesde, fechaHasta);
+              fetchSummary(fechaDesde, fechaHasta, modoFraccionado);
             }}
             disabled={isRefreshing}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition shadow-xs disabled:opacity-50 active:scale-95 cursor-pointer"
@@ -2040,19 +2518,28 @@ function VacacionesContent() {
       {/* Tarjetas KPI de Resumen Global */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Derecho Acumulado</span>
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Derecho Acumulado</span>
+            {modoFraccionado && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-200 uppercase">
+                Exacto
+              </span>
+            )}
+          </div>
           <div className="mt-2 flex items-baseline gap-1">
-            <span className="text-2xl font-black text-slate-900">{summary?.total_dias_acumulados.toFixed(1)}</span>
+            <span className="text-2xl font-black text-slate-900">{fmtDias(summary?.total_dias_acumulados)}</span>
             <span className="text-xs font-semibold text-slate-400">días</span>
           </div>
-          <span className="text-[11px] text-teal-600 font-medium mt-1">Derecho acumulado</span>
+          <span className="text-[11px] text-teal-600 font-medium mt-1">
+            {modoFraccionado ? "Incluye fracción meses y días" : "Derecho acumulado"}
+          </span>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Días Pagados</span>
           <div className="mt-2 flex items-baseline gap-1">
             <span className="text-2xl font-black text-emerald-600">
-              {(summary?.total_dias_pagados ?? summary?.total_dias_a_cuenta ?? 0).toFixed(1)}
+              {fmtDias(summary?.total_dias_pagados ?? summary?.total_dias_a_cuenta ?? 0)}
             </span>
             <span className="text-xs font-semibold text-slate-400">días</span>
           </div>
@@ -2062,7 +2549,7 @@ function VacacionesContent() {
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Solicitadas</span>
           <div className="mt-2 flex items-baseline gap-1">
-            <span className="text-2xl font-black text-indigo-600">{summary?.total_dias_solicitadas.toFixed(1)}</span>
+            <span className="text-2xl font-black text-indigo-600">{fmtDias(summary?.total_dias_solicitadas)}</span>
             <span className="text-xs font-semibold text-slate-400">días</span>
           </div>
           <span className="text-[11px] text-indigo-600 font-medium mt-1">Vacaciones solicitadas</span>
@@ -2071,7 +2558,7 @@ function VacacionesContent() {
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Colectivas</span>
           <div className="mt-2 flex items-baseline gap-1">
-            <span className="text-2xl font-black text-purple-600">{summary?.total_dias_colectivas.toFixed(1)}</span>
+            <span className="text-2xl font-black text-purple-600">{fmtDias(summary?.total_dias_colectivas)}</span>
             <span className="text-xs font-semibold text-slate-400">días</span>
           </div>
           <span className="text-[11px] text-purple-600 font-medium mt-1">Vacaciones colectivas</span>
@@ -2080,16 +2567,23 @@ function VacacionesContent() {
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Gozadas</span>
           <div className="mt-2 flex items-baseline gap-1">
-            <span className="text-2xl font-black text-amber-600">{summary?.total_dias_tomados.toFixed(1)}</span>
+            <span className="text-2xl font-black text-amber-600">{fmtDias(summary?.total_dias_tomados)}</span>
             <span className="text-xs font-semibold text-slate-400">días</span>
           </div>
           <span className="text-[11px] text-amber-600 font-medium mt-1">Total gozadas</span>
         </div>
 
         <div className="bg-teal-50/70 p-5 rounded-2xl border border-teal-200 shadow-xs flex flex-col justify-between">
-          <span className="text-xs font-bold text-teal-800 uppercase tracking-wider">Saldo Pendiente</span>
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-xs font-bold text-teal-800 uppercase tracking-wider">Saldo Pendiente</span>
+            {modoFraccionado && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-600 text-white uppercase">
+                Fracc.
+              </span>
+            )}
+          </div>
           <div className="mt-2 flex items-baseline gap-1">
-            <span className="text-2xl font-black text-teal-700">{summary?.total_saldo_pendiente.toFixed(1)}</span>
+            <span className="text-2xl font-black text-teal-700">{fmtDias(summary?.total_saldo_pendiente)}</span>
             <span className="text-xs font-semibold text-teal-600">días</span>
           </div>
           <span className="text-[11px] text-teal-700 font-bold mt-1">Saldo disponible</span>
@@ -2196,31 +2690,44 @@ function VacacionesContent() {
                         </span>
                       </div>
                       <div className="text-[10px] text-slate-400 font-mono mt-0.5">Desde: {formatDMY(emp.fecha_ingreso)}</div>
+                      {emp.tiene_cierre_conciliado && emp.fecha_ultimo_cierre && (
+                        <div
+                          className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold"
+                          title={`Último Cierre Conciliado: ${formatDMY(emp.fecha_ultimo_cierre)} (${fmtDias(emp.dias_ultimo_cierre)} d liquidados)`}
+                        >
+                          ✓ Cierre Conciliado: {formatDMY(emp.fecha_ultimo_cierre)}
+                        </div>
+                      )}
                     </td>
 
                     <td className="py-3 px-2 text-right font-mono font-bold text-slate-900 text-xs sm:text-sm">
-                      {emp.dias_acumulados.toFixed(1)}
+                      <div>{fmtDias(emp.dias_acumulados)}</div>
+                      {modoFraccionado && emp.dias_por_meses !== undefined && (
+                        <div className="text-[10px] font-normal text-teal-600" title={`Años: ${fmtDias(emp.dias_por_anios)} | Meses: ${fmtDias(emp.dias_por_meses)} | Días: ${fmtDias(emp.dias_por_dias)}`}>
+                          Fracc.
+                        </div>
+                      )}
                     </td>
 
                     <td className="py-3 px-2 text-right font-mono text-emerald-700 font-semibold text-xs sm:text-sm">
-                      {(emp.dias_pagados ?? emp.dias_a_cuenta ?? 0).toFixed(1)}
+                      {fmtDias(emp.dias_pagados ?? emp.dias_a_cuenta ?? 0)}
                     </td>
 
                     <td className="py-3 px-2 text-right font-mono text-indigo-700 text-xs sm:text-sm">
-                      {emp.dias_solicitadas.toFixed(1)}
+                      {fmtDias(emp.dias_solicitadas)}
                     </td>
 
                     <td className="py-3 px-2 text-right font-mono text-purple-700 text-xs sm:text-sm">
-                      {emp.dias_colectivas.toFixed(1)}
+                      {fmtDias(emp.dias_colectivas)}
                     </td>
 
                     <td className="py-3 px-2.5 text-right font-mono font-bold text-amber-700 text-xs sm:text-sm">
-                      {emp.total_dias_tomados.toFixed(1)}
+                      {fmtDias(emp.total_dias_tomados)}
                     </td>
 
                     <td className="py-3 px-3 text-right font-mono font-black text-sm sm:text-base whitespace-nowrap">
                       <span className={emp.saldo_dias_pendientes > 0 ? "text-teal-600" : emp.saldo_dias_pendientes === 0 ? "text-slate-400" : "text-rose-600"}>
-                        {emp.saldo_dias_pendientes.toFixed(1)} d
+                        {fmtDias(emp.saldo_dias_pendientes)} d
                       </span>
                     </td>
 
@@ -2339,14 +2846,33 @@ function VacacionesContent() {
                       </label>
                       <select
                         value={selectedEmpId || ""}
-                        onChange={(e) => setSelectedEmpId(Number(e.target.value))}
+                        onChange={(e) => {
+                          const newId = Number(e.target.value);
+                          setSelectedEmpId(newId);
+                          if (vacationType === "dias_pagados" && liquidacionFraccionada) {
+                            const empObj = summary?.employees.find(em => em.employee_id === newId);
+                            if (empObj) {
+                              const c = calcularLiquidacionEmpleado(
+                                empObj,
+                                fechaPago || formatYMD(new Date()),
+                                editingRecordId ?? undefined
+                              );
+                              if (c) setDiasPagadosInput(String(Math.max(0, c.saldoFraccionado)));
+                            }
+                          }
+                        }}
                         className="w-full bg-slate-950/80 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-400 text-sm font-semibold shadow-inner"
                       >
-                        {summary?.employees.map(emp => (
-                          <option key={emp.employee_id} value={emp.employee_id} className="bg-slate-900 text-white">
-                            {emp.employee_name} — Saldo: {emp.saldo_dias_pendientes.toFixed(1)} d
-                          </option>
-                        ))}
+                        {summary?.employees.map(emp => {
+                          const optSaldo = (vacationType === "dias_pagados" && liquidacionFraccionada)
+                            ? (calcularLiquidacionEmpleado(emp, fechaPago || formatYMD(new Date()), editingRecordId ?? undefined)?.saldoFraccionado ?? emp.saldo_dias_pendientes)
+                            : emp.saldo_dias_pendientes;
+                          return (
+                            <option key={emp.employee_id} value={emp.employee_id} className="bg-slate-900 text-white">
+                              {emp.employee_name} — Saldo: {fmtDias(optSaldo)} d
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 
@@ -2403,7 +2929,15 @@ function VacacionesContent() {
                   </div>
 
                   {/* Ficha Resumen Rápido del Empleado Seleccionado */}
-                  {selectedEmp && (
+                  {selectedEmp && (() => {
+                    const activeCorteModal = fechaPago || formatYMD(new Date());
+                    const modalCalc = (vacationType === "dias_pagados" && (liquidacionFraccionada || esCierreConciliado))
+                      ? calcularLiquidacionEmpleado(selectedEmp, activeCorteModal, editingRecordId ?? undefined)
+                      : null;
+                    const baseSaldoModal = modalCalc ? modalCalc.saldoFraccionado : selectedEmp.saldo_dias_pendientes;
+                    const descuentoModal = vacationType === "dias_pagados" ? (parseFloat(diasPagadosInput) || 0) : selectedDates.length;
+                    const saldoRestanteModal = Number((baseSaldoModal - descuentoModal).toFixed(2));
+                    return (
                     <div className="bg-slate-950/70 border border-slate-700/80 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center font-black text-sm">
@@ -2419,34 +2953,147 @@ function VacacionesContent() {
 
                       <div className="flex items-center gap-2">
                         <div className="bg-slate-900 border border-slate-700/80 px-3 py-1.5 rounded-xl text-center">
-                          <span className="text-[10px] text-slate-400 block font-semibold">Saldo Disponible</span>
-                          <span className="text-sm font-black text-amber-400">{selectedEmp.saldo_dias_pendientes.toFixed(1)} d</span>
+                          <span className="text-[10px] text-slate-400 block font-semibold">
+                            {modalCalc ? "Saldo al Cierre" : "Saldo Disponible"}
+                          </span>
+                          <span className="text-sm font-black text-amber-400">{fmtDias(baseSaldoModal)} d</span>
                         </div>
                         <div className="bg-slate-900 border border-slate-700/80 px-3 py-1.5 rounded-xl text-center">
                           <span className="text-[10px] text-slate-400 block font-semibold">A Descontar</span>
                           <span className="text-sm font-black text-teal-400">
-                            -{vacationType === "dias_pagados" ? (parseFloat(diasPagadosInput) || 0) : selectedDates.length} d
+                            -{fmtDias(descuentoModal)} d
                           </span>
                         </div>
                         <div className={`border px-3 py-1.5 rounded-xl text-center ${
-                          selectedEmp.saldo_dias_pendientes - (vacationType === "dias_pagados" ? (parseFloat(diasPagadosInput) || 0) : selectedDates.length) < 0
+                          saldoRestanteModal < -0.001
                             ? "bg-rose-500/10 border-rose-500/30 text-rose-400"
                             : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
                         }`}>
                           <span className="text-[10px] opacity-80 block font-semibold">Saldo Restante</span>
                           <span className="text-sm font-black">
-                            {(selectedEmp.saldo_dias_pendientes - (vacationType === "dias_pagados" ? (parseFloat(diasPagadosInput) || 0) : selectedDates.length)).toFixed(1)} d
+                            {fmtDias(Math.abs(saldoRestanteModal) < 0.005 ? 0 : saldoRestanteModal)} d
                           </span>
                         </div>
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* ======================================================== */}
                   {/* CASO A: TIPO DÍAS PAGADOS (Número y Fecha de Liquidación) */}
                   {/* ======================================================== */}
-                  {vacationType === "dias_pagados" ? (
-                    <div className="bg-slate-950/80 p-5 rounded-2xl border border-emerald-500/30 shadow-xl space-y-3">
+                  {vacationType === "dias_pagados" ? (() => {
+                    const todayYmd = formatYMD(new Date());
+                    const corteTarget = fechaPago || todayYmd;
+                    const isUnifiedActive = liquidacionFraccionada || esCierreConciliado;
+                    const calcFracc = selectedEmp
+                      ? calcularLiquidacionEmpleado(selectedEmp, corteTarget, editingRecordId ?? undefined)
+                      : null;
+                    return (
+                    <div className="bg-slate-950/80 p-5 rounded-2xl border border-emerald-500/30 shadow-xl space-y-4">
+                      {/* Opción Unificada: Liquidación Exacta / Fraccionada — Cierre Conciliado */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextVal = !isUnifiedActive;
+                          setLiquidacionFraccionada(nextVal);
+                          setEsCierreConciliado(nextVal);
+                          if (nextVal) {
+                            const activeDate = fechaPago || todayYmd;
+                            if (!fechaPago) setFechaPago(activeDate);
+                            setFechaSolicitud(activeDate);
+                            setMotivo("CIERRE CONCILIADO");
+                            if (calcFracc) {
+                              setDiasPagadosInput(String(Math.max(0, calcFracc.saldoFraccionado)));
+                            }
+                          } else {
+                            if (motivo === "CIERRE CONCILIADO") setMotivo("");
+                            if (calcFracc) {
+                              setDiasPagadosInput(String(Math.max(0, calcFracc.saldoEstandar)));
+                            }
+                          }
+                        }}
+                        className={`w-full p-3.5 rounded-xl border text-left transition flex items-center justify-between gap-4 cursor-pointer ${
+                          isUnifiedActive
+                            ? "bg-gradient-to-r from-teal-500/15 to-emerald-500/15 border-emerald-400/70 text-white shadow-sm"
+                            : "bg-slate-900/90 border-slate-700/80 text-slate-300 hover:border-slate-500"
+                        }`}
+                      >
+                        <div>
+                          <div className="text-xs font-bold flex flex-wrap items-center gap-2">
+                            <span>Liquidación Exacta / Fraccionada — Cierre Conciliado</span>
+                            {isUnifiedActive && (
+                              <span className="text-[9px] font-black px-2 py-0.5 rounded bg-emerald-400 text-slate-950 uppercase tracking-wide">
+                                ACTIVO • SALDO A 0
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-400 mt-1">
+                            Calcula años completos + meses (÷ 12) + días (÷ 30) hasta la fecha de conciliación, descuenta vacaciones tomadas/pagadas y guarda el Cierre Conciliado reiniciando el saldo en 0.0 días.
+                          </div>
+                        </div>
+                        <div className={`w-11 h-6 rounded-full shrink-0 p-0.5 transition ${isUnifiedActive ? "bg-emerald-500" : "bg-slate-700"}`}>
+                          <div className={`w-5 h-5 rounded-full bg-white transition-transform ${isUnifiedActive ? "translate-x-5" : "translate-x-0"}`} />
+                        </div>
+                      </button>
+
+                      {/* Desglose Matemático Fraccionado */}
+                      {isUnifiedActive && calcFracc && (
+                        <div className="bg-slate-900/90 border border-teal-500/30 rounded-xl p-3.5 text-xs space-y-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                            <span className="text-teal-300 font-bold">
+                              Desglose Proporcional al {formatDMY(corteTarget)}
+                              {calcFracc.tieneCierrePrevio && calcFracc.fechaCierrePrevio ? (
+                                <span className="text-emerald-300 font-normal ml-1.5">
+                                  (Ciclo desde cierre {formatDMY(calcFracc.fechaCierrePrevio)})
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-normal ml-1.5">(Desde ingreso)</span>
+                              )}
+                            </span>
+                            <span className="font-mono text-[11px] text-slate-300">
+                              Tiempo: <strong className="text-white">{calcFracc.anios}a {calcFracc.meses}m {calcFracc.dias}d</strong> • Escala actual: <strong className="text-teal-300">{calcFracc.escala} d/año</strong>
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 font-mono">
+                            <div className="bg-slate-950/70 rounded-lg p-2 border border-slate-800">
+                              <span className="text-[10px] text-slate-400 block font-sans">Años ({calcFracc.anios}a)</span>
+                              <span className="font-bold text-white">{fmtDias(calcFracc.diasPorAnios)} d</span>
+                            </div>
+                            <div className="bg-slate-950/70 rounded-lg p-2 border border-slate-800" title={`${calcFracc.escala} ÷ 12 = ${calcFracc.tasaMensual.toFixed(4)} d/mes`}>
+                              <span className="text-[10px] text-slate-400 block font-sans">Meses ({calcFracc.meses} × ÷12)</span>
+                              <span className="font-bold text-teal-300">+{fmtDias(calcFracc.diasPorMeses)} d</span>
+                            </div>
+                            <div className="bg-slate-950/70 rounded-lg p-2 border border-slate-800" title={`${calcFracc.tasaMensual.toFixed(4)} ÷ 30 = ${calcFracc.tasaDiaria.toFixed(4)} d/día`}>
+                              <span className="text-[10px] text-slate-400 block font-sans">Días ({calcFracc.dias} × ÷30)</span>
+                              <span className="font-bold text-teal-300">+{fmtDias(calcFracc.diasPorDias)} d</span>
+                            </div>
+                            <div className="bg-slate-950/70 rounded-lg p-2 border border-slate-800" title={`Solicitadas: ${fmtDias(calcFracc.rebajaSolicitadas)} | Colectivas: ${fmtDias(calcFracc.rebajaColectivas)} | Pagadas: ${fmtDias(calcFracc.rebajaPagados)}`}>
+                              <span className="text-[10px] text-slate-400 block font-sans">Rebajas (Tom/Pag)</span>
+                              <span className="font-bold text-amber-300">-{fmtDias(calcFracc.totalRebaja)} d</span>
+                            </div>
+                            <div className="bg-teal-500/15 rounded-lg p-2 border border-teal-500/40 flex flex-col justify-between">
+                              <span className="text-[10px] text-teal-200 block font-sans font-bold">Saldo Exacto</span>
+                              <span className="font-black text-emerald-300 text-sm">{fmtDias(calcFracc.saldoFraccionado)} d</span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+                            <span>
+                              Bruto acumulado: <strong className="text-slate-200">{fmtDias(calcFracc.totalFraccionado)} d</strong> • Solicitadas: <strong className="text-slate-200">{fmtDias(calcFracc.rebajaSolicitadas)} d</strong> • Colectivas: <strong className="text-slate-200">{fmtDias(calcFracc.rebajaColectivas)} d</strong> • Pagadas previas: <strong className="text-slate-200">{fmtDias(calcFracc.rebajaPagados)} d</strong>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setDiasPagadosInput(String(Math.max(0, calcFracc.saldoFraccionado)))}
+                              className="px-2.5 py-1 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-lg transition cursor-pointer"
+                            >
+                              Aplicar {fmtDias(calcFracc.saldoFraccionado)} d
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1.5">
@@ -2455,9 +3102,9 @@ function VacacionesContent() {
                           <div className="relative">
                             <input
                               type="number"
-                              step="0.5"
-                              min="0.5"
-                              placeholder="Ej. 15"
+                              step="0.01"
+                              min="0.01"
+                              placeholder="Ej. 15 o 12.58"
                               value={diasPagadosInput}
                               onChange={(e) => setDiasPagadosInput(e.target.value)}
                               className="w-full bg-slate-900 border border-slate-700 text-emerald-300 text-xl font-black rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-400 shadow-inner"
@@ -2472,43 +3119,212 @@ function VacacionesContent() {
 
                         <div>
                           <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1.5">
-                            Fecha de Liquidación / Pago *
+                            {isUnifiedActive ? "Fecha de Conciliación (Hasta aquí) *" : "Fecha de Liquidación / Pago *"}
                           </label>
                           <input
                             type="date"
-                            value={fechaPago}
-                            onChange={(e) => setFechaPago(e.target.value)}
+                            value={corteTarget}
+                            onChange={(e) => {
+                              const newVal = e.target.value;
+                              setFechaPago(newVal);
+                              if (isUnifiedActive) {
+                                setFechaSolicitud(newVal);
+                              }
+                              if (isUnifiedActive && selectedEmp && newVal) {
+                                const nextC = calcularLiquidacionEmpleado(selectedEmp, newVal, editingRecordId ?? undefined);
+                                if (nextC) {
+                                  setDiasPagadosInput(String(Math.max(0, nextC.saldoFraccionado)));
+                                }
+                              }
+                            }}
                             className="w-full bg-slate-900 border border-slate-700 text-white text-base font-bold rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-400 shadow-inner"
                             required
                           />
+                          {isUnifiedActive && (
+                            <span className="text-[10px] text-slate-400 block mt-1">
+                              Por defecto es el día actual; puedes ajustarla a una fecha pasada para cierres históricos.
+                            </span>
+                          )}
                         </div>
                       </div>
 
-                      {/* Accesos rápidos numéricos */}
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        <span className="text-[10px] text-slate-400 font-semibold mr-1">Rápido:</span>
-                        {[0.5, 1, 5, 10, 15, 20, 30].map(val => (
-                          <button
-                            key={val}
-                            type="button"
-                            onClick={() => setDiasPagadosInput(String(val))}
-                            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition"
-                          >
-                            +{val}
-                          </button>
-                        ))}
-                        {selectedEmp && selectedEmp.saldo_dias_pendientes > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setDiasPagadosInput(String(selectedEmp.saldo_dias_pendientes))}
-                            className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold rounded-lg border border-emerald-500/30 transition"
-                          >
-                            Todo el Saldo ({selectedEmp.saldo_dias_pendientes.toFixed(1)} d)
-                          </button>
-                        )}
-                      </div>
+                      {/* Accesos rápidos numéricos (ocultos cuando Cierre Conciliado / Exacto está activo) */}
+                      {!isUnifiedActive && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[10px] text-slate-400 font-semibold mr-1">Rápido:</span>
+                          {[0.5, 1, 5, 10, 15, 20, 30].map(val => (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => setDiasPagadosInput(String(val))}
+                              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition"
+                            >
+                              +{val}
+                            </button>
+                          ))}
+                          {(() => {
+                            const targetFull = selectedEmp?.saldo_dias_pendientes ?? 0;
+                            if (!selectedEmp || targetFull <= 0) return null;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setDiasPagadosInput(String(targetFull))}
+                                className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold rounded-lg border border-emerald-500/30 transition"
+                              >
+                                Todo el Saldo ({fmtDias(targetFull)} d)
+                              </button>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {/* Previsualización en Vivo del Recibo de Pago de Vacaciones */}
+                      {selectedEmp && (() => {
+                        const previewDias = parseFloat(diasPagadosInput) || 0;
+                        const previewTg = (selectedEmp.total_ganado_mensual && selectedEmp.total_ganado_mensual > 0)
+                          ? selectedEmp.total_ganado_mensual
+                          : (((selectedEmp.haber_basico || 0) + (selectedEmp.otros || 0) > 0)
+                              ? ((selectedEmp.haber_basico || 0) + (selectedEmp.otros || 0))
+                              : 3300);
+                        const previewSd = Number((previewTg / 30).toFixed(2));
+                        const previewImporte = Number((previewSd * previewDias).toFixed(2));
+                        const empleadorNombre = summary?.tenant_empleador || "Hipólito Manrrique Santi";
+                        const empleadorCi = summary?.tenant_empleador_ci || "6570013";
+                        const empleadorRol = "propietario";
+                        const mesesEs = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+                        const cParts = (corteTarget || "").split("-").map(Number);
+                        const lugarFechaPreview = (cParts.length === 3 && cParts[0] > 1900 && cParts[1] >= 1 && cParts[1] <= 12)
+                          ? `La Paz, ${cParts[2]} de ${mesesEs[cParts[1] - 1]} de ${cParts[0]}`
+                          : `La Paz, ${formatDMY(corteTarget)}`;
+                        const allIds = (summary?.employees || []).flatMap(em => (em.records || []).map(r => r.id || 0));
+                        const maxRecId = allIds.length > 0 ? Math.max(...allIds) : 0;
+                        const previewReciboNro = editingRecordId ? `00${editingRecordId}` : `00${maxRecId + 1}`;
+
+                        return (
+                          <div className="pt-2 border-t border-slate-800 space-y-2.5">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Receipt className="w-4 h-4 text-emerald-400" />
+                                <span className="text-xs font-bold text-white uppercase tracking-wide">
+                                  Previsualización del Recibo de Pago
+                                </span>
+                                {isUnifiedActive && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                    Cierre Conciliado • Saldo a 0
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleOpenReceiptsModal(selectedEmp, editingRecordId ?? undefined);
+                                  setReceiptDocType("pago");
+                                  setReciboPaidRecordId(editingRecordId ?? "manual");
+                                  setReciboNro(previewReciboNro);
+                                  setReciboTotalGanado(previewTg);
+                                  setReciboSalarioDiario(previewSd);
+                                  setReciboDiasPagados(previewDias);
+                                  setReciboImporteCancelado(previewImporte);
+                                  setReciboFechaCorte(corteTarget);
+                                  setReciboLugarFecha(lugarFechaPreview);
+                                  setReciboModoFraccionado(isUnifiedActive);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-teal-300 hover:text-white border border-slate-700 text-[11px] font-bold transition cursor-pointer"
+                                title="Abrir este recibo en Comprobantes para imprimir o descargar en PDF / Excel"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                <span>Abrir en Comprobantes / Exportar</span>
+                              </button>
+                            </div>
+
+                            {/* Plantilla Blanca Oficial del Recibo de Pago */}
+                            <div className="bg-white text-slate-900 rounded-xl border border-slate-300 shadow-lg p-5 sm:p-6 font-sans text-xs leading-relaxed">
+                              <div className="flex justify-end items-center mb-2">
+                                <div className="border border-slate-700 px-3 py-0.5 font-bold text-[11px] tracking-wide text-slate-900 bg-slate-50">
+                                  RECIBO N.º {previewReciboNro}
+                                </div>
+                              </div>
+
+                              <h4 className="text-sm font-black text-center text-slate-900 tracking-wider mb-3 uppercase">
+                                RECIBO DE PAGO DE VACACIONES
+                              </h4>
+
+                              <p className="text-[11.5px] sm:text-xs text-slate-800 leading-relaxed mb-3 text-justify">
+                                Yo, <span className="font-bold uppercase underline decoration-slate-400">{selectedEmp.employee_name}</span> con C.I. <span className="font-bold font-mono">{selectedEmp.employee_ci}</span>, declaro haber recibido de <span className="font-bold uppercase">{empleadorNombre}</span>, <span className="italic">{empleadorRol}</span>, la suma de <span className="font-bold">Bs {previewImporte.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({formatearMontoLiteral(previewImporte)} Bolivianos)</span> por concepto de {isUnifiedActive ? `liquidación y cierre conciliado al ${formatDMY(corteTarget)} correspondiente al pago de ` : "pago de "}<span className="font-bold">{formatearDiasLiteral(previewDias)}</span> días de vacaciones devengadas.
+                              </p>
+
+                              <div className="mb-3 pl-1">
+                                <div className="font-bold text-xs text-slate-900 mb-1">Detalle:</div>
+                                <ul className="space-y-0.5 text-[11px] sm:text-xs text-slate-800">
+                                  <li className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-400">•</span>
+                                    <span className="w-56">Total ganado mensual:</span>
+                                    <span className="font-bold font-mono">Bs {previewTg.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </li>
+                                  <li className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-400">•</span>
+                                    <span className="w-56">Salario diario:</span>
+                                    <span className="font-bold font-mono">Bs {previewTg.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ÷ 30 = Bs {previewSd.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </li>
+                                  {isUnifiedActive && calcFracc && (
+                                    <li className="flex items-center gap-2">
+                                      <span className="font-bold text-slate-400">•</span>
+                                      <span className="w-56">Cómputo proporcional ({calcFracc.anios}a {calcFracc.meses}m {calcFracc.dias}d):</span>
+                                      <span className="font-semibold font-mono text-slate-700">{fmtDias(calcFracc.totalFraccionado)} d acumulados − {fmtDias(calcFracc.totalRebaja)} d rebajados</span>
+                                    </li>
+                                  )}
+                                  <li className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-400">•</span>
+                                    <span className="w-56">Días de vacaciones pagados:</span>
+                                    <span className="font-bold font-mono">{fmtDias(previewDias)} días</span>
+                                  </li>
+                                  <li className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-400">•</span>
+                                    <span className="w-56 font-bold">Importe cancelado:</span>
+                                    <span className="font-bold font-mono text-xs sm:text-sm text-slate-900">Bs {previewImporte.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </li>
+                                  {isUnifiedActive && (
+                                    <li className="flex items-center gap-2 text-emerald-700">
+                                      <span className="font-bold">•</span>
+                                      <span className="w-56 font-bold">Saldo restante post-cierre:</span>
+                                      <span className="font-bold font-mono">0.0 días (Cierre Conciliado)</span>
+                                    </li>
+                                  )}
+                                </ul>
+                              </div>
+
+                              <p className="text-[11px] text-slate-800 mb-1.5">
+                                En constancia de conformidad con el pago recibido, firmo el presente documento.
+                              </p>
+
+                              <div className="text-[11px] text-slate-800 mb-4">
+                                <span>Lugar y fecha: </span>
+                                <span className="font-medium underline decoration-slate-400">{lugarFechaPreview}</span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-6 text-center pt-2.5 border-t border-slate-200">
+                                <div className="space-y-1 text-left text-[10.5px] text-slate-800 px-1">
+                                  <div className="font-bold text-[11px] text-slate-900 uppercase text-center mb-1">RECIBÍ CONFORME</div>
+                                  <div className="h-12"></div>
+                                  <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1">Firma:</span><span className="text-slate-400 font-mono overflow-hidden whitespace-nowrap w-full">........................................................................</span></div>
+                                  <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1">Nombre:</span><span className="text-slate-400 font-mono overflow-hidden whitespace-nowrap w-full">........................................................................</span></div>
+                                  <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1">C.I.:</span><span className="text-slate-400 font-mono overflow-hidden whitespace-nowrap w-full">........................................................................</span></div>
+                                </div>
+                                <div className="space-y-1 text-left text-[10.5px] text-slate-800 px-1">
+                                  <div className="font-bold text-[11px] text-slate-900 uppercase text-center mb-1">ENTREGUÉ CONFORME</div>
+                                  <div className="h-12"></div>
+                                  <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1">Firma:</span><span className="text-slate-400 font-mono overflow-hidden whitespace-nowrap w-full">........................................................................</span></div>
+                                  <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1">Nombre:</span><span className="text-slate-800 font-semibold truncate">{empleadorNombre}</span></div>
+                                  <div className="flex items-center"><span className="font-semibold text-slate-600 shrink-0 mr-1">C.I.:</span><span className="text-slate-800 font-semibold font-mono truncate">{empleadorCi}</span></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
-                  ) : (
+                    );
+                  })() : (
                     /* ======================================================== */
                     /* CASO B: CALENDARIO INTERACTIVO                           */
                     /* ======================================================== */
@@ -2798,33 +3614,72 @@ function VacacionesContent() {
                     </div>
                   )}
 
-                  {/* Motivo y Fecha de Solicitud / Realización (en par) */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1">
-                        Motivo / Detalle
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ej. Vacaciones anuales correspondientes a la gestión..."
-                        value={motivo}
-                        onChange={(e) => setMotivo(e.target.value)}
-                        className="w-full bg-slate-950/80 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-400 text-sm font-medium"
-                      />
+                  {/* Motivo y Fecha de Solicitud / Conciliación (en par) */}
+                  {vacationType === "dias_pagados" && (liquidacionFraccionada || esCierreConciliado) ? (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-bold text-emerald-300 uppercase tracking-wide mb-1">
+                          Descripción en Historial / Kárdex (Cierre Conciliado)
+                        </label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={`CIERRE CONCILIADO (Conciliación al ${formatDMY(fechaPago || formatYMD(new Date()))} — Saldo en 0)`}
+                          className="w-full bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 rounded-xl px-4 py-2.5 text-sm font-bold cursor-default focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-emerald-300 uppercase tracking-wide mb-1">
+                          Fecha de Conciliación *
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={fechaPago || formatYMD(new Date())}
+                          onChange={(e) => {
+                            const newVal = e.target.value;
+                            setFechaPago(newVal);
+                            setFechaSolicitud(newVal);
+                            if (selectedEmp && newVal) {
+                              const nextC = calcularLiquidacionEmpleado(selectedEmp, newVal, editingRecordId ?? undefined);
+                              if (nextC) {
+                                setDiasPagadosInput(String(Math.max(0, nextC.saldoFraccionado)));
+                              }
+                            }
+                          }}
+                          className="w-full bg-slate-950/80 border border-emerald-500/40 text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-400 text-sm font-bold"
+                          title="Fecha límite de conciliación (hoy por defecto o fecha histórica)"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1 flex items-center justify-between">
-                        <span>F. Solicitud <span className="text-[10px] text-slate-400 font-normal lowercase">(opcional)</span></span>
-                      </label>
-                      <input
-                        type="date"
-                        value={fechaSolicitud}
-                        onChange={(e) => setFechaSolicitud(e.target.value)}
-                        className="w-full bg-slate-950/80 border border-slate-700 text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-400 text-sm font-medium"
-                        title="Fecha en la cual el trabajador realizó o solicitó la vacación"
-                      />
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1">
+                          Motivo / Detalle
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ej. Vacaciones anuales correspondientes a la gestión..."
+                          value={motivo}
+                          onChange={(e) => setMotivo(e.target.value)}
+                          className="w-full bg-slate-950/80 border border-slate-700 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-400 text-sm font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1 flex items-center justify-between">
+                          <span>F. Solicitud <span className="text-[10px] text-slate-400 font-normal lowercase">(opcional)</span></span>
+                        </label>
+                        <input
+                          type="date"
+                          value={fechaSolicitud}
+                          onChange={(e) => setFechaSolicitud(e.target.value)}
+                          className="w-full bg-slate-950/80 border border-slate-700 text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-400 text-sm font-medium"
+                          title="Fecha en la cual el trabajador realizó o solicitó la vacación"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                 </form>
               </div>
@@ -3207,7 +4062,7 @@ function VacacionesContent() {
                         </div>
                         <div className="mt-2 flex items-baseline gap-1.5">
                           <span className="text-3xl font-black text-white">
-                            {kardexData.totGanados.toFixed(1)}
+                            {fmtDias(kardexData.totGanados)}
                           </span>
                           <span className="text-xs font-semibold text-slate-400">días</span>
                         </div>
@@ -3227,13 +4082,13 @@ function VacacionesContent() {
                         </div>
                         <div className="mt-2 flex items-baseline gap-1.5">
                           <span className="text-3xl font-black text-amber-300">
-                            {kardexData.totTomados.toFixed(1)}
+                            {fmtDias(kardexData.totTomados)}
                           </span>
                           <span className="text-xs font-semibold text-slate-400">días</span>
                         </div>
                       </div>
-                      <span className="text-[11px] text-slate-400 mt-2 truncate" title={`Pagados: ${(viewingEmployee.dias_pagados ?? viewingEmployee.dias_a_cuenta ?? 0).toFixed(1)} d • Solicitadas: ${viewingEmployee.dias_solicitadas.toFixed(1)} d • Colectivas: ${viewingEmployee.dias_colectivas.toFixed(1)} d`}>
-                        Pagados: {(viewingEmployee.dias_pagados ?? viewingEmployee.dias_a_cuenta ?? 0).toFixed(1)} d • Solicitadas: {viewingEmployee.dias_solicitadas.toFixed(1)} d • Colectivas: {viewingEmployee.dias_colectivas.toFixed(1)} d
+                      <span className="text-[11px] text-slate-400 mt-2 truncate" title={`Pagados: ${fmtDias(viewingEmployee.dias_pagados ?? viewingEmployee.dias_a_cuenta ?? 0)} d • Solicitadas: ${fmtDias(viewingEmployee.dias_solicitadas)} d • Colectivas: ${fmtDias(viewingEmployee.dias_colectivas)} d`}>
+                        Pagados: {fmtDias(viewingEmployee.dias_pagados ?? viewingEmployee.dias_a_cuenta ?? 0)} d • Solicitadas: {fmtDias(viewingEmployee.dias_solicitadas)} d • Colectivas: {fmtDias(viewingEmployee.dias_colectivas)} d
                       </span>
                     </div>
 
@@ -3247,14 +4102,21 @@ function VacacionesContent() {
                         </div>
                         <div className="mt-2 flex items-baseline gap-1.5">
                           <span className="text-3xl font-black text-teal-300">
-                            {kardexData.saldoFinal.toFixed(1)}
+                            {fmtDias(kardexData.saldoFinal)}
                           </span>
                           <span className="text-xs font-bold text-teal-200">días hábiles</span>
                         </div>
                       </div>
-                      <span className="text-[11px] text-teal-300/80 font-medium mt-2">
-                        Días hábiles disponibles
-                      </span>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5">
+                        <span className="text-[11px] text-teal-300/80 font-medium">
+                          Días hábiles disponibles
+                        </span>
+                        {viewingEmployee.tiene_cierre_conciliado && viewingEmployee.fecha_ultimo_cierre && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                            ✓ Cierre: {formatDMY(viewingEmployee.fecha_ultimo_cierre)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -3355,13 +4217,13 @@ function VacacionesContent() {
                                 </span>
                               </td>
                               <td className="p-3 text-right font-mono font-bold text-slate-200">
-                                {kardexData.apertura.diasGanados > 0 ? `+${kardexData.apertura.diasGanados.toFixed(1)} d` : "-"}
+                                {kardexData.apertura.diasGanados > 0 ? `+${fmtDias(kardexData.apertura.diasGanados)} d` : "-"}
                               </td>
                               <td className="p-3 text-right font-mono text-slate-500">
                                 -
                               </td>
                               <td className="p-3 text-right font-mono font-bold text-slate-200 text-sm">
-                                {kardexData.apertura.saldoRestante.toFixed(1)} d
+                                {fmtDias(kardexData.apertura.saldoRestante)} d
                               </td>
                               <td className="p-3 text-slate-400 italic">
                                 {kardexData.apertura.motivo}
@@ -3380,7 +4242,13 @@ function VacacionesContent() {
                             kardexData.timeline.map((r) => {
                               const isColectiva = r.tipo === "colectiva";
                               const isSolicitada = r.tipo === "solicitada";
-                              const rowBg = isColectiva
+                              const isCierre = Boolean(r.es_cierre_conciliado || r.tipoLabel === "Cierre Conciliado");
+                              const isDevFrac = r.tipoLabel === "Devengado Fraccionado";
+                              const rowBg = isCierre
+                                ? "bg-emerald-500/15 hover:bg-emerald-500/20"
+                                : isDevFrac
+                                ? "bg-teal-500/10 hover:bg-teal-500/15"
+                                : isColectiva
                                 ? "bg-rose-500/10 hover:bg-rose-500/15"
                                 : isSolicitada
                                 ? "bg-emerald-500/10 hover:bg-emerald-500/15"
@@ -3394,12 +4262,16 @@ function VacacionesContent() {
                                     {r.tipo === "derecho_anual"
                                       ? formatDMY(r.fecha)
                                       : r.tipo === "dias_pagados" || r.tipo === "a_cuenta" 
-                                      ? `Compensación (${formatDMY(r.fecha)})` 
+                                      ? `${isCierre ? "Cierre" : "Compensación"} (${formatDMY(r.fecha)})` 
                                       : formatKardexPeriodo(r.fecha, r.fecha_fin)}
                                   </td>
                                   <td className="p-3">
                                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
-                                      r.tipo === "derecho_anual"
+                                      isCierre
+                                        ? "bg-emerald-900/70 text-emerald-200 border border-emerald-500/50"
+                                        : isDevFrac
+                                        ? "bg-teal-950/70 text-teal-200 border border-teal-500/40"
+                                        : r.tipo === "derecho_anual"
                                         ? "bg-slate-700/60 text-slate-100 border border-slate-500/40"
                                         : r.tipo === "dias_pagados" || r.tipo === "a_cuenta"
                                         ? "bg-slate-800 text-slate-200 border border-slate-700"
@@ -3411,18 +4283,18 @@ function VacacionesContent() {
                                     </span>
                                   </td>
                                 <td className="p-3 text-right font-mono font-bold text-slate-200">
-                                  {r.diasGanados > 0 ? `+${r.diasGanados.toFixed(1)} d` : "-"}
+                                  {r.diasGanados > 0 ? `+${fmtDias(r.diasGanados)} d` : "-"}
                                 </td>
                                 <td className="p-3 text-right font-mono font-bold text-slate-300">
-                                  {r.diasTomados > 0 ? `-${r.diasTomados.toFixed(1)} d` : "-"}
+                                  {r.diasTomados > 0 ? `-${fmtDias(r.diasTomados)} d` : "-"}
                                 </td>
                                 <td className="p-3 text-right font-mono font-black text-white">
-                                  {r.saldoRestante.toFixed(1)} d
+                                  {fmtDias(r.saldoRestante)} d
                                 </td>
                                 <td className="p-3 text-slate-300">
                                   {r.tipo === "derecho_anual"
                                     ? r.motivo
-                                    : cleanMotivo(r.motivo, r.tipo, r.fecha_solicitud)}
+                                    : cleanMotivo(r.motivo, r.tipo, r.fecha_solicitud, r.es_cierre_conciliado, r.fecha)}
                                 </td>
                                 <td className="p-3 pr-4 text-center">
                                   {r.isRecord && r.recordId ? (
@@ -3469,13 +4341,13 @@ function VacacionesContent() {
                               Totales y Saldo Final:
                             </td>
                             <td className="p-3 text-right font-mono font-bold text-slate-200">
-                              +{kardexData.hasSaldoAnterior ? kardexData.totalComputablePeriodo.toFixed(1) : kardexData.totGanados.toFixed(1)} d
+                              +{fmtDias(kardexData.hasSaldoAnterior ? kardexData.totalComputablePeriodo : kardexData.totGanados)} d
                             </td>
                             <td className="p-3 text-right font-mono font-black text-slate-300">
-                              -{kardexData.hasSaldoAnterior ? kardexData.tomadosPeriodo.toFixed(1) : kardexData.totTomados.toFixed(1)} d
+                              -{fmtDias(kardexData.hasSaldoAnterior ? kardexData.tomadosPeriodo : kardexData.totTomados)} d
                             </td>
                             <td className="p-3 text-right font-mono font-black text-white text-sm">
-                              {(kardexData.hasSaldoAnterior ? kardexData.saldoFinalPeriodo : kardexData.saldoFinal).toFixed(1)} d
+                              {fmtDias(kardexData.hasSaldoAnterior ? kardexData.saldoFinalPeriodo : kardexData.saldoFinal)} d
                             </td>
                             <td colSpan={2} className="p-3 text-teal-400 font-bold text-[11px]">
                               Saldo disponible
@@ -3498,9 +4370,9 @@ function VacacionesContent() {
                               <div key={m.mesKey} className="bg-slate-800/90 border border-white/10 rounded-xl p-2.5 shadow-xs">
                                 <span className="text-xs font-bold text-white block truncate">{m.mesLabel}</span>
                                 <div className="flex items-center justify-between text-[11px] mt-1.5 text-slate-300 font-mono">
-                                  <span>{m.diasGanados > 0 ? `+${m.diasGanados}d ` : ""}{m.diasTomados > 0 ? `-${m.diasTomados}d` : m.diasGanados === 0 ? "0d" : ""}</span>
+                                  <span>{m.diasGanados > 0 ? `+${fmtDias(m.diasGanados)}d ` : ""}{m.diasTomados > 0 ? `-${fmtDias(m.diasTomados)}d` : m.diasGanados === 0 ? "0d" : ""}</span>
                                   <span className="font-bold text-teal-300 bg-teal-500/10 px-1.5 py-0.5 rounded border border-teal-500/20">
-                                    {m.saldoCierre.toFixed(1)} d
+                                    {fmtDias(m.saldoCierre)} d
                                   </span>
                                 </div>
                               </div>
@@ -3546,11 +4418,11 @@ function VacacionesContent() {
                                     : `${formatDMY(kardexDetailedData.apertura.fecha)} (Ingreso a la empresa)`}
                                 </td>
                                 <td className="p-3 text-right font-mono font-bold text-slate-200">
-                                  {kardexDetailedData.apertura.diasGanados > 0 ? `+${kardexDetailedData.apertura.diasGanados.toFixed(1)} d` : "-"}
+                                  {kardexDetailedData.apertura.diasGanados > 0 ? `+${fmtDias(kardexDetailedData.apertura.diasGanados)} d` : "-"}
                                 </td>
                                 <td className="p-3 text-right font-mono text-slate-500">-</td>
                                 <td className="p-3 text-right font-mono font-bold text-slate-200 text-sm">
-                                  {kardexDetailedData.apertura.saldoRestante.toFixed(1)} d
+                                  {fmtDias(kardexDetailedData.apertura.saldoRestante)} d
                                 </td>
                                 <td className="p-3 text-slate-400 italic">
                                   {kardexDetailedData.apertura.motivo}
@@ -3569,7 +4441,13 @@ function VacacionesContent() {
                               kardexDetailedData.timeline.map((r) => {
                                 const isColectiva = r.tipo === "colectiva";
                                 const isSolicitada = r.tipo === "solicitada";
-                                const rowBg = isColectiva
+                                const isCierre = Boolean(r.es_cierre_conciliado || r.tipoLabel === "Cierre Conciliado");
+                                const isDevFrac = r.tipoLabel === "Devengado Fraccionado";
+                                const rowBg = isCierre
+                                  ? "bg-emerald-500/15 hover:bg-emerald-500/20"
+                                  : isDevFrac
+                                  ? "bg-teal-500/10 hover:bg-teal-500/15"
+                                  : isColectiva
                                   ? "bg-rose-500/10 hover:bg-rose-500/15"
                                   : isSolicitada
                                   ? "bg-emerald-500/10 hover:bg-emerald-500/15"
@@ -3586,7 +4464,11 @@ function VacacionesContent() {
                                     </td>
                                     <td className="p-3">
                                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
-                                        r.tipo === "derecho_anual"
+                                        isCierre
+                                          ? "bg-emerald-900/70 text-emerald-200 border border-emerald-500/50"
+                                          : isDevFrac
+                                          ? "bg-teal-950/70 text-teal-200 border border-teal-500/40"
+                                          : r.tipo === "derecho_anual"
                                           ? "bg-slate-700/60 text-slate-100 border border-slate-500/40"
                                           : r.tipo === "dias_pagados" || r.tipo === "a_cuenta"
                                           ? "bg-slate-800 text-slate-200 border border-slate-700"
@@ -3601,7 +4483,7 @@ function VacacionesContent() {
                                     {r.tipo === "derecho_anual" ? (
                                       <span className="text-xs text-teal-300 font-semibold inline-flex items-center gap-1.5">
                                         <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0"></span>
-                                        <span>{r.diasEspecificosFormato.replace(/^•\s*/, "")}</span>
+                                        <span>{(r.diasEspecificosFormato || "").replace(/^•\s*/, "")}</span>
                                       </span>
                                     ) : r.tipo === "dias_pagados" || r.tipo === "a_cuenta" ? (
                                       <span className="text-xs text-slate-400 italic block">
@@ -3629,18 +4511,18 @@ function VacacionesContent() {
                                     )}
                                   </td>
                                   <td className="p-3 text-right font-mono font-bold text-slate-200">
-                                    {r.diasGanados > 0 ? `+${r.diasGanados.toFixed(1)} d` : "-"}
+                                    {r.diasGanados > 0 ? `+${fmtDias(r.diasGanados)} d` : "-"}
                                   </td>
                                   <td className="p-3 text-right font-mono font-bold text-slate-300">
-                                    {r.diasTomados > 0 ? `-${r.diasTomados.toFixed(1)} d` : "-"}
+                                    {r.diasTomados > 0 ? `-${fmtDias(r.diasTomados)} d` : "-"}
                                   </td>
                                   <td className="p-3 text-right font-mono font-black text-white">
-                                    {r.saldoRestante.toFixed(1)} d
+                                    {fmtDias(r.saldoRestante)} d
                                   </td>
                                   <td className="p-3 text-slate-300">
                                     {r.tipo === "derecho_anual"
                                       ? r.motivo
-                                      : cleanMotivo(r.motivo, r.tipo, r.fecha_solicitud)}
+                                      : cleanMotivo(r.motivo, r.tipo, r.fecha_solicitud, r.es_cierre_conciliado, r.fecha)}
                                   </td>
                                   <td className="p-3 pr-4 text-center">
                                     {r.isRecord && r.recordId ? (
@@ -3687,13 +4569,13 @@ function VacacionesContent() {
                                 Totales y Saldo Final:
                               </td>
                               <td className="p-3 text-right font-mono font-bold text-slate-200">
-                                +{kardexData.hasSaldoAnterior ? kardexData.totalComputablePeriodo.toFixed(1) : kardexData.totGanados.toFixed(1)} d
+                                +{fmtDias(kardexData.hasSaldoAnterior ? kardexData.totalComputablePeriodo : kardexData.totGanados)} d
                               </td>
                               <td className="p-3 text-right font-mono font-black text-slate-300">
-                                -{kardexData.hasSaldoAnterior ? kardexData.tomadosPeriodo.toFixed(1) : kardexData.totTomados.toFixed(1)} d
+                                -{fmtDias(kardexData.hasSaldoAnterior ? kardexData.tomadosPeriodo : kardexData.totTomados)} d
                               </td>
                               <td className="p-3 text-right font-mono font-black text-white text-sm">
-                                {(kardexData.hasSaldoAnterior ? kardexData.saldoFinalPeriodo : kardexData.saldoFinal).toFixed(1)} d
+                                {fmtDias(kardexData.hasSaldoAnterior ? kardexData.saldoFinalPeriodo : kardexData.saldoFinal)} d
                               </td>
                               <td colSpan={2} className="p-3 text-teal-400 font-bold text-[11px]">
                                 Saldo disponible
@@ -3932,12 +4814,12 @@ function VacacionesContent() {
                               onChange={(e) => handleSelectPaidRecord(e.target.value)}
                               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs"
                             >
-                              <option value="all">Todos acumulados ({receiptEmployee.dias_pagados ?? 0} d)</option>
+                              <option value="all">Todos acumulados ({fmtDias(receiptEmployee.dias_pagados ?? 0)} d)</option>
                               {(receiptEmployee.records || [])
                                 .filter(r => r.tipo === "dias_pagados" || r.tipo === "a_cuenta")
                                 .map(r => (
                                   <option key={r.id} value={r.id}>
-                                    Reg #{r.id}: {r.dias} d ({formatDMY(r.fecha_solicitud || r.fecha_inicio)})
+                                    Reg #{r.id}: {fmtDias(r.dias)} d ({formatDMY(r.fecha_solicitud || r.fecha_inicio)}){r.es_cierre_conciliado ? " • Cierre" : ""}
                                   </option>
                                 ))
                               }
@@ -3971,7 +4853,8 @@ function VacacionesContent() {
                             <label className="block text-slate-400 text-[11px] font-semibold mb-1">Días de Vacación Pagados:</label>
                             <input
                               type="number"
-                              step="0.5"
+                              step="0.01"
+                              min="0.01"
                               value={reciboDiasPagados}
                               onChange={(e) => handleDiasPagadosChange(parseFloat(e.target.value) || 0)}
                               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs font-mono font-bold"
@@ -4118,6 +5001,80 @@ function VacacionesContent() {
                   )}
                 </AnimatePresence>
 
+                {/* Barra de Liquidación Exacta / Fraccionada y Cierre Conciliado (solo Recibo de Pago) */}
+                {receiptDocType === "pago" && receiptEmployee && (() => {
+                  const activeCorte = reciboFechaCorte || formatYMD(new Date());
+                  const calcRec = calcularLiquidacionEmpleado(receiptEmployee, activeCorte);
+                  return (
+                    <div className="no-print mb-4 bg-slate-900/90 border border-slate-700/80 rounded-2xl p-3.5 shadow-lg space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleReciboFraccionado(!reciboModoFraccionado)}
+                            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                              reciboModoFraccionado
+                                ? "bg-teal-600 text-white border-teal-400 shadow-sm"
+                                : "bg-slate-800 text-slate-300 border-slate-700 hover:text-white"
+                            }`}
+                            title="Activar/Desactivar liquidación exacta proporcional por años, meses (÷12) y días (÷30)"
+                          >
+                            <span className={`w-2 h-2 rounded-full ${reciboModoFraccionado ? "bg-white animate-pulse" : "bg-slate-500"}`} />
+                            <span>Exacto / Fraccionado: {reciboModoFraccionado ? "ACTIVADO" : "DESACTIVADO"}</span>
+                          </button>
+
+                          <div className="flex items-center gap-1.5 bg-slate-950/70 border border-slate-700/80 rounded-xl px-2.5 py-1">
+                            <span className="text-[11px] font-semibold text-slate-400">Fecha de Conciliación:</span>
+                            <input
+                              type="date"
+                              value={activeCorte}
+                              onChange={(e) => handleReciboFechaCorteChange(e.target.value)}
+                              className="bg-transparent text-white text-xs font-bold focus:outline-none [color-scheme:dark]"
+                              title="Fecha de conciliación (hoy por defecto o fecha histórica)"
+                            />
+                          </div>
+
+                          {receiptEmployee.tiene_cierre_conciliado && receiptEmployee.fecha_ultimo_cierre && (
+                            <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                              ✓ Últ. cierre: {formatDMY(receiptEmployee.fecha_ultimo_cierre)}
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleSaveCierreFromReceipt}
+                          disabled={savingCierreRecibo || reciboDiasPagados <= 0}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold transition shadow-sm cursor-pointer"
+                          title="Registra este recibo como Cierre Conciliado, salda todas las deudas de vacaciones a la fecha de corte y reinicia el saldo en 0.0"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>
+                            {savingCierreRecibo
+                              ? "Guardando cierre..."
+                              : "Guardar como Cierre Conciliado (Saldo a 0)"}
+                          </span>
+                        </button>
+                      </div>
+
+                      {reciboModoFraccionado && calcRec && (
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2 border-t border-slate-800 text-[11px] text-slate-300 font-mono">
+                          <span>
+                            Antigüedad: <strong className="text-white">{calcRec.anios}a {calcRec.meses}m {calcRec.dias}d</strong> ({calcRec.escala} d/año)
+                          </span>
+                          <span>• Años: <strong className="text-white">{fmtDias(calcRec.diasPorAnios)} d</strong></span>
+                          <span>• Meses (÷12): <strong className="text-teal-300">+{fmtDias(calcRec.diasPorMeses)} d</strong></span>
+                          <span>• Días (÷30): <strong className="text-teal-300">+{fmtDias(calcRec.diasPorDias)} d</strong></span>
+                          <span>• Rebajas (Sol/Col/Pag): <strong className="text-amber-300">-{fmtDias(calcRec.totalRebaja)} d</strong></span>
+                          <span className="text-emerald-300 font-bold">
+                            ⇒ Saldo Exacto: {fmtDias(calcRec.saldoFraccionado)} d
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Printable Document Preview Canvas */}
                 <div className="flex justify-center">
                   {(() => {
@@ -4158,7 +5115,7 @@ function VacacionesContent() {
                             <li className="flex items-center gap-2">
                               <span className="font-bold text-slate-400">•</span>
                               <span className="w-56">Días de vacaciones pagados:</span>
-                              <span className="font-bold font-mono">{reciboDiasPagados} días</span>
+                              <span className="font-bold font-mono">{fmtDias(reciboDiasPagados)} días</span>
                             </li>
                             <li className="flex items-center gap-2">
                               <span className="font-bold text-slate-400">•</span>

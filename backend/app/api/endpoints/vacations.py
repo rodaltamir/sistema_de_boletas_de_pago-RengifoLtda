@@ -54,12 +54,140 @@ def sort_code_key(code_val, fallback_id=0):
         return (0, int(digits[0]), code_str)
     return (0, 999999, code_str)
 
+def _build_employee_vacation_summary(
+    emp: Employee,
+    recs: list,
+    cutoff_date: Optional[date],
+    fraccionado: bool,
+    desde: Optional[str],
+    hasta: Optional[str],
+    db: Session
+) -> EmployeeVacationSummary:
+    """
+    Construye el resumen de vacaciones de un colaborador considerando ciclos activos
+    posteriores a un eventual Cierre Conciliado y modo Estándar o Exacto/Fraccionado.
+    """
+    recs_asc = sorted(recs, key=lambda r: (r.fecha_inicio, r.id))
+    recs_desc = list(reversed(recs_asc))
+
+    today_dt = date.today()
+    effective_cutoff = cutoff_date if cutoff_date is not None else today_dt
+
+    cierre_recs = [
+        r for r in recs_asc
+        if getattr(r, "es_cierre_conciliado", False) and r.fecha_inicio <= effective_cutoff
+    ]
+    last_cierre = cierre_recs[-1] if cierre_recs else None
+
+    if last_cierre:
+        active_recs = [
+            r for r in recs_asc
+            if (r.fecha_inicio > last_cierre.fecha_inicio)
+            or (r.fecha_inicio == last_cierre.fecha_inicio and r.id > last_cierre.id)
+        ]
+        # Si la fecha de cierre ya ocurrió (<= hoy) y el filtro 'hasta' apunta a fin de año futuro,
+        # no proyectar días fraccionados futuros más allá de hoy tras un cierre reciente.
+        if fraccionado and last_cierre.fecha_inicio <= today_dt and effective_cutoff > today_dt:
+            ref_for_calc = today_dt
+        else:
+            ref_for_calc = effective_cutoff
+        fecha_cierre_dt = last_cierre.fecha_inicio
+    else:
+        active_recs = recs_asc
+        ref_for_calc = cutoff_date
+        fecha_cierre_dt = None
+
+    calc = VacationService.calculate_accumulated_vacation_days(
+        emp.fecha_ingreso,
+        reference_date=ref_for_calc,
+        fraccionado=fraccionado,
+        fecha_ultimo_cierre=fecha_cierre_dt
+    )
+
+    pagados = sum(float(r.dias) for r in active_recs if r.tipo in ("dias_pagados", "a_cuenta"))
+    solicitadas = sum(float(r.dias) for r in active_recs if r.tipo == "solicitada")
+    colectivas = sum(float(r.dias) for r in active_recs if r.tipo == "colectiva")
+    tomados = pagados + solicitadas + colectivas
+
+    dias_acum = calc["dias_acumulados"]
+    saldo = round(dias_acum - tomados, 2)
+    saldo_frac = round(calc["dias_acumulados_fraccionado"] - tomados, 2)
+
+    serialized_records = []
+    emp_fullname = f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().upper()
+    for r in recs_desc:
+        fechas = []
+        if r.fechas_detalle:
+            try:
+                fechas = json.loads(r.fechas_detalle)
+            except Exception:
+                fechas = []
+        serialized_records.append(VacationRecordResponse(
+            id=r.id,
+            employee_id=r.employee_id,
+            employee_name=emp_fullname,
+            tipo=r.tipo,
+            fecha_inicio=r.fecha_inicio,
+            fecha_fin=r.fecha_fin,
+            dias=float(r.dias),
+            fechas_detalle=fechas,
+            motivo=r.motivo,
+            fecha_solicitud=r.fecha_solicitud,
+            gestion=r.gestion,
+            aprobado_por=r.aprobado_por,
+            es_cierre_conciliado=bool(getattr(r, "es_cierre_conciliado", False)),
+            modo_calculo=getattr(r, "modo_calculo", "estandar") or "estandar",
+            created_at=str(r.created_at) if r.created_at else None
+        ))
+
+    hb, otros_val, tg_mensual = get_employee_eventual_wage(db, emp.id, float(emp.haber_basico or 0.0))
+    ext = f" {emp.ext_ci.strip()}" if emp.ext_ci else ""
+    return EmployeeVacationSummary(
+        employee_id=emp.id,
+        employee_code=emp.internal_code or str(emp.id),
+        employee_name=emp_fullname,
+        employee_ci=f"{emp.documento_identidad.strip()}{ext}".strip(),
+        employee_cargo=emp.ocupacion,
+        fecha_ingreso=str(emp.fecha_ingreso),
+        fecha_afiliacion=str(emp.fecha_afiliacion) if getattr(emp, 'fecha_afiliacion', None) else None,
+        haber_basico=hb,
+        otros=otros_val,
+        total_ganado_mensual=tg_mensual,
+        antiguedad_anios=calc["anios"],
+        antiguedad_meses=calc["meses"],
+        antiguedad_dias=calc["dias"],
+        antiguedad_formato=calc["antiguedad_formato"],
+        escala_dias=calc["escala_dias"],
+        dias_acumulados=dias_acum,
+        dias_por_anios=calc["dias_por_anios"],
+        dias_por_meses=calc["dias_por_meses"],
+        dias_por_dias=calc["dias_por_dias"],
+        tasa_mensual=calc["tasa_mensual"],
+        tasa_diaria=calc["tasa_diaria"],
+        dias_acumulados_fraccionado=calc["dias_acumulados_fraccionado"],
+        saldo_fraccionado=saldo_frac,
+        tiene_cierre_conciliado=bool(last_cierre is not None),
+        fecha_ultimo_cierre=str(last_cierre.fecha_inicio) if last_cierre else None,
+        dias_ultimo_cierre=float(last_cierre.dias) if last_cierre else 0.0,
+        id_ultimo_cierre=last_cierre.id if last_cierre else None,
+        dias_a_cuenta=round(pagados, 2),
+        dias_pagados=round(pagados, 2),
+        dias_solicitadas=round(solicitadas, 2),
+        dias_colectivas=round(colectivas, 2),
+        total_dias_tomados=round(tomados, 2),
+        saldo_dias_pendientes=saldo,
+        fecha_desde=desde,
+        fecha_hasta=hasta,
+        records=serialized_records
+    )
+
 @router.get("/summary", response_model=CompanyVacationSummary)
 @router.get("/summary/", response_model=CompanyVacationSummary, include_in_schema=False)
 def get_company_vacation_summary(
     schema_name: str, 
     desde: Optional[str] = Query(None), 
-    hasta: Optional[str] = Query(None), 
+    hasta: Optional[str] = Query(None),
+    fraccionado: Optional[bool] = Query(False),
     db: Session = Depends(get_tenant_db)
 ):
     with engine.connect() as conn:
@@ -99,75 +227,23 @@ def get_company_vacation_summary(
     tot_saldo = 0.0
 
     for emp in employees:
-        calc = VacationService.calculate_accumulated_vacation_days(emp.fecha_ingreso, reference_date=cutoff_date)
         recs = records_by_emp.get(emp.id, [])
-        
-        pagados = sum(float(r.dias) for r in recs if r.tipo in ("dias_pagados", "a_cuenta"))
-        solicitadas = sum(float(r.dias) for r in recs if r.tipo == "solicitada")
-        colectivas = sum(float(r.dias) for r in recs if r.tipo == "colectiva")
-        tomados = pagados + solicitadas + colectivas
-        saldo = calc["dias_acumulados"] - tomados
-
-        tot_acumulados += calc["dias_acumulados"]
-        tot_pagados += pagados
-        tot_solicitadas += solicitadas
-        tot_colectivas += colectivas
-        tot_tomados += tomados
-        tot_saldo += saldo
-
-        serialized_records = []
-        for r in recs:
-            fechas = []
-            if r.fechas_detalle:
-                try:
-                    fechas = json.loads(r.fechas_detalle)
-                except Exception:
-                    fechas = []
-            serialized_records.append(VacationRecordResponse(
-                id=r.id,
-                employee_id=r.employee_id,
-                employee_name=f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().upper(),
-                tipo=r.tipo,
-                fecha_inicio=r.fecha_inicio,
-                fecha_fin=r.fecha_fin,
-                dias=float(r.dias),
-                fechas_detalle=fechas,
-                motivo=r.motivo,
-                fecha_solicitud=r.fecha_solicitud,
-                gestion=r.gestion,
-                aprobado_por=r.aprobado_por,
-                created_at=str(r.created_at) if r.created_at else None
-            ))
-
-        hb, otros_val, tg_mensual = get_employee_eventual_wage(db, emp.id, float(emp.haber_basico or 0.0))
-        ext = f" {emp.ext_ci.strip()}" if emp.ext_ci else ""
-        emp_summaries.append(EmployeeVacationSummary(
-            employee_id=emp.id,
-            employee_code=emp.internal_code or str(emp.id),
-            employee_name=f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().upper(),
-            employee_ci=f"{emp.documento_identidad.strip()}{ext}".strip(),
-            employee_cargo=emp.ocupacion,
-            fecha_ingreso=str(emp.fecha_ingreso),
-            fecha_afiliacion=str(emp.fecha_afiliacion) if getattr(emp, 'fecha_afiliacion', None) else None,
-            haber_basico=hb,
-            otros=otros_val,
-            total_ganado_mensual=tg_mensual,
-            antiguedad_anios=calc["anios"],
-            antiguedad_meses=calc["meses"],
-            antiguedad_dias=calc["dias"],
-            antiguedad_formato=calc["antiguedad_formato"],
-            escala_dias=calc["escala_dias"],
-            dias_acumulados=calc["dias_acumulados"],
-            dias_a_cuenta=round(pagados, 1),
-            dias_pagados=round(pagados, 1),
-            dias_solicitadas=round(solicitadas, 1),
-            dias_colectivas=round(colectivas, 1),
-            total_dias_tomados=round(tomados, 1),
-            saldo_dias_pendientes=round(saldo, 1),
-            fecha_desde=desde,
-            fecha_hasta=hasta,
-            records=serialized_records
-        ))
+        emp_sum = _build_employee_vacation_summary(
+            emp=emp,
+            recs=recs,
+            cutoff_date=cutoff_date,
+            fraccionado=bool(fraccionado),
+            desde=desde,
+            hasta=hasta,
+            db=db
+        )
+        emp_summaries.append(emp_sum)
+        tot_acumulados += emp_sum.dias_acumulados
+        tot_pagados += emp_sum.dias_pagados
+        tot_solicitadas += emp_sum.dias_solicitadas
+        tot_colectivas += emp_sum.dias_colectivas
+        tot_tomados += emp_sum.total_dias_tomados
+        tot_saldo += emp_sum.saldo_dias_pendientes
 
     return CompanyVacationSummary(
         tenant_name=t_name,
@@ -178,13 +254,13 @@ def get_company_vacation_summary(
         fecha_desde=desde,
         fecha_hasta=hasta,
         total_empleados=len(employees),
-        total_dias_acumulados=round(tot_acumulados, 1),
-        total_dias_a_cuenta=round(tot_pagados, 1),
-        total_dias_pagados=round(tot_pagados, 1),
-        total_dias_solicitadas=round(tot_solicitadas, 1),
-        total_dias_colectivas=round(tot_colectivas, 1),
-        total_dias_tomados=round(tot_tomados, 1),
-        total_saldo_pendiente=round(tot_saldo, 1),
+        total_dias_acumulados=round(tot_acumulados, 2),
+        total_dias_a_cuenta=round(tot_pagados, 2),
+        total_dias_pagados=round(tot_pagados, 2),
+        total_dias_solicitadas=round(tot_solicitadas, 2),
+        total_dias_colectivas=round(tot_colectivas, 2),
+        total_dias_tomados=round(tot_tomados, 2),
+        total_saldo_pendiente=round(tot_saldo, 2),
         employees=emp_summaries
     )
 
@@ -195,6 +271,7 @@ def get_employee_vacation_summary(
     employee_id: int, 
     desde: Optional[str] = Query(None),
     hasta: Optional[str] = Query(None),
+    fraccionado: Optional[bool] = Query(False),
     db: Session = Depends(get_tenant_db)
 ):
     emp = db.query(Employee).filter(Employee.id == employee_id).first()
@@ -208,67 +285,15 @@ def get_employee_vacation_summary(
         except Exception:
             cutoff_date = None
 
-    calc = VacationService.calculate_accumulated_vacation_days(emp.fecha_ingreso, reference_date=cutoff_date)
     recs = db.query(VacationRecord).filter(VacationRecord.employee_id == employee_id).order_by(VacationRecord.fecha_inicio.desc()).all()
-    
-    pagados = sum(float(r.dias) for r in recs if r.tipo in ("dias_pagados", "a_cuenta"))
-    solicitadas = sum(float(r.dias) for r in recs if r.tipo == "solicitada")
-    colectivas = sum(float(r.dias) for r in recs if r.tipo == "colectiva")
-    tomados = pagados + solicitadas + colectivas
-    saldo = calc["dias_acumulados"] - tomados
-
-    serialized_records = []
-    for r in recs:
-        fechas = []
-        if r.fechas_detalle:
-            try:
-                fechas = json.loads(r.fechas_detalle)
-            except Exception:
-                fechas = []
-        serialized_records.append(VacationRecordResponse(
-            id=r.id,
-            employee_id=r.employee_id,
-            employee_name=f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().upper(),
-            tipo=r.tipo,
-            fecha_inicio=r.fecha_inicio,
-            fecha_fin=r.fecha_fin,
-            dias=float(r.dias),
-            fechas_detalle=fechas,
-            motivo=r.motivo,
-            fecha_solicitud=r.fecha_solicitud,
-            gestion=r.gestion,
-            aprobado_por=r.aprobado_por,
-            created_at=str(r.created_at) if r.created_at else None
-        ))
-
-    hb, otros_val, tg_mensual = get_employee_eventual_wage(db, emp.id, float(emp.haber_basico or 0.0))
-    ext = f" {emp.ext_ci.strip()}" if emp.ext_ci else ""
-    return EmployeeVacationSummary(
-        employee_id=emp.id,
-        employee_code=emp.internal_code or str(emp.id),
-        employee_name=f"{emp.apellido_paterno} {emp.apellido_materno or ''} {emp.nombres}".strip().upper(),
-        employee_ci=f"{emp.documento_identidad.strip()}{ext}".strip(),
-        employee_cargo=emp.ocupacion,
-        fecha_ingreso=str(emp.fecha_ingreso),
-        fecha_afiliacion=str(emp.fecha_afiliacion) if getattr(emp, 'fecha_afiliacion', None) else None,
-        haber_basico=hb,
-        otros=otros_val,
-        total_ganado_mensual=tg_mensual,
-        antiguedad_anios=calc["anios"],
-        antiguedad_meses=calc["meses"],
-        antiguedad_dias=calc["dias"],
-        antiguedad_formato=calc["antiguedad_formato"],
-        escala_dias=calc["escala_dias"],
-        dias_acumulados=calc["dias_acumulados"],
-        dias_a_cuenta=round(pagados, 1),
-        dias_pagados=round(pagados, 1),
-        dias_solicitadas=round(solicitadas, 1),
-        dias_colectivas=round(colectivas, 1),
-        total_dias_tomados=round(tomados, 1),
-        saldo_dias_pendientes=round(saldo, 1),
-        fecha_desde=desde,
-        fecha_hasta=hasta,
-        records=serialized_records
+    return _build_employee_vacation_summary(
+        emp=emp,
+        recs=recs,
+        cutoff_date=cutoff_date,
+        fraccionado=bool(fraccionado),
+        desde=desde,
+        hasta=hasta,
+        db=db
     )
 
 @router.get("/employee/{employee_id}/kardex-detallado")
@@ -317,6 +342,13 @@ def create_vacation_record(schema_name: str, payload: VacationRecordCreate, db: 
     tipo = "dias_pagados" if payload.tipo in ("dias_pagados", "a_cuenta") else payload.tipo
     gestion = payload.gestion or payload.fecha_inicio.year
     fechas_json = json.dumps(payload.fechas_detalle or [])
+    es_cierre = bool(getattr(payload, "es_cierre_conciliado", False))
+    modo_calc = getattr(payload, "modo_calculo", "estandar") or "estandar"
+    default_motivo = (
+        "LIQUIDACIÓN Y CIERRE CONCILIADO DE VACACIONES (Saldo en 0)"
+        if es_cierre
+        else ("Días de vacación pagados" if tipo == "dias_pagados" else "Vacaciones de personal")
+    )
 
     new_record = VacationRecord(
         employee_id=payload.employee_id,
@@ -325,10 +357,12 @@ def create_vacation_record(schema_name: str, payload: VacationRecordCreate, db: 
         fecha_fin=payload.fecha_fin,
         dias=payload.dias,
         fechas_detalle=fechas_json,
-        motivo=payload.motivo or ("Días de vacación pagados" if tipo == "dias_pagados" else "Vacaciones de personal"),
+        motivo=payload.motivo or default_motivo,
         fecha_solicitud=payload.fecha_solicitud,
         gestion=gestion,
-        aprobado_por=payload.aprobado_por
+        aprobado_por=payload.aprobado_por,
+        es_cierre_conciliado=es_cierre,
+        modo_calculo=modo_calc
     )
     db.add(new_record)
     db.commit()
@@ -347,6 +381,8 @@ def create_vacation_record(schema_name: str, payload: VacationRecordCreate, db: 
         fecha_solicitud=new_record.fecha_solicitud,
         gestion=new_record.gestion,
         aprobado_por=new_record.aprobado_por,
+        es_cierre_conciliado=bool(new_record.es_cierre_conciliado),
+        modo_calculo=new_record.modo_calculo or "estandar",
         created_at=str(new_record.created_at) if new_record.created_at else None
     )
 
@@ -369,6 +405,13 @@ def update_vacation_record(
     tipo = "dias_pagados" if payload.tipo in ("dias_pagados", "a_cuenta") else payload.tipo
     gestion = payload.gestion or payload.fecha_inicio.year
     fechas_json = json.dumps(payload.fechas_detalle or [])
+    es_cierre = bool(getattr(payload, "es_cierre_conciliado", False))
+    modo_calc = getattr(payload, "modo_calculo", "estandar") or "estandar"
+    default_motivo = (
+        "LIQUIDACIÓN Y CIERRE CONCILIADO DE VACACIONES (Saldo en 0)"
+        if es_cierre
+        else ("Días de vacación pagados" if tipo == "dias_pagados" else "Vacaciones de personal")
+    )
 
     record.employee_id = payload.employee_id
     record.tipo = tipo
@@ -376,9 +419,11 @@ def update_vacation_record(
     record.fecha_fin = payload.fecha_fin
     record.dias = payload.dias
     record.fechas_detalle = fechas_json
-    record.motivo = payload.motivo or ("Días de vacación pagados" if tipo == "dias_pagados" else "Vacaciones de personal")
+    record.motivo = payload.motivo or default_motivo
     record.fecha_solicitud = payload.fecha_solicitud
     record.gestion = gestion
+    record.es_cierre_conciliado = es_cierre
+    record.modo_calculo = modo_calc
     if payload.aprobado_por is not None:
         record.aprobado_por = payload.aprobado_por
 
@@ -405,6 +450,8 @@ def update_vacation_record(
         fecha_solicitud=record.fecha_solicitud,
         gestion=record.gestion,
         aprobado_por=record.aprobado_por,
+        es_cierre_conciliado=bool(record.es_cierre_conciliado),
+        modo_calculo=record.modo_calculo or "estandar",
         created_at=str(record.created_at) if record.created_at else None
     )
 
@@ -424,10 +471,11 @@ def delete_vacation_record(schema_name: str, record_id: int, db: Session = Depen
 def export_company_vacation_excel(
     schema_name: str, 
     desde: Optional[str] = Query(None), 
-    hasta: Optional[str] = Query(None), 
+    hasta: Optional[str] = Query(None),
+    fraccionado: Optional[bool] = Query(False),
     db: Session = Depends(get_tenant_db)
 ):
-    summary = get_company_vacation_summary(schema_name=schema_name, desde=desde, hasta=hasta, db=db)
+    summary = get_company_vacation_summary(schema_name=schema_name, desde=desde, hasta=hasta, fraccionado=fraccionado, db=db)
     file_path = DocumentService.generate_company_vacations_excel(
         summary.model_dump(), 
         output_format="xlsx", 
@@ -445,10 +493,11 @@ def export_company_vacation_excel(
 def export_company_vacation_pdf(
     schema_name: str, 
     desde: Optional[str] = Query(None), 
-    hasta: Optional[str] = Query(None), 
+    hasta: Optional[str] = Query(None),
+    fraccionado: Optional[bool] = Query(False),
     db: Session = Depends(get_tenant_db)
 ):
-    summary = get_company_vacation_summary(schema_name=schema_name, desde=desde, hasta=hasta, db=db)
+    summary = get_company_vacation_summary(schema_name=schema_name, desde=desde, hasta=hasta, fraccionado=fraccionado, db=db)
     file_path = DocumentService.generate_company_vacations_excel(
         summary.model_dump(), 
         output_format="pdf", 
@@ -467,10 +516,11 @@ def export_employee_vacation_excel(
     schema_name: str, 
     employee_id: int, 
     desde: Optional[str] = Query(None), 
-    hasta: Optional[str] = Query(None), 
+    hasta: Optional[str] = Query(None),
+    fraccionado: Optional[bool] = Query(False),
     db: Session = Depends(get_tenant_db)
 ):
-    emp_summary = get_employee_vacation_summary(schema_name=schema_name, employee_id=employee_id, desde=desde, hasta=hasta, db=db)
+    emp_summary = get_employee_vacation_summary(schema_name=schema_name, employee_id=employee_id, desde=desde, hasta=hasta, fraccionado=fraccionado, db=db)
     with engine.connect() as conn:
         result = conn.execute(
             text("SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = :s").bindparams(s=schema_name)
@@ -510,10 +560,11 @@ def export_employee_vacation_pdf(
     schema_name: str, 
     employee_id: int, 
     desde: Optional[str] = Query(None), 
-    hasta: Optional[str] = Query(None), 
+    hasta: Optional[str] = Query(None),
+    fraccionado: Optional[bool] = Query(False),
     db: Session = Depends(get_tenant_db)
 ):
-    emp_summary = get_employee_vacation_summary(schema_name=schema_name, employee_id=employee_id, desde=desde, hasta=hasta, db=db)
+    emp_summary = get_employee_vacation_summary(schema_name=schema_name, employee_id=employee_id, desde=desde, hasta=hasta, fraccionado=fraccionado, db=db)
     with engine.connect() as conn:
         result = conn.execute(
             text("SELECT name, numero_patronal, nit, empleador_nombres, empleador_apellido_paterno, empleador_apellido_materno, empleador_ci FROM public.tenants WHERE schema_name = :s").bindparams(s=schema_name)
